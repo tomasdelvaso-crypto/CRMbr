@@ -1329,7 +1329,19 @@ const CRMVentapel: React.FC = () => {
 
     const currentStage = stages.find(s => s.id === showStageChecklist.opportunity.stage);
     const targetStage = stages.find(s => s.id === showStageChecklist.targetStage);
-    const [checkedItems, setCheckedItems] = useState<{[key: string]: boolean}>({});
+    
+    // Inicializar todos os checkboxes como false
+    const initCheckedItems = () => {
+      const items: {[key: string]: boolean} = {};
+      if (currentStage?.checklist) {
+        Object.values(currentStage.checklist).forEach(key => {
+          items[key] = false;
+        });
+      }
+      return items;
+    };
+    
+    const [checkedItems, setCheckedItems] = useState<{[key: string]: boolean}>(initCheckedItems);
 
     if (!currentStage || !targetStage) return null;
 
@@ -1337,7 +1349,7 @@ const CRMVentapel: React.FC = () => {
       setCheckedItems(prev => ({...prev, [key]: !prev[key]}));
     };
 
-    const allChecked = currentStage.checklist && Object.keys(currentStage.checklist).every(key => checkedItems[key]);
+    const allChecked = currentStage.checklist && Object.values(currentStage.checklist).every(key => checkedItems[key] === true);
 
     const confirmStageChange = async () => {
       if (!allChecked) {
@@ -1389,22 +1401,25 @@ const CRMVentapel: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {currentStage.checklist && Object.entries(currentStage.checklist).map(([label, key]) => (
-                <label key={key} className="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={checkedItems[key] || false}
-                    onChange={() => handleCheckChange(key)}
-                    className="mt-0.5 mr-3 w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                  />
-                  <div className="flex-1">
-                    <span className="text-gray-800 font-medium">{label}</span>
-                    {checkedItems[key] && (
-                      <CheckCircle className="inline-block w-5 h-5 text-green-600 ml-2" />
-                    )}
-                  </div>
-                </label>
-              ))}
+              {currentStage.checklist && Object.entries(currentStage.checklist).map(([label, key]) => {
+                const isChecked = checkedItems[key] === true;
+                return (
+                  <label key={key} className="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => handleCheckChange(key)}
+                      className="mt-0.5 mr-3 w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="flex-1">
+                      <span className="text-gray-800 font-medium">{label}</span>
+                      {isChecked && (
+                        <CheckCircle className="inline-block w-5 h-5 text-green-600 ml-2" />
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
             </div>
 
             <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
