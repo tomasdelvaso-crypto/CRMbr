@@ -14,7 +14,7 @@ const VENDEDORES = [
   'Tomás'
 ];
 
-// Tipos para TypeScript - CORREGIDOS
+// Tipos para TypeScript
 interface Scale {
   score: number;
   description: string;
@@ -49,7 +49,7 @@ interface Opportunity {
   scales: Scales;
 }
 
-// Cliente Supabase COMPLETAMENTE CORREGIDO
+// Cliente Supabase corregido
 const supabaseClient = {
   headers: {
     'apikey': supabaseKey,
@@ -302,7 +302,7 @@ const CRMVentapel: React.FC = () => {
     compras: { score: 0, description: '' }
   });
 
-  // Cargar datos desde Supabase - CORREGIDO
+  // Cargar datos desde Supabase
   const loadOpportunities = async () => {
     try {
       setLoading(true);
@@ -329,7 +329,7 @@ const CRMVentapel: React.FC = () => {
     }
   };
 
-  // Función para crear nueva oportunidade - CORREGIDA
+  // Función para crear nueva oportunidade
   const createOpportunity = async (opportunityData: any): Promise<boolean> => {
     try {
       setError(null);
@@ -366,7 +366,7 @@ const CRMVentapel: React.FC = () => {
     }
   };
 
-  // Función para atualizar oportunidade - COMPLETAMENTE CORREGIDA
+  // Función para atualizar oportunidade
   const updateOpportunity = async (opportunityData: any): Promise<boolean> => {
     try {
       setError(null);
@@ -408,7 +408,7 @@ const CRMVentapel: React.FC = () => {
     }
   };
 
-  // Função para deletar oportunidade - CORREGIDA
+  // Función para deletar oportunidade
   const deleteOpportunity = async (id: number): Promise<void> => {
     if (!confirm('Tem certeza que deseja deletar esta oportunidade?')) {
       return;
@@ -431,7 +431,7 @@ const CRMVentapel: React.FC = () => {
     }
   };
 
-  // Função para mover estágio - CORREGIDA
+  // Función para mover estágio
   const moveStage = async (opportunity: Opportunity, newStage: number): Promise<void> => {
     const stage = stages.find(s => s.id === newStage);
     if (!stage) {
@@ -476,7 +476,7 @@ const CRMVentapel: React.FC = () => {
     }
   };
 
-  // Verificar requisitos do estágio - CORREGIDA
+  // Verificar requisitos do estágio
   const checkStageRequirements = (opportunity: Opportunity, stageId: number): boolean => {
     if (!opportunity.scales) return false;
 
@@ -686,7 +686,6 @@ const CRMVentapel: React.FC = () => {
           </div>
         </div>
 
-        {/* Controles de estágio */}
         <div className="mb-6 p-4 bg-gray-50 rounded-lg">
           <div className="flex items-center justify-between mb-3">
             <h4 className="font-semibold text-gray-700">🎯 Gestão de Estágio</h4>
@@ -716,7 +715,6 @@ const CRMVentapel: React.FC = () => {
             </div>
           </div>
           
-          {/* Requisitos da próxima etapa */}
           {nextStage && (
             <div className="text-xs text-gray-600">
               <p className="font-medium mb-1">Requisitos para {nextStage.name}:</p>
@@ -874,7 +872,12 @@ const CRMVentapel: React.FC = () => {
     </div>
   );
 
-  const OpportunityForm = ({ opportunity, onClose }: { opportunity?: Opportunity | null, onClose: () => void }) => {
+  interface OpportunityFormProps {
+    opportunity?: Opportunity | null;
+    onClose: () => void;
+  }
+
+  const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose }) => {
     const [formData, setFormData] = useState({
       id: opportunity?.id || 0,
       name: opportunity?.name || '',
@@ -952,7 +955,6 @@ const CRMVentapel: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Informações básicas */}
               <div className="space-y-6">
                 <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
                   <h3 className="text-lg font-semibold mb-4 text-blue-800">📋 Informações Básicas</h3>
@@ -1063,7 +1065,6 @@ const CRMVentapel: React.FC = () => {
                 </div>
               </div>
 
-              {/* Escalas PPVVCC */}
               <div className="space-y-6">
                 <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
                   <h3 className="text-lg font-semibold mb-4 text-purple-800">📊 Escalas PPVVCC</h3>
