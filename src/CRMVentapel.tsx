@@ -55,15 +55,15 @@ const supabaseClient = {
     'Content-Type': 'application/json'
   },
   
-  async select(table: string, columns = '*') {
-    const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}`, {
-      headers: this.headers
+ async update(table: string, id: number, data: any) {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
+      method: 'PATCH',
+      headers: this.headers,
+      body: JSON.stringify(data)
     });
     if (!response.ok) {
       throw new Error(`Error ${response.status}: ${response.statusText}`);
     }
-    return response.json();
-  },
   
  async update(table: string, id: number, data: any) {
     const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
