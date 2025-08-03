@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2 } from 'lucide-react';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://wtrbvgqxgcfjacqcndmb.supabase.co';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cmJ2Z3F4Z2NmamFjcWNuZG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4MTg4NjcsImV4cCI6MjA2OTM5NDg2N30.8PB0OjF2vvCtCCDnYCeemMSyvR51E2SAHe7slS1UyQU';
+const supabaseUrl = 'https://wtrbvgqxgcfjacqcndmb.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cmJ2Z3F4Z2NmamFjcWNuZG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4MTg4NjcsImV4cCI6MjA2OTM5NDg2N30.8PB0OjF2vvCtCCDnYCeemMSyvR51E2SAHe7slS1UyQU';
 
 const VENDEDORES = [
   'Jordi',
@@ -56,7 +56,8 @@ const supabaseClient = {
   
   async select(table: string, columns = '*'): Promise<Opportunity[]> {
     try {
-      const response = await fetch(supabaseUrl + '/rest/v1/' + table + '?select=' + columns, {
+      const url = supabaseUrl + '/rest/v1/' + table + '?select=' + columns;
+      const response = await fetch(url, {
         headers: this.headers
       });
       
@@ -75,7 +76,8 @@ const supabaseClient = {
   
   async insert(table: string, data: any): Promise<Opportunity[]> {
     try {
-      const response = await fetch(supabaseUrl + '/rest/v1/' + table, {
+      const url = supabaseUrl + '/rest/v1/' + table;
+      const response = await fetch(url, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify(data)
@@ -96,7 +98,8 @@ const supabaseClient = {
 
   async update(table: string, id: number, data: any): Promise<Opportunity[]> {
     try {
-      const response = await fetch(supabaseUrl + '/rest/v1/' + table + '?id=eq.' + id, {
+      const url = supabaseUrl + '/rest/v1/' + table + '?id=eq.' + id;
+      const response = await fetch(url, {
         method: 'PATCH',
         headers: this.headers,
         body: JSON.stringify(data)
@@ -122,7 +125,8 @@ const supabaseClient = {
 
   async delete(table: string, id: number): Promise<void> {
     try {
-      const response = await fetch(supabaseUrl + '/rest/v1/' + table + '?id=eq.' + id, {
+      const url = supabaseUrl + '/rest/v1/' + table + '?id=eq.' + id;
+      const response = await fetch(url, {
         method: 'DELETE',
         headers: this.headers
       });
@@ -599,11 +603,11 @@ const CRMVentapel: React.FC = () => {
               <div className="flex-1 mx-6">
                 <div className="bg-gray-200 rounded-full h-8 relative">
                   <div 
-                    className={'h-8 rounded-full ' + stage.color + ' transition-all duration-500'}
-                    style={{ width: (Math.max((stage.count / Math.max(...metrics.stageDistribution.map(s => s.count), 1)) * 100, 5)) + '%' }}
+                    className={stage.color + ' h-8 rounded-full transition-all duration-500'}
+                    style={{ width: Math.max((stage.count / Math.max(...metrics.stageDistribution.map(s => s.count), 1)) * 100, 5) + '%' }}
                   ></div>
                   <div className="absolute inset-0 flex items-center justify-center text-sm font-medium text-white">
-                    {stage.count > 0 && (stage.count + ' oportunidades')}
+                    {stage.count > 0 && stage.count + ' oportunidades'}
                   </div>
                 </div>
               </div>
@@ -717,7 +721,7 @@ const CRMVentapel: React.FC = () => {
           <div className="bg-gray-200 rounded-full h-4 mb-4">
             <div 
               className="bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 h-4 rounded-full transition-all duration-500"
-              style={{ width: ((avgScore / 10) * 100) + '%' }}
+              style={{ width: (avgScore / 10) * 100 + '%' }}
             ></div>
           </div>
           
