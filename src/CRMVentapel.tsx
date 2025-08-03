@@ -65,9 +65,9 @@ const supabaseClient = {
     return response.json();
   },
   
-  async insert(table: string, data: any) {
-    const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
-      method: 'POST',
+ async update(table: string, id: number, data: any) {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
+      method: 'PATCH',
       headers: this.headers,
       body: JSON.stringify(data)
     });
@@ -75,7 +75,7 @@ const supabaseClient = {
       throw new Error(`Error ${response.status}: ${response.statusText}`);
     }
     return response.json();
-  },
+  }
 
   async update(table: string, id: number, data: any) {
     const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
