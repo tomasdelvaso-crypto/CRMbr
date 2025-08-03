@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2 } from 'lucide-react';
+import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 const supabaseUrl = 'https://wtrbvgqxgcfjacqcndmb.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cmJ2Z3F4Z2NmamFjcWNuZG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4MTg4NjcsImV4cCI6MjA2OTM5NDg2N30.8PB0OjF2vvCtCCDnYCeemMSyvR51E2SAHe7slS1UyQU';
@@ -142,6 +142,88 @@ const supabaseClient = {
   }
 };
 
+// Definiciones de las escalas con niveles detallados
+const scaleDefinitions = {
+  dor: [
+    { level: 0, text: "Não há identificação de necessidade ou dor pelo cliente" },
+    { level: 1, text: "Vendedor assume necessidades do cliente" },
+    { level: 2, text: "Pessoa de Contato admite necessidade" },
+    { level: 3, text: "Pessoa de Contato admite razões e sintomas causadores de dor" },
+    { level: 4, text: "Pessoa de Contato admite dor" },
+    { level: 5, text: "Vendedor documenta dor e Pessoa de Contato concorda" },
+    { level: 6, text: "Pessoa de Contato e outros necessidades do Tomador de Decisão" },
+    { level: 7, text: "Tomador de Decisão admite necessidades" },
+    { level: 8, text: "Tomador de Decisão admite razões e sintomas causadores de dor" },
+    { level: 9, text: "Tomador de Decisão admite dor" },
+    { level: 10, text: "Vendedor documenta dor e Power concorda" }
+  ],
+  poder: [
+    { level: 0, text: "Tomador de Decisão não foi identificado ainda" },
+    { level: 1, text: "Processo de decisão revelado por Pessoa de Contato" },
+    { level: 2, text: "Tomador de Decisão Potencial identificado" },
+    { level: 3, text: "Pedido de acesso a Tomador de Decisão concedido por Pessoa de Contato" },
+    { level: 4, text: "Tomador de Decisão acessado" },
+    { level: 5, text: "Tomador de Decisão concorda em explorar oportunidade" },
+    { level: 6, text: "Processo de decisão e compra confirmado pelo Tomador de Decisão" },
+    { level: 7, text: "Tomador de Decisão concorda em fazer uma Prova de Valor" },
+    { level: 8, text: "Tomador de Decisão concorda com conteúdo da proposta" },
+    { level: 9, text: "Tomador de Decisão confirma aprovação verbal" },
+    { level: 10, text: "Tomador de Decisão aprova formalmente internamente" }
+  ],
+  visao: [
+    { level: 0, text: "Nenhuma visão ou visão concorrente estabelecida" },
+    { level: 1, text: "Visão do Pessoa de Contato criada em termos de produto" },
+    { level: 2, text: "Visão Pessoa de Contato criada em termos: Situação/Problema/Implicação" },
+    { level: 3, text: "Visão diferenciada criada com Pessoa de Contato (SPI)" },
+    { level: 4, text: "Visão diferenciada documentada com Pessoa de Contato" },
+    { level: 5, text: "Documentação concordada por Pessoa de Contato" },
+    { level: 6, text: "Visão Power criada em termos de produto" },
+    { level: 7, text: "Visão Power criada em termos: Situação/Problema/Implicação" },
+    { level: 8, text: "Visão diferenciada criada com Tomador de Decisão (SPIN)" },
+    { level: 9, text: "Visão diferenciada documentada com Tomador de Decisão" },
+    { level: 10, text: "Documentação concordada por Tomador de Decisão" }
+  ],
+  valor: [
+    { level: 0, text: "Pessoa de Contato explora a solução, mas valor não foi identificado" },
+    { level: 1, text: "Vendedor identifica proposição de valor para o negócio" },
+    { level: 2, text: "Pessoa de Contato concorda em explorar a proposta de valor" },
+    { level: 3, text: "Tomador de Decisão concorda em explorar a proposta de valor" },
+    { level: 4, text: "Critérios para definição de valor estabelecidos com Tomador de Decisão" },
+    { level: 5, text: "Valor descoberto conduzido e visão Tomador de Decisão" },
+    { level: 6, text: "Análise de valor conduzida por vendedor (demo)" },
+    { level: 7, text: "Análise de valor conduzida pelo Pessoa de Contato (trial)" },
+    { level: 8, text: "Tomador de Decisão concorda com análise de Valor" },
+    { level: 9, text: "Conclusão da análise de valor documentada pelo vendedor" },
+    { level: 10, text: "Tomador de Decisão confirma por escrito conclusões da análise" }
+  ],
+  controle: [
+    { level: 0, text: "Nenhum follow documentado de conversa com Pessoa de Contato" },
+    { level: 1, text: "1a visão (SPI) enviada para Pessoa de Contato" },
+    { level: 2, text: "1a visão concordada ou modificada por Pessoa de Contato (SPIN)" },
+    { level: 3, text: "1a visão enviada para Tomador de Decisão (SPI)" },
+    { level: 4, text: "1a visão concordada ou modificada por Tomador de Decisão (SPIN)" },
+    { level: 5, text: "Vendedor recebe aprovação para explorar Valor" },
+    { level: 6, text: "Plano de avaliação enviado para Tomador de Decisão" },
+    { level: 7, text: "Tomador de Decisão concorda ou modifica a Avaliação" },
+    { level: 8, text: "Plano de Avaliação conduzido (quando aplicável)" },
+    { level: 9, text: "Resultado da Avaliação aprovado pelo Tomador de Decisão" },
+    { level: 10, text: "Tomador de Decisão aprova proposta para negociação final" }
+  ],
+  compras: [
+    { level: 0, text: "Processo de compras desconhecido" },
+    { level: 1, text: "Processo de compras esclarecido pela pessoa de contato" },
+    { level: 2, text: "Processo de compras confirmado pelo Tomador de Decisão" },
+    { level: 3, text: "Condições comerciais validadas com o cliente" },
+    { level: 4, text: "Proposta apresentada para o cliente" },
+    { level: 5, text: "Processo de negociação iniciado com departamento de compras" },
+    { level: 6, text: "Condições comerciais aprovadas e formalizadas" },
+    { level: 7, text: "Contrato assinado" },
+    { level: 8, text: "Pedido de compras recebido" },
+    { level: 9, text: "Cobrança emitida" },
+    { level: 10, text: "Pagamento realizado" }
+  ]
+};
+
 const CRMVentapel: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -152,6 +234,7 @@ const CRMVentapel: React.FC = () => {
   const [filterVendor, setFilterVendor] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showStageChecklist, setShowStageChecklist] = useState<{opportunity: Opportunity, targetStage: number} | null>(null);
 
   const stages = [
     { 
@@ -159,42 +242,82 @@ const CRMVentapel: React.FC = () => {
       name: 'Prospecção', 
       probability: 0, 
       color: 'bg-gray-500',
-      requirements: ['Identificar dor do cliente', 'Contato inicial estabelecido']
+      requirements: ['Identificar dor do cliente', 'Contato inicial estabelecido'],
+      checklist: {
+        'Identificou a empresa potencial': 'empresa_identificada',
+        'Pesquisou sobre o negócio do cliente': 'pesquisa_negocio',
+        'Identificou pessoa de contato': 'contato_identificado',
+        'Realizou primeiro contato': 'primeiro_contato'
+      }
     },
     { 
       id: 2, 
       name: 'Qualificação', 
       probability: 20, 
       color: 'bg-blue-500',
-      requirements: ['Score DOR ≥ 5', 'Score PODER ≥ 4', 'Budget confirmado']
+      requirements: ['Score DOR ≥ 5', 'Score PODER ≥ 4', 'Budget confirmado'],
+      checklist: {
+        'Cliente admite ter problema/dor (DOR ≥ 5)': 'dor_admitida',
+        'Identificou tomador de decisão (PODER ≥ 4)': 'decisor_identificado',
+        'Budget disponível confirmado': 'budget_confirmado',
+        'Timeline do projeto definida': 'timeline_definida',
+        'Critérios de decisão entendidos': 'criterios_entendidos'
+      }
     },
     { 
       id: 3, 
       name: 'Apresentação', 
       probability: 40, 
       color: 'bg-yellow-500',
-      requirements: ['Score VISÃO ≥ 5', 'Apresentação agendada', 'Stakeholders definidos']
+      requirements: ['Score VISÃO ≥ 5', 'Apresentação agendada', 'Stakeholders definidos'],
+      checklist: {
+        'Visão de solução criada (VISÃO ≥ 5)': 'visao_criada',
+        'Demo/Apresentação realizada': 'demo_realizada',
+        'Todos stakeholders presentes': 'stakeholders_presentes',
+        'Objeções principais identificadas': 'objecoes_identificadas',
+        'Próximos passos acordados': 'proximos_passos'
+      }
     },
     { 
       id: 4, 
       name: 'Validação/Teste', 
       probability: 75, 
       color: 'bg-orange-500',
-      requirements: ['Score VALOR ≥ 6', 'Teste/POC executado', 'ROI validado']
+      requirements: ['Score VALOR ≥ 6', 'Teste/POC executado', 'ROI validado'],
+      checklist: {
+        'POC/Teste iniciado': 'poc_iniciado',
+        'Critérios de sucesso definidos': 'criterios_sucesso',
+        'ROI calculado e validado (VALOR ≥ 6)': 'roi_validado',
+        'Resultados documentados': 'resultados_documentados',
+        'Aprovação técnica obtida': 'aprovacao_tecnica'
+      }
     },
     { 
       id: 5, 
       name: 'Negociação', 
       probability: 90, 
       color: 'bg-green-500',
-      requirements: ['Score CONTROLE ≥ 7', 'Score COMPRAS ≥ 6', 'Proposta enviada']
+      requirements: ['Score CONTROLE ≥ 7', 'Score COMPRAS ≥ 6', 'Proposta enviada'],
+      checklist: {
+        'Proposta comercial enviada': 'proposta_enviada',
+        'Termos negociados (COMPRAS ≥ 6)': 'termos_negociados',
+        'Controle do processo (CONTROLE ≥ 7)': 'controle_processo',
+        'Aprovação verbal recebida': 'aprovacao_verbal',
+        'Contrato em revisão legal': 'revisao_legal'
+      }
     },
     { 
       id: 6, 
       name: 'Fechado', 
       probability: 100, 
       color: 'bg-emerald-600',
-      requirements: ['Contrato assinado', 'Pagamento processado']
+      requirements: ['Contrato assinado', 'Pagamento processado'],
+      checklist: {
+        'Contrato assinado': 'contrato_assinado',
+        'Pedido de compra emitido': 'pedido_compra',
+        'Kickoff agendado': 'kickoff_agendado',
+        'Pagamento processado': 'pagamento_processado'
+      }
     }
   ];
 
@@ -428,14 +551,13 @@ const CRMVentapel: React.FC = () => {
       return;
     }
 
+    // Se está avançando, mostrar checklist
     if (newStage > opportunity.stage) {
-      const meetsRequirements = checkStageRequirements(opportunity, newStage - 1);
-      if (!meetsRequirements) {
-        alert('Para avançar para ' + stage.name + ', você precisa completar os requisitos da etapa anterior.');
-        return;
-      }
+      setShowStageChecklist({ opportunity, targetStage: newStage });
+      return;
     }
 
+    // Se está voltando, permitir diretamente
     try {
       setError(null);
       
@@ -689,7 +811,6 @@ const CRMVentapel: React.FC = () => {
                   className={'px-3 py-1 text-xs rounded-md transition-colors flex items-center ' + (canAdvance 
                       ? 'bg-green-500 text-white hover:bg-green-600' 
                       : 'bg-red-100 text-red-600 cursor-not-allowed')}
-                  disabled={!canAdvance}
                 >
                   {nextStage.name} →
                   {canAdvance ? <Check className="w-3 h-3 ml-1" /> : <X className="w-3 h-3 ml-1" />}
@@ -878,6 +999,7 @@ const CRMVentapel: React.FC = () => {
 
     const [activeScale, setActiveScale] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
+    const [showScaleSelector, setShowScaleSelector] = useState<string | null>(null);
 
     const handleSubmit = async () => {
       if (!formData.name || !formData.client || !formData.vendor || !formData.value) {
@@ -911,6 +1033,12 @@ const CRMVentapel: React.FC = () => {
           }
         }
       }));
+    };
+
+    const selectScaleLevel = (scaleId: string, level: number, description: string) => {
+      updateScale(scaleId, 'score', level);
+      updateScale(scaleId, 'description', description);
+      setShowScaleSelector(null);
     };
 
     return (
@@ -1054,6 +1182,7 @@ const CRMVentapel: React.FC = () => {
                       const Icon = scale.icon;
                       const scaleData = formData.scales[scale.id as keyof Scales];
                       const isActive = activeScale === scale.id;
+                      const isSelectorOpen = showScaleSelector === scale.id;
 
                       return (
                         <div key={scale.id} className={scale.bgColor + ' ' + scale.borderColor + ' border-2 rounded-lg p-4 transition-all ' + (isActive ? 'ring-2 ring-purple-400' : '')}>
@@ -1078,7 +1207,42 @@ const CRMVentapel: React.FC = () => {
                             <div className="mt-4 pt-4 border-t border-gray-200">
                               <div className="space-y-3">
                                 <div>
-                                  <label className="block text-sm font-medium mb-2">Score (0-10)</label>
+                                  <div className="flex justify-between items-center mb-2">
+                                    <label className="block text-sm font-medium">Score (0-10)</label>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowScaleSelector(isSelectorOpen ? null : scale.id);
+                                      }}
+                                      className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-lg hover:bg-purple-200 transition-colors flex items-center"
+                                    >
+                                      Ver opções de escala
+                                      {isSelectorOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
+                                    </button>
+                                  </div>
+
+                                  {isSelectorOpen && (
+                                    <div className="mb-4 bg-white rounded-lg p-3 max-h-60 overflow-y-auto border border-purple-200">
+                                      {scaleDefinitions[scale.id as keyof typeof scaleDefinitions].map((def) => (
+                                        <button
+                                          key={def.level}
+                                          type="button"
+                                          onClick={() => selectScaleLevel(scale.id, def.level, def.text)}
+                                          className={'w-full text-left p-2 mb-1 rounded-lg transition-colors ' + 
+                                            (scaleData.score === def.level 
+                                              ? 'bg-purple-100 border-2 border-purple-500' 
+                                              : 'hover:bg-gray-50 border border-gray-200')}
+                                        >
+                                          <div className="flex items-start">
+                                            <span className="font-bold text-purple-700 mr-2 min-w-[20px]">{def.level}</span>
+                                            <span className="text-xs text-gray-700">{def.text}</span>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+
                                   <input
                                     type="range"
                                     min="0"
@@ -1159,6 +1323,122 @@ const CRMVentapel: React.FC = () => {
     );
   };
 
+  // Componente de Checklist para mudança de estágio
+  const StageChecklistModal = () => {
+    if (!showStageChecklist) return null;
+
+    const currentStage = stages.find(s => s.id === showStageChecklist.opportunity.stage);
+    const targetStage = stages.find(s => s.id === showStageChecklist.targetStage);
+    const [checkedItems, setCheckedItems] = useState<{[key: string]: boolean}>({});
+
+    if (!currentStage || !targetStage) return null;
+
+    const handleCheckChange = (key: string) => {
+      setCheckedItems(prev => ({...prev, [key]: !prev[key]}));
+    };
+
+    const allChecked = currentStage.checklist && Object.keys(currentStage.checklist).every(key => checkedItems[key]);
+
+    const confirmStageChange = async () => {
+      if (!allChecked) {
+        alert('Por favor, complete todos os itens do checklist antes de avançar.');
+        return;
+      }
+
+      try {
+        setError(null);
+        
+        const updatedData = {
+          stage: showStageChecklist.targetStage,
+          probability: targetStage.probability,
+          last_update: new Date().toISOString().split('T')[0]
+        };
+
+        await supabaseClient.update('opportunities', showStageChecklist.opportunity.id, updatedData);
+        
+        setOpportunities(prev => prev.map(opp => 
+          opp.id === showStageChecklist.opportunity.id 
+            ? { ...opp, stage: showStageChecklist.targetStage, probability: targetStage.probability, last_update: updatedData.last_update }
+            : opp
+        ));
+        
+        setShowStageChecklist(null);
+      } catch (error) {
+        console.error('Erro ao mover estágio:', error);
+        setError('Erro ao atualizar estágio. Tente novamente.');
+        await loadOpportunities();
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-xl max-w-2xl w-full">
+          <div className="p-6 border-b">
+            <h3 className="text-xl font-bold text-gray-900">
+              ✅ Checklist para avançar para {targetStage.name}
+            </h3>
+            <p className="text-gray-600 mt-1">
+              Complete todos os itens antes de mover a oportunidade
+            </p>
+          </div>
+
+          <div className="p-6">
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <h4 className="font-semibold text-blue-800 mb-2">📋 {showStageChecklist.opportunity.name}</h4>
+              <p className="text-sm text-blue-700">{showStageChecklist.opportunity.client}</p>
+            </div>
+
+            <div className="space-y-3">
+              {currentStage.checklist && Object.entries(currentStage.checklist).map(([label, key]) => (
+                <label key={key} className="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={checkedItems[key] || false}
+                    onChange={() => handleCheckChange(key)}
+                    className="mt-0.5 mr-3 w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                  <div className="flex-1">
+                    <span className="text-gray-800 font-medium">{label}</span>
+                    {checkedItems[key] && (
+                      <CheckCircle className="inline-block w-5 h-5 text-green-600 ml-2" />
+                    )}
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+              <p className="text-sm text-amber-800">
+                <AlertCircle className="inline-block w-4 h-4 mr-1" />
+                <strong>Atenção:</strong> Confirme que todos os requisitos foram cumpridos antes de avançar.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-6 border-t flex justify-end space-x-4">
+            <button
+              onClick={() => setShowStageChecklist(null)}
+              className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmStageChange}
+              className={'px-6 py-3 rounded-lg transition-colors flex items-center font-medium ' + 
+                (allChecked 
+                  ? 'bg-gradient-to-r from-blue-600 to-green-600 text-white hover:from-blue-700 hover:to-green-700' 
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed')}
+              disabled={!allChecked}
+            >
+              <Check className="w-5 h-5 mr-2" />
+              Confirmar e Avançar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-50">
       <header className="bg-white shadow-lg border-b-2 border-blue-200">
@@ -1228,6 +1508,8 @@ const CRMVentapel: React.FC = () => {
           onClose={() => setEditingOpportunity(null)} 
         />
       )}
+
+      <StageChecklistModal />
     </div>
   );
 };
