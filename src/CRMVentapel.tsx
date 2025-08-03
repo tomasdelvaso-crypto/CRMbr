@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, ArrowRight, Check, Clock, Trash2 } from 'lucide-react';
+import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2 } from 'lucide-react';
 
 // Configuración Supabase
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://wtrbvgqxgcfjacqcndmb.supabase.co';
@@ -55,19 +55,19 @@ const supabaseClient = {
     'Content-Type': 'application/json'
   },
   
- async update(table: string, id: number, data: any) {
-    const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
-      method: 'PATCH',
-      headers: this.headers,
-      body: JSON.stringify(data)
+  async select(table: string, columns = '*') {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}`, {
+      headers: this.headers
     });
     if (!response.ok) {
       throw new Error(`Error ${response.status}: ${response.statusText}`);
     }
+    return response.json();
+  },
   
- async update(table: string, id: number, data: any) {
-    const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
-      method: 'PATCH',
+  async insert(table: string, data: any) {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+      method: 'POST',
       headers: this.headers,
       body: JSON.stringify(data)
     });
@@ -75,7 +75,7 @@ const supabaseClient = {
       throw new Error(`Error ${response.status}: ${response.statusText}`);
     }
     return response.json();
-  }
+  },
 
   async update(table: string, id: number, data: any) {
     const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
@@ -86,7 +86,10 @@ const supabaseClient = {
     if (!response.ok) {
       throw new Error(`Error ${response.status}: ${response.statusText}`);
     }
-    return response.json();
+    
+    // Supabase UPDATE puede devolver respuesta vacía
+    const text = await response.text();
+    return text ? JSON.parse(text) : {};
   },
 
   async delete(table: string, id: number) {
@@ -258,61 +261,7 @@ const CRMVentapel: React.FC = () => {
       setOpportunities(data || []);
     } catch (error) {
       console.error('Erro ao carregar oportunidades:', error);
-      // Fallback con datos de ejemplo con vendedores reales
-      setOpportunities([
-        {
-          id: 1,
-          name: 'Solução BP + Cinta Amazon',
-          client: 'Amazon Brasil',
-          vendor: 'Jordi',
-          value: 450000,
-          stage: 3,
-          priority: 'alta',
-          created_at: '2025-01-15',
-          last_update: '2025-01-21',
-          next_action: 'Demo técnica agendada',
-          probability: 40,
-          expected_close: '2025-03-15',
-          product: 'Máquinas BP + Cinta',
-          power_sponsor: 'Diretor de Operações',
-          sponsor: 'Gerente de Logística',
-          influencer: 'Supervisor de Embalagem',
-          scales: {
-            dor: { score: 7, description: '15% das caixas têm violação durante transporte' },
-            poder: { score: 6, description: 'Acesso ao Gerente de Logística confirmado' },
-            visao: { score: 5, description: 'Cliente entende necessidade de sistema à prova de violação' },
-            valor: { score: 4, description: 'ROI calculado: 64% redução custos' },
-            controle: { score: 6, description: 'Plano de demo técnica acordado' },
-            compras: { score: 3, description: 'Processo ainda não totalmente mapeado' }
-          }
-        },
-        {
-          id: 2,
-          name: 'Sistema Fechamento Mercado Livre',
-          client: 'Mercado Libre',
-          vendor: 'Renata',
-          value: 320000,
-          stage: 2,
-          priority: 'média',
-          created_at: '2025-01-20',
-          last_update: '2025-01-25',
-          next_action: 'Reunião com stakeholders',
-          probability: 20,
-          expected_close: '2025-04-30',
-          product: 'Sistema Fechamento Automático',
-          power_sponsor: 'VP Logística',
-          sponsor: 'Diretor Operações',
-          influencer: 'Gerente Warehouse',
-          scales: {
-            dor: { score: 8, description: 'Alto volume de devoluções por violação' },
-            poder: { score: 4, description: 'Ainda mapeando decisores' },
-            visao: { score: 3, description: 'Cliente ainda analisando necessidades' },
-            valor: { score: 2, description: 'ROI em discussão' },
-            controle: { score: 5, description: 'Cronograma de reuniões definido' },
-            compras: { score: 2, description: 'Processo de compras não conhecido' }
-          }
-        }
-      ]);
+      setOpportunities([]);
     } finally {
       setLoading(false);
     }
@@ -405,7 +354,6 @@ const CRMVentapel: React.FC = () => {
     if (!stage) return;
 
     // Verificar requisitos da etapa anterior
-    const currentStage = stages.find(s => s.id === opportunity.stage);
     if (newStage > opportunity.stage) {
       const meetsRequirements = checkStageRequirements(opportunity, newStage - 1);
       if (!meetsRequirements) {
@@ -431,8 +379,7 @@ const CRMVentapel: React.FC = () => {
 
   // Verificar requisitos do estágio
   const checkStageRequirements = (opportunity: Opportunity, stageId: number): boolean => {
-    const stage = stages.find(s => s.id === stageId);
-    if (!stage || !opportunity.scales) return false;
+    if (!opportunity.scales) return false;
 
     switch (stageId) {
       case 2: // Qualificação
