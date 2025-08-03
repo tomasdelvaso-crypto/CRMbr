@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users } from 'lucide-react';
 
 const supabaseUrl = 'https://wtrbvgqxgcfjacqcndmb.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cmJ2Z3F4Z2NmamFjcWNuZG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4MTg4NjcsImV4cCI6MjA2OTM5NDg2N30.8PB0OjF2vvCtCCDnYCeemMSyvR51E2SAHe7slS1UyQU';
@@ -43,6 +43,7 @@ interface Opportunity {
   power_sponsor?: string;
   sponsor?: string;
   influencer?: string;
+  support_contact?: string;
   scales: Scales;
 }
 
@@ -232,6 +233,9 @@ const CRMVentapel: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStage, setFilterStage] = useState('all');
   const [filterVendor, setFilterVendor] = useState('all');
+  const [filterInactivity, setFilterInactivity] = useState('all');
+  const [dashboardVendorFilter, setDashboardVendorFilter] = useState('all');
+  const [selectedStageForList, setSelectedStageForList] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showStageChecklist, setShowStageChecklist] = useState<{opportunity: Opportunity, targetStage: number} | null>(null);
@@ -465,6 +469,7 @@ const CRMVentapel: React.FC = () => {
         power_sponsor: opportunityData.powerSponsor?.trim() || null,
         sponsor: opportunityData.sponsor?.trim() || null,
         influencer: opportunityData.influencer?.trim() || null,
+        support_contact: opportunityData.supportContact?.trim() || null,
         probability: stages.find(s => s.id === parseInt(opportunityData.stage))?.probability || 0,
         last_update: new Date().toISOString().split('T')[0],
         scales: opportunityData.scales || createEmptyScales()
@@ -505,6 +510,7 @@ const CRMVentapel: React.FC = () => {
         power_sponsor: opportunityData.powerSponsor?.trim() || null,
         sponsor: opportunityData.sponsor?.trim() || null,
         influencer: opportunityData.influencer?.trim() || null,
+        support_contact: opportunityData.supportContact?.trim() || null,
         probability: stages.find(s => s.id === parseInt(opportunityData.stage))?.probability || 0,
         last_update: new Date().toISOString().split('T')[0],
         scales: opportunityData.scales || createEmptyScales()
@@ -601,6 +607,14 @@ const CRMVentapel: React.FC = () => {
     }
   };
 
+  const checkInactivity = (lastUpdate: string, days: number): boolean => {
+    const lastUpdateDate = new Date(lastUpdate);
+    const today = new Date();
+    const diffTime = Math.abs(today.getTime() - lastUpdateDate.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= days;
+  };
+
   useEffect(() => {
     loadOpportunities();
   }, []);
@@ -611,25 +625,43 @@ const CRMVentapel: React.FC = () => {
                          (opp.product && opp.product.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStage = filterStage === 'all' || opp.stage.toString() === filterStage;
     const matchesVendor = filterVendor === 'all' || opp.vendor === filterVendor;
-    return matchesSearch && matchesStage && matchesVendor;
+    
+    let matchesInactivity = true;
+    if (filterInactivity === '7days') {
+      matchesInactivity = checkInactivity(opp.last_update, 7);
+    } else if (filterInactivity === '30days') {
+      matchesInactivity = checkInactivity(opp.last_update, 30);
+    }
+    
+    return matchesSearch && matchesStage && matchesVendor && matchesInactivity;
   });
 
+  const getFilteredOpportunitiesForDashboard = () => {
+    if (dashboardVendorFilter === 'all') return opportunities;
+    return opportunities.filter(opp => opp.vendor === dashboardVendorFilter);
+  };
+
+  const dashboardOpportunities = getFilteredOpportunitiesForDashboard();
+
   const metrics = {
-    totalValue: opportunities.reduce((sum, opp) => sum + (opp.value || 0), 0),
-    totalOpportunities: opportunities.length,
-    avgScore: opportunities.length > 0 ? 
-      opportunities.reduce((sum, opp) => {
+    totalValue: dashboardOpportunities.reduce((sum, opp) => sum + (opp.value || 0), 0),
+    weightedValue: dashboardOpportunities.reduce((sum, opp) => sum + ((opp.value || 0) * (opp.probability || 0) / 100), 0),
+    totalOpportunities: dashboardOpportunities.length,
+    avgScore: dashboardOpportunities.length > 0 ? 
+      dashboardOpportunities.reduce((sum, opp) => {
         if (!opp.scales) return sum;
         const scaleScores = Object.values(opp.scales).map(s => s.score || 0);
         const avgOppScore = scaleScores.reduce((a, b) => a + b, 0) / scaleScores.length;
         return sum + avgOppScore;
-      }, 0) / opportunities.length : 0,
-    avgProbability: opportunities.length > 0 ?
-      opportunities.reduce((sum, opp) => sum + (opp.probability || 0), 0) / opportunities.length : 0,
+      }, 0) / dashboardOpportunities.length : 0,
+    avgProbability: dashboardOpportunities.length > 0 ?
+      dashboardOpportunities.reduce((sum, opp) => sum + (opp.probability || 0), 0) / dashboardOpportunities.length : 0,
     stageDistribution: stages.map(stage => ({
       ...stage,
-      count: opportunities.filter(opp => opp.stage === stage.id).length,
-      value: opportunities.filter(opp => opp.stage === stage.id).reduce((sum, opp) => sum + (opp.value || 0), 0)
+      count: dashboardOpportunities.filter(opp => opp.stage === stage.id).length,
+      value: dashboardOpportunities.filter(opp => opp.stage === stage.id).reduce((sum, opp) => sum + (opp.value || 0), 0),
+      weightedValue: dashboardOpportunities.filter(opp => opp.stage === stage.id).reduce((sum, opp) => sum + ((opp.value || 0) * (opp.probability || 0) / 100), 0),
+      opportunities: dashboardOpportunities.filter(opp => opp.stage === stage.id)
     }))
   };
 
@@ -660,6 +692,9 @@ const CRMVentapel: React.FC = () => {
           <div className="text-right">
             <div className="text-3xl font-bold">R$ {metrics.totalValue.toLocaleString('pt-BR')}</div>
             <div className="text-blue-100">Pipeline Total</div>
+            <div className="text-lg font-semibold text-yellow-300 mt-1">
+              R$ {metrics.weightedValue.toLocaleString('pt-BR')} ponderado
+            </div>
           </div>
         </div>
       </div>
@@ -674,6 +709,9 @@ const CRMVentapel: React.FC = () => {
               <p className="text-sm font-medium text-green-700">Pipeline Total</p>
               <p className="text-2xl font-bold text-green-800">
                 R$ {metrics.totalValue.toLocaleString('pt-BR')}
+              </p>
+              <p className="text-sm text-green-600">
+                Ponderado: R$ {metrics.weightedValue.toLocaleString('pt-BR')}
               </p>
             </div>
           </div>
@@ -717,28 +755,102 @@ const CRMVentapel: React.FC = () => {
       </div>
 
       <div className="bg-white p-8 rounded-xl shadow-sm border">
-        <h3 className="text-xl font-semibold mb-6 text-gray-800">📊 Funil de Vendas</h3>
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-semibold text-gray-800">📊 Funil de Vendas</h3>
+          <div className="flex items-center space-x-4">
+            <label className="text-sm font-medium text-gray-700">Filtrar por vendedor:</label>
+            <select
+              value={dashboardVendorFilter}
+              onChange={(e) => setDashboardVendorFilter(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">👥 Todos vendedores</option>
+              {VENDEDORES.map(vendor => (
+                <option key={vendor} value={vendor}>
+                  {vendor}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        
         <div className="space-y-4">
           {metrics.stageDistribution.slice(0, 5).map(stage => (
-            <div key={stage.id} className="flex items-center">
-              <div className="w-32 text-sm font-medium text-gray-700">{stage.name}</div>
-              <div className="flex-1 mx-6">
-                <div className="bg-gray-200 rounded-full h-8 relative">
-                  <div 
-                    className={stage.color + ' h-8 rounded-full transition-all duration-500'}
-                    style={{ width: Math.max((stage.count / Math.max(...metrics.stageDistribution.map(s => s.count), 1)) * 100, 5) + '%' }}
-                  ></div>
-                  <div className="absolute inset-0 flex items-center justify-center text-sm font-medium text-white">
-                    {stage.count > 0 && stage.count + ' oportunidades'}
+            <div key={stage.id}>
+              <div 
+                className="flex items-center cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
+                onClick={() => setSelectedStageForList(selectedStageForList === stage.id ? null : stage.id)}
+              >
+                <div className="w-32 text-sm font-medium text-gray-700">{stage.name}</div>
+                <div className="flex-1 mx-6">
+                  <div className="bg-gray-200 rounded-full h-8 relative">
+                    <div 
+                      className={stage.color + ' h-8 rounded-full transition-all duration-500'}
+                      style={{ width: Math.max((stage.count / Math.max(...metrics.stageDistribution.map(s => s.count), 1)) * 100, 5) + '%' }}
+                    ></div>
+                    <div className="absolute inset-0 flex items-center justify-center text-sm font-medium text-white">
+                      {stage.count > 0 && stage.count + ' oportunidades'}
+                    </div>
                   </div>
                 </div>
+                <div className="w-20 text-sm text-gray-600 text-center">{stage.count}</div>
+                <div className="w-40 text-sm font-medium text-right text-gray-800">
+                  R$ {stage.value.toLocaleString('pt-BR')}
+                </div>
+                <div className="w-40 text-sm text-right text-gray-600">
+                  Pond: R$ {stage.weightedValue.toLocaleString('pt-BR')}
+                </div>
+                <ChevronDown className={'w-5 h-5 ml-4 text-gray-400 transition-transform ' + (selectedStageForList === stage.id ? 'rotate-180' : '')} />
               </div>
-              <div className="w-20 text-sm text-gray-600 text-center">{stage.count}</div>
-              <div className="w-40 text-sm font-medium text-right text-gray-800">
-                R$ {stage.value.toLocaleString('pt-BR')}
-              </div>
+              
+              {selectedStageForList === stage.id && stage.opportunities.length > 0 && (
+                <div className="mt-4 ml-8 mr-8 p-4 bg-gray-50 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left border-b border-gray-200">
+                        <th className="pb-2 font-medium text-gray-700">Oportunidade</th>
+                        <th className="pb-2 font-medium text-gray-700">Cliente</th>
+                        <th className="pb-2 font-medium text-gray-700">Vendedor</th>
+                        <th className="pb-2 font-medium text-gray-700 text-right">Valor</th>
+                        <th className="pb-2 font-medium text-gray-700 text-right">Prob.</th>
+                        <th className="pb-2 font-medium text-gray-700 text-right">Valor Pond.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stage.opportunities.map(opp => (
+                        <tr key={opp.id} className="border-b border-gray-100">
+                          <td className="py-2">{opp.name}</td>
+                          <td className="py-2">{opp.client}</td>
+                          <td className="py-2">{opp.vendor}</td>
+                          <td className="py-2 text-right">R$ {opp.value.toLocaleString('pt-BR')}</td>
+                          <td className="py-2 text-right">{opp.probability}%</td>
+                          <td className="py-2 text-right font-medium">
+                            R$ {(opp.value * opp.probability / 100).toLocaleString('pt-BR')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           ))}
+        </div>
+        
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <div className="flex justify-between items-center">
+            <div className="text-lg font-semibold text-gray-800">
+              Total Geral:
+            </div>
+            <div className="text-right">
+              <div className="text-xl font-bold text-gray-900">
+                R$ {metrics.totalValue.toLocaleString('pt-BR')}
+              </div>
+              <div className="text-sm text-gray-600">
+                Ponderado: R$ {metrics.weightedValue.toLocaleString('pt-BR')}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -752,13 +864,28 @@ const CRMVentapel: React.FC = () => {
       Object.values(opportunity.scales).reduce((sum, scale) => sum + (scale.score || 0), 0) / 6 : 0;
 
     const canAdvance = nextStage && checkStageRequirements(opportunity, opportunity.stage);
+    const isInactive7Days = checkInactivity(opportunity.last_update, 7);
+    const isInactive30Days = checkInactivity(opportunity.last_update, 30);
 
     return (
-      <div className="bg-white rounded-xl shadow-sm border p-6 hover:shadow-lg transition-all">
+      <div className={'bg-white rounded-xl shadow-sm border p-6 hover:shadow-lg transition-all ' + 
+        (isInactive30Days ? 'border-red-300 bg-red-50' : isInactive7Days ? 'border-yellow-300 bg-yellow-50' : '')}>
         <div className="flex justify-between items-start mb-6">
           <div className="flex-1">
             <div className="flex items-center space-x-3 mb-2">
               <h3 className="text-xl font-bold text-gray-900">{opportunity.name}</h3>
+              {isInactive30Days && (
+                <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full flex items-center">
+                  <Clock className="w-3 h-3 mr-1" />
+                  +30 dias sem movimento
+                </span>
+              )} 
+              {!isInactive30Days && isInactive7Days && (
+                <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full flex items-center">
+                  <Clock className="w-3 h-3 mr-1" />
+                  +7 dias sem movimento
+                </span>
+              )}
               <button
                 onClick={() => setEditingOpportunity(opportunity)}
                 className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -776,12 +903,18 @@ const CRMVentapel: React.FC = () => {
               <p className="text-lg font-semibold text-blue-600">{opportunity.client}</p>
               <p className="text-sm text-gray-600">👤 {opportunity.vendor}</p>
               <p className="text-sm text-purple-600">📦 {opportunity.product}</p>
+              {opportunity.expected_close && (
+                <p className="text-sm text-gray-600">📅 Fechamento: {new Date(opportunity.expected_close).toLocaleDateString('pt-BR')}</p>
+              )}
             </div>
             {opportunity.next_action && (
               <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <p className="text-sm text-blue-800">📅 <strong>Próxima ação:</strong> {opportunity.next_action}</p>
               </div>
             )}
+            <div className="mt-2 text-xs text-gray-500">
+              Última atualização: {new Date(opportunity.last_update).toLocaleDateString('pt-BR')}
+            </div>
           </div>
           <div className="text-right">
             <p className="text-2xl font-bold text-green-600 mb-2">
@@ -790,6 +923,9 @@ const CRMVentapel: React.FC = () => {
             <span className={'inline-block px-4 py-2 rounded-full text-sm font-bold text-white ' + (stage?.color || '') + ' mb-2'}>
               {stage?.name} ({opportunity.probability || 0}%)
             </span>
+            <p className="text-sm text-gray-600 font-medium">
+              Ponderado: R$ {((opportunity.value || 0) * (opportunity.probability || 0) / 100).toLocaleString('pt-BR')}
+            </p>
           </div>
         </div>
 
@@ -870,6 +1006,37 @@ const CRMVentapel: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Seção de Contatos */}
+        <div className="border-t pt-4">
+          <h4 className="font-semibold text-gray-700 mb-3">👥 Contatos Principais</h4>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 text-sm">
+            {opportunity.power_sponsor && (
+              <div className="flex items-center">
+                <span className="font-medium text-gray-600 mr-2">Power Sponsor:</span>
+                <span className="text-gray-800">{opportunity.power_sponsor}</span>
+              </div>
+            )}
+            {opportunity.sponsor && (
+              <div className="flex items-center">
+                <span className="font-medium text-gray-600 mr-2">Sponsor:</span>
+                <span className="text-gray-800">{opportunity.sponsor}</span>
+              </div>
+            )}
+            {opportunity.influencer && (
+              <div className="flex items-center">
+                <span className="font-medium text-gray-600 mr-2">Influenciador:</span>
+                <span className="text-gray-800">{opportunity.influencer}</span>
+              </div>
+            )}
+            {opportunity.support_contact && (
+              <div className="flex items-center">
+                <span className="font-medium text-gray-600 mr-2">Contato Apoio:</span>
+                <span className="text-gray-800">{opportunity.support_contact}</span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     );
   };
@@ -893,7 +1060,7 @@ const CRMVentapel: React.FC = () => {
 
       <div className="bg-white p-6 rounded-xl shadow-sm border">
         <h3 className="text-lg font-semibold mb-4 text-gray-800">🔍 Filtros e Busca</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
           <div className="lg:col-span-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -932,6 +1099,17 @@ const CRMVentapel: React.FC = () => {
                   {vendor}
                 </option>
               ))}
+            </select>
+          </div>
+          <div>
+            <select
+              value={filterInactivity}
+              onChange={(e) => setFilterInactivity(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">⏰ Todas atividades</option>
+              <option value="7days">🟡 +7 dias sem movimento</option>
+              <option value="30days">🔴 +30 dias sem movimento</option>
             </select>
           </div>
           <div>
@@ -994,6 +1172,7 @@ const CRMVentapel: React.FC = () => {
       powerSponsor: opportunity?.power_sponsor || '',
       sponsor: opportunity?.sponsor || '',
       influencer: opportunity?.influencer || '',
+      supportContact: opportunity?.support_contact || '',
       scales: opportunity?.scales || createEmptyScales()
     });
 
@@ -1148,16 +1327,28 @@ const CRMVentapel: React.FC = () => {
                         </select>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Produto</label>
-                      <input
-                        type="text"
-                        value={formData.product}
-                        onChange={(e) => setFormData({...formData, product: e.target.value})}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Ex: Máquinas BP + Cinta"
-                        disabled={submitting}
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700">Produto</label>
+                        <input
+                          type="text"
+                          value={formData.product}
+                          onChange={(e) => setFormData({...formData, product: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="Ex: Máquinas BP + Cinta"
+                          disabled={submitting}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700">Fechamento Previsto</label>
+                        <input
+                          type="date"
+                          value={formData.expectedClose}
+                          onChange={(e) => setFormData({...formData, expectedClose: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          disabled={submitting}
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-2 text-gray-700">Próxima Ação</label>
@@ -1166,7 +1357,57 @@ const CRMVentapel: React.FC = () => {
                         value={formData.nextAction}
                         onChange={(e) => setFormData({...formData, nextAction: e.target.value})}
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Ex: Demo técnica agendada"
+                        placeholder="Ex: Demo técnica agendada para 15/02"
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-green-50 rounded-xl p-6 border border-green-200">
+                  <h3 className="text-lg font-semibold mb-4 text-green-800">👥 Contatos Principais</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Power Sponsor</label>
+                      <input
+                        type="text"
+                        value={formData.powerSponsor}
+                        onChange={(e) => setFormData({...formData, powerSponsor: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Quem assina o contrato"
+                        disabled={submitting}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Sponsor</label>
+                      <input
+                        type="text"
+                        value={formData.sponsor}
+                        onChange={(e) => setFormData({...formData, sponsor: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Decisor usuário"
+                        disabled={submitting}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Principal Influenciador</label>
+                      <input
+                        type="text"
+                        value={formData.influencer}
+                        onChange={(e) => setFormData({...formData, influencer: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Influencia a decisão"
+                        disabled={submitting}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Contato de Apoio</label>
+                      <input
+                        type="text"
+                        value={formData.supportContact}
+                        onChange={(e) => setFormData({...formData, supportContact: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Suporte interno"
                         disabled={submitting}
                       />
                     </div>
