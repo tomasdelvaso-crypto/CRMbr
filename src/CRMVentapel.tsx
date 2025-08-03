@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2 } from 'lucide-react';
 
-// Configuración Supabase
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://wtrbvgqxgcfjacqcndmb.supabase.co';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cmJ2Z3F4Z2NmamFjcWNuZG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4MTg4NjcsImV4cCI6MjA2OTM5NDg2N30.8PB0OjF2vvCtCCDnYCeemMSyvR51E2SAHe7slS1UyQU';
 
-// Lista de vendedores de Ventapel Brasil
 const VENDEDORES = [
   'Jordi',
   'Renata', 
@@ -14,7 +12,6 @@ const VENDEDORES = [
   'Tomás'
 ];
 
-// Tipos para TypeScript
 interface Scale {
   score: number;
   description: string;
@@ -49,24 +46,23 @@ interface Opportunity {
   scales: Scales;
 }
 
-// Cliente Supabase corregido
 const supabaseClient = {
   headers: {
     'apikey': supabaseKey,
-    'Authorization': `Bearer ${supabaseKey}`,
+    'Authorization': 'Bearer ' + supabaseKey,
     'Content-Type': 'application/json',
     'Prefer': 'return=representation'
   },
   
   async select(table: string, columns = '*'): Promise<Opportunity[]> {
     try {
-      const response = await fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}`, {
+      const response = await fetch(supabaseUrl + '/rest/v1/' + table + '?select=' + columns, {
         headers: this.headers
       });
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
+        throw new Error('Error ' + response.status + ': ' + response.statusText + ' - ' + errorText);
       }
       
       const data = await response.json();
@@ -79,7 +75,7 @@ const supabaseClient = {
   
   async insert(table: string, data: any): Promise<Opportunity[]> {
     try {
-      const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+      const response = await fetch(supabaseUrl + '/rest/v1/' + table, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify(data)
@@ -87,7 +83,7 @@ const supabaseClient = {
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
+        throw new Error('Error ' + response.status + ': ' + response.statusText + ' - ' + errorText);
       }
       
       const result = await response.json();
@@ -100,7 +96,7 @@ const supabaseClient = {
 
   async update(table: string, id: number, data: any): Promise<Opportunity[]> {
     try {
-      const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
+      const response = await fetch(supabaseUrl + '/rest/v1/' + table + '?id=eq.' + id, {
         method: 'PATCH',
         headers: this.headers,
         body: JSON.stringify(data)
@@ -108,10 +104,9 @@ const supabaseClient = {
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
+        throw new Error('Error ' + response.status + ': ' + response.statusText + ' - ' + errorText);
       }
       
-      // Manejar respuesta que puede estar vacía
       const text = await response.text();
       if (!text) {
         return [];
@@ -127,14 +122,14 @@ const supabaseClient = {
 
   async delete(table: string, id: number): Promise<void> {
     try {
-      const response = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${id}`, {
+      const response = await fetch(supabaseUrl + '/rest/v1/' + table + '?id=eq.' + id, {
         method: 'DELETE',
         headers: this.headers
       });
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
+        throw new Error('Error ' + response.status + ': ' + response.statusText + ' - ' + errorText);
       }
     } catch (error) {
       console.error('Error in delete:', error);
@@ -292,7 +287,6 @@ const CRMVentapel: React.FC = () => {
     }
   ];
 
-  // Función para inicializar scales vacías
   const createEmptyScales = (): Scales => ({
     dor: { score: 0, description: '' },
     poder: { score: 0, description: '' },
@@ -302,7 +296,6 @@ const CRMVentapel: React.FC = () => {
     compras: { score: 0, description: '' }
   });
 
-  // Cargar datos desde Supabase
   const loadOpportunities = async () => {
     try {
       setLoading(true);
@@ -311,7 +304,6 @@ const CRMVentapel: React.FC = () => {
       const data = await supabaseClient.select('opportunities');
       console.log('Dados carregados:', data);
       
-      // Validar y limpiar datos
       const validatedData = data.map(opp => ({
         ...opp,
         scales: opp.scales || createEmptyScales(),
@@ -329,7 +321,6 @@ const CRMVentapel: React.FC = () => {
     }
   };
 
-  // Función para crear nueva oportunidade
   const createOpportunity = async (opportunityData: any): Promise<boolean> => {
     try {
       setError(null);
@@ -366,7 +357,6 @@ const CRMVentapel: React.FC = () => {
     }
   };
 
-  // Función para atualizar oportunidade
   const updateOpportunity = async (opportunityData: any): Promise<boolean> => {
     try {
       setError(null);
@@ -398,7 +388,6 @@ const CRMVentapel: React.FC = () => {
       const result = await supabaseClient.update('opportunities', opportunityData.id, updatedData);
       console.log('Oportunidade atualizada:', result);
       
-      // Recarregar dados para garantir consistência
       await loadOpportunities();
       return true;
     } catch (error) {
@@ -408,7 +397,6 @@ const CRMVentapel: React.FC = () => {
     }
   };
 
-  // Función para deletar oportunidade
   const deleteOpportunity = async (id: number): Promise<void> => {
     if (!confirm('Tem certeza que deseja deletar esta oportunidade?')) {
       return;
@@ -420,18 +408,15 @@ const CRMVentapel: React.FC = () => {
       
       await supabaseClient.delete('opportunities', id);
       
-      // Atualizar estado local imediatamente
       setOpportunities(prev => prev.filter(opp => opp.id !== id));
       
     } catch (error) {
       console.error('Erro ao deletar oportunidade:', error);
       setError('Erro ao deletar oportunidade. Tente novamente.');
-      // Recarregar dados em caso de erro
       await loadOpportunities();
     }
   };
 
-  // Función para mover estágio
   const moveStage = async (opportunity: Opportunity, newStage: number): Promise<void> => {
     const stage = stages.find(s => s.id === newStage);
     if (!stage) {
@@ -439,11 +424,10 @@ const CRMVentapel: React.FC = () => {
       return;
     }
 
-    // Verificar requisitos da etapa anterior
     if (newStage > opportunity.stage) {
       const meetsRequirements = checkStageRequirements(opportunity, newStage - 1);
       if (!meetsRequirements) {
-        alert(`Para avançar para ${stage.name}, você precisa completar os requisitos da etapa anterior.`);
+        alert('Para avançar para ' + stage.name + ', você precisa completar os requisitos da etapa anterior.');
         return;
       }
     }
@@ -461,7 +445,6 @@ const CRMVentapel: React.FC = () => {
       
       await supabaseClient.update('opportunities', opportunity.id, updatedData);
       
-      // Atualizar estado local imediatamente
       setOpportunities(prev => prev.map(opp => 
         opp.id === opportunity.id 
           ? { ...opp, stage: newStage, probability: stage.probability, last_update: updatedData.last_update }
@@ -471,23 +454,21 @@ const CRMVentapel: React.FC = () => {
     } catch (error) {
       console.error('Erro ao mover estágio:', error);
       setError('Erro ao atualizar estágio. Tente novamente.');
-      // Recarregar dados em caso de erro
       await loadOpportunities();
     }
   };
 
-  // Verificar requisitos do estágio
   const checkStageRequirements = (opportunity: Opportunity, stageId: number): boolean => {
     if (!opportunity.scales) return false;
 
     switch (stageId) {
-      case 2: // Qualificação
+      case 2:
         return opportunity.scales.dor.score >= 5 && opportunity.scales.poder.score >= 4;
-      case 3: // Apresentação  
+      case 3:
         return opportunity.scales.visao.score >= 5;
-      case 4: // Validação
+      case 4:
         return opportunity.scales.valor.score >= 6;
-      case 5: // Negociação
+      case 5:
         return opportunity.scales.controle.score >= 7 && opportunity.scales.compras.score >= 6;
       default:
         return true;
@@ -618,11 +599,11 @@ const CRMVentapel: React.FC = () => {
               <div className="flex-1 mx-6">
                 <div className="bg-gray-200 rounded-full h-8 relative">
                   <div 
-                    className={`h-8 rounded-full ${stage.color} transition-all duration-500`}
-                    style={{ width: `${Math.max((stage.count / Math.max(...metrics.stageDistribution.map(s => s.count), 1)) * 100, 5)}%` }}
+                    className={'h-8 rounded-full ' + stage.color + ' transition-all duration-500'}
+                    style={{ width: (Math.max((stage.count / Math.max(...metrics.stageDistribution.map(s => s.count), 1)) * 100, 5)) + '%' }}
                   ></div>
                   <div className="absolute inset-0 flex items-center justify-center text-sm font-medium text-white">
-                    {stage.count > 0 && `${stage.count} oportunidades`}
+                    {stage.count > 0 && (stage.count + ' oportunidades')}
                   </div>
                 </div>
               </div>
@@ -680,7 +661,7 @@ const CRMVentapel: React.FC = () => {
             <p className="text-2xl font-bold text-green-600 mb-2">
               R$ {(opportunity.value || 0).toLocaleString('pt-BR')}
             </p>
-            <span className={`inline-block px-4 py-2 rounded-full text-sm font-bold text-white ${stage?.color} mb-2`}>
+            <span className={'inline-block px-4 py-2 rounded-full text-sm font-bold text-white ' + (stage?.color || '') + ' mb-2'}>
               {stage?.name} ({opportunity.probability || 0}%)
             </span>
           </div>
@@ -701,11 +682,9 @@ const CRMVentapel: React.FC = () => {
               {nextStage && (
                 <button
                   onClick={() => moveStage(opportunity, nextStage.id)}
-                  className={`px-3 py-1 text-xs rounded-md transition-colors flex items-center ${
-                    canAdvance 
+                  className={'px-3 py-1 text-xs rounded-md transition-colors flex items-center ' + (canAdvance 
                       ? 'bg-green-500 text-white hover:bg-green-600' 
-                      : 'bg-red-100 text-red-600 cursor-not-allowed'
-                  }`}
+                      : 'bg-red-100 text-red-600 cursor-not-allowed')}
                   disabled={!canAdvance}
                 >
                   {nextStage.name} →
@@ -721,9 +700,7 @@ const CRMVentapel: React.FC = () => {
               <ul className="space-y-1">
                 {nextStage.requirements?.map((req, idx) => (
                   <li key={idx} className="flex items-center">
-                    <div className={`w-2 h-2 rounded-full mr-2 ${
-                      checkStageRequirements(opportunity, opportunity.stage) ? 'bg-green-500' : 'bg-red-500'
-                    }`}></div>
+                    <div className={'w-2 h-2 rounded-full mr-2 ' + (checkStageRequirements(opportunity, opportunity.stage) ? 'bg-green-500' : 'bg-red-500')}></div>
                     {req}
                   </li>
                 ))}
@@ -740,7 +717,7 @@ const CRMVentapel: React.FC = () => {
           <div className="bg-gray-200 rounded-full h-4 mb-4">
             <div 
               className="bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 h-4 rounded-full transition-all duration-500"
-              style={{ width: `${(avgScore / 10) * 100}%` }}
+              style={{ width: ((avgScore / 10) * 100) + '%' }}
             ></div>
           </div>
           
@@ -750,11 +727,11 @@ const CRMVentapel: React.FC = () => {
                 const Icon = scale.icon;
                 const scaleData = opportunity.scales[scale.id as keyof Scales] || { score: 0, description: '' };
                 return (
-                  <div key={scale.id} className={`${scale.bgColor} ${scale.borderColor} border-2 rounded-lg p-3 cursor-pointer hover:shadow-md transition-all`}
+                  <div key={scale.id} className={scale.bgColor + ' ' + scale.borderColor + ' border-2 rounded-lg p-3 cursor-pointer hover:shadow-md transition-all'}
                        onClick={() => setEditingOpportunity(opportunity)}>
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center">
-                        <Icon className={`w-4 h-4 mr-2 ${scale.color}`} />
+                        <Icon className={'w-4 h-4 mr-2 ' + scale.color} />
                         <span className="text-xs font-bold">{scale.name}</span>
                       </div>
                       <span className="text-lg font-bold text-gray-800">{scaleData.score}</span>
@@ -1075,13 +1052,13 @@ const CRMVentapel: React.FC = () => {
                       const isActive = activeScale === scale.id;
 
                       return (
-                        <div key={scale.id} className={`${scale.bgColor} ${scale.borderColor} border-2 rounded-lg p-4 transition-all ${isActive ? 'ring-2 ring-purple-400' : ''}`}>
+                        <div key={scale.id} className={scale.bgColor + ' ' + scale.borderColor + ' border-2 rounded-lg p-4 transition-all ' + (isActive ? 'ring-2 ring-purple-400' : '')}>
                           <div 
                             className="flex items-center justify-between cursor-pointer"
                             onClick={() => setActiveScale(isActive ? null : scale.id)}
                           >
                             <div className="flex items-center">
-                              <Icon className={`w-5 h-5 mr-3 ${scale.color}`} />
+                              <Icon className={'w-5 h-5 mr-3 ' + scale.color} />
                               <div>
                                 <span className="font-bold text-sm">{scale.name}</span>
                                 <p className="text-xs text-gray-600">{scale.description}</p>
@@ -1089,7 +1066,7 @@ const CRMVentapel: React.FC = () => {
                             </div>
                             <div className="flex items-center space-x-2">
                               <span className="text-2xl font-bold">{scaleData.score}</span>
-                              <ChevronRight className={`w-4 h-4 transition-transform ${isActive ? 'rotate-90' : ''}`} />
+                              <ChevronRight className={'w-4 h-4 transition-transform ' + (isActive ? 'rotate-90' : '')} />
                             </div>
                           </div>
 
@@ -1160,15 +1137,15 @@ const CRMVentapel: React.FC = () => {
                 disabled={submitting}
               >
                 {submitting ? (
-                  <>
+                  <React.Fragment>
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
                     Salvando...
-                  </>
+                  </React.Fragment>
                 ) : (
-                  <>
+                  <React.Fragment>
                     <Save className="w-5 h-5 mr-2" />
                     {opportunity ? 'Atualizar' : 'Criar'} Oportunidade
-                  </>
+                  </React.Fragment>
                 )}
               </button>
             </div>
@@ -1210,22 +1187,18 @@ const CRMVentapel: React.FC = () => {
           <div className="flex space-x-8">
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`py-4 px-2 border-b-2 font-bold text-sm flex items-center ${
-                activeTab === 'dashboard'
+              className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'dashboard'
                   ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
+                  : 'border-transparent text-gray-500 hover:text-gray-700')}
             >
               <BarChart3 className="w-4 h-4 mr-2" />
               📊 Dashboard
             </button>
             <button
               onClick={() => setActiveTab('opportunities')}
-              className={`py-4 px-2 border-b-2 font-bold text-sm flex items-center ${
-                activeTab === 'opportunities'
+              className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'opportunities'
                   ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
+                  : 'border-transparent text-gray-500 hover:text-gray-700')}
             >
               <Target className="w-4 h-4 mr-2" />
               🎯 Oportunidades
