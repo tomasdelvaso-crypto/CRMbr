@@ -1,17 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
 import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users } from 'lucide-react';
 
-const supabaseUrl = 'https://wtrbvgqxgcfjacqcndmb.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cmJ2Z3F4Z2NmamFjcWNuZG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4MTg4NjcsImV4cCI6MjA2OTM5NDg2N30.8PB0OjF2vvCtCCDnYCeemMSyvR51E2SAHe7slS1UyQU';
-
-const VENDEDORES = [
-  'Jordi',
-  'Renata', 
-  'Carlos',
-  'Paulo',
-  'Tomás'
-];
-
+// --- TIPOS Y INTERFACES ---
 interface Scale {
   score: number;
   description: string;
@@ -47,37 +37,104 @@ interface Opportunity {
   scales: Scales;
 }
 
-const supabaseClient = {
-  headers: {
-    'apikey': supabaseKey,
-    'Authorization': 'Bearer ' + supabaseKey,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation'
-  },
+interface OpportunityFormData {
+  name: string;
+  client: string;
+  vendor: string;
+  value: string;
+  stage: number;
+  priority: string;
+  expected_close?: string;
+  next_action?: string;
+  product?: string;
+  power_sponsor?: string;
+  sponsor?: string;
+  influencer?: string;
+  support_contact?: string;
+  scales: Scales;
+}
+
+interface StageRequirement {
+  id: number;
+  name: string;
+  probability: number;
+  color: string;
+  requirements: string[];
+  checklist?: Record<string, string>;
+}
+
+// --- CONFIGURACIÓN Y CONSTANTES ---
+const VENDEDORES = ['Jordi', 'Renata', 'Carlos', 'Paulo', 'Tomás'] as const;
+type Vendor = typeof VENDEDORES[number];
+
+const supabaseConfig = {
+  url: import.meta.env.VITE_SUPABASE_URL || 'https://wtrbvgqxgcfjacqcndmb.supabase.co',
+  key: import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cmJ2Z3F4Z2NmamFjcWNuZG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4MTg4NjcsImV4cCI6MjA2OTM5NDg2N30.8PB0OjF2vvCtCCDnYCeemMSyvR51E2SAHe7slS1UyQU'
+};
+
+// --- UTILIDADES ---
+const fetchWithRetry = async <T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  backoffMultiplier = 1000
+): Promise<T> => {
+  let lastError: Error | null = null;
   
-  async select(table: string, columns = '*'): Promise<Opportunity[]> {
+  for (let i = 0; i < retries; i++) {
     try {
-      const url = supabaseUrl + '/rest/v1/' + table + '?select=' + columns;
-      const response = await fetch(url, {
-        headers: this.headers
-      });
+      return await fn();
+    } catch (err) {
+      lastError = err as Error;
+      if (i === retries - 1) throw err;
+      
+      const delay = Math.pow(2, i) * backoffMultiplier;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError || new Error('Failed after retries');
+};
+
+const emptyScales = (): Scales => ({
+  dor: { score: 0, description: '' },
+  poder: { score: 0, description: '' },
+  visao: { score: 0, description: '' },
+  valor: { score: 0, description: '' },
+  controle: { score: 0, description: '' },
+  compras: { score: 0, description: '' }
+});
+
+// --- API SERVICE ---
+class SupabaseService {
+  private headers: HeadersInit;
+
+  constructor() {
+    this.headers = {
+      'apikey': supabaseConfig.key,
+      'Authorization': `Bearer ${supabaseConfig.key}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    };
+  }
+
+  async fetchOpportunities(): Promise<Opportunity[]> {
+    return fetchWithRetry(async () => {
+      const url = `${supabaseConfig.url}/rest/v1/opportunities?select=*`;
+      const response = await fetch(url, { headers: this.headers });
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error('Error ' + response.status + ': ' + response.statusText + ' - ' + errorText);
+        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
       }
       
       const data = await response.json();
       return Array.isArray(data) ? data : [];
-    } catch (error) {
-      console.error('Error in select:', error);
-      throw error;
-    }
-  },
-  
-  async insert(table: string, data: any): Promise<Opportunity[]> {
-    try {
-      const url = supabaseUrl + '/rest/v1/' + table;
+    });
+  }
+
+  async insertOpportunity(data: Omit<Opportunity, 'id' | 'created_at'>): Promise<Opportunity> {
+    return fetchWithRetry(async () => {
+      const url = `${supabaseConfig.url}/rest/v1/opportunities`;
       const response = await fetch(url, {
         method: 'POST',
         headers: this.headers,
@@ -86,20 +143,17 @@ const supabaseClient = {
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error('Error ' + response.status + ': ' + response.statusText + ' - ' + errorText);
+        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
       }
       
       const result = await response.json();
-      return Array.isArray(result) ? result : [result];
-    } catch (error) {
-      console.error('Error in insert:', error);
-      throw error;
-    }
-  },
+      return Array.isArray(result) ? result[0] : result;
+    });
+  }
 
-  async update(table: string, id: number, data: any): Promise<Opportunity[]> {
-    try {
-      const url = supabaseUrl + '/rest/v1/' + table + '?id=eq.' + id;
+  async updateOpportunity(id: number, data: Partial<Opportunity>): Promise<Opportunity> {
+    return fetchWithRetry(async () => {
+      const url = `${supabaseConfig.url}/rest/v1/opportunities?id=eq.${id}`;
       const response = await fetch(url, {
         method: 'PATCH',
         headers: this.headers,
@@ -108,25 +162,20 @@ const supabaseClient = {
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error('Error ' + response.status + ': ' + response.statusText + ' - ' + errorText);
+        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
       }
       
       const text = await response.text();
-      if (!text) {
-        return [];
-      }
+      if (!text) return {} as Opportunity;
       
       const result = JSON.parse(text);
-      return Array.isArray(result) ? result : [result];
-    } catch (error) {
-      console.error('Error in update:', error);
-      throw error;
-    }
-  },
+      return Array.isArray(result) ? result[0] : result;
+    });
+  }
 
-  async delete(table: string, id: number): Promise<void> {
-    try {
-      const url = supabaseUrl + '/rest/v1/' + table + '?id=eq.' + id;
+  async deleteOpportunity(id: number): Promise<void> {
+    return fetchWithRetry(async () => {
+      const url = `${supabaseConfig.url}/rest/v1/opportunities?id=eq.${id}`;
       const response = await fetch(url, {
         method: 'DELETE',
         headers: this.headers
@@ -134,16 +183,193 @@ const supabaseClient = {
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error('Error ' + response.status + ': ' + response.statusText + ' - ' + errorText);
+        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
       }
-    } catch (error) {
-      console.error('Error in delete:', error);
-      throw error;
+    });
+  }
+}
+
+const supabaseService = new SupabaseService();
+
+// --- DEFINICIONES DE ETAPAS Y ESCALAS ---
+const stages: StageRequirement[] = [
+  { 
+    id: 1, 
+    name: 'Prospecção', 
+    probability: 0, 
+    color: 'bg-gray-500',
+    requirements: ['Identificar dor do cliente', 'Contato inicial estabelecido'],
+    checklist: {
+      'Identificou a empresa potencial': 'empresa_identificada',
+      'Pesquisou sobre o negócio do cliente': 'pesquisa_negocio',
+      'Identificou pessoa de contato': 'contato_identificado',
+      'Realizou primeiro contato': 'primeiro_contato'
+    }
+  },
+  { 
+    id: 2, 
+    name: 'Qualificação', 
+    probability: 20, 
+    color: 'bg-blue-500',
+    requirements: ['Score DOR ≥ 5', 'Score PODER ≥ 4', 'Budget confirmado'],
+    checklist: {
+      'Cliente admite ter problema/dor (DOR ≥ 5)': 'dor_admitida',
+      'Identificou tomador de decisão (PODER ≥ 4)': 'decisor_identificado',
+      'Budget disponível confirmado': 'budget_confirmado',
+      'Timeline do projeto definida': 'timeline_definida',
+      'Critérios de decisão entendidos': 'criterios_entendidos'
+    }
+  },
+  { 
+    id: 3, 
+    name: 'Apresentação', 
+    probability: 40, 
+    color: 'bg-yellow-500',
+    requirements: ['Score VISÃO ≥ 5', 'Apresentação agendada', 'Stakeholders definidos'],
+    checklist: {
+      'Visão de solução criada (VISÃO ≥ 5)': 'visao_criada',
+      'Demo/Apresentação realizada': 'demo_realizada',
+      'Todos stakeholders presentes': 'stakeholders_presentes',
+      'Objeções principais identificadas': 'objecoes_identificadas',
+      'Próximos passos acordados': 'proximos_passos'
+    }
+  },
+  { 
+    id: 4, 
+    name: 'Validação/Teste', 
+    probability: 75, 
+    color: 'bg-orange-500',
+    requirements: ['Score VALOR ≥ 6', 'Teste/POC executado', 'ROI validado'],
+    checklist: {
+      'POC/Teste iniciado': 'poc_iniciado',
+      'Critérios de sucesso definidos': 'criterios_sucesso',
+      'ROI calculado e validado (VALOR ≥ 6)': 'roi_validado',
+      'Resultados documentados': 'resultados_documentados',
+      'Aprovação técnica obtida': 'aprovacao_tecnica'
+    }
+  },
+  { 
+    id: 5, 
+    name: 'Negociação', 
+    probability: 90, 
+    color: 'bg-green-500',
+    requirements: ['Score CONTROLE ≥ 7', 'Score COMPRAS ≥ 6', 'Proposta enviada'],
+    checklist: {
+      'Proposta comercial enviada': 'proposta_enviada',
+      'Termos negociados (COMPRAS ≥ 6)': 'termos_negociados',
+      'Controle do processo (CONTROLE ≥ 7)': 'controle_processo',
+      'Aprovação verbal recebida': 'aprovacao_verbal',
+      'Contrato em revisão legal': 'revisao_legal'
+    }
+  },
+  { 
+    id: 6, 
+    name: 'Fechado', 
+    probability: 100, 
+    color: 'bg-emerald-600',
+    requirements: ['Contrato assinado', 'Pagamento processado'],
+    checklist: {
+      'Contrato assinado': 'contrato_assinado',
+      'Pedido de compra emitido': 'pedido_compra',
+      'Kickoff agendado': 'kickoff_agendado',
+      'Pagamento processado': 'pagamento_processado'
     }
   }
-};
+];
 
-// Definiciones de las escalas con niveles detallados
+const scales = [
+  { 
+    id: 'dor', 
+    name: 'DOR', 
+    icon: AlertCircle, 
+    description: 'Dor identificada e admitida', 
+    color: 'text-red-600', 
+    bgColor: 'bg-red-50', 
+    borderColor: 'border-red-200',
+    questions: [
+      'Cliente admite ter o problema?',
+      'Problema está custando dinheiro?', 
+      'Consequências são mensuráveis?',
+      'Urgência para resolver?'
+    ]
+  },
+  { 
+    id: 'poder', 
+    name: 'PODER', 
+    icon: User, 
+    description: 'Acesso ao decisor', 
+    color: 'text-blue-600', 
+    bgColor: 'bg-blue-50', 
+    borderColor: 'border-blue-200',
+    questions: [
+      'Conhece o decisor final?',
+      'Tem acesso direto ao decisor?',
+      'Decisor participa das reuniões?',
+      'Processo de decisão mapeado?'
+    ]
+  },
+  { 
+    id: 'visao', 
+    name: 'VISÃO', 
+    icon: Eye, 
+    description: 'Visão de solução construída', 
+    color: 'text-purple-600', 
+    bgColor: 'bg-purple-50', 
+    borderColor: 'border-purple-200',
+    questions: [
+      'Cliente vê valor na solução?',
+      'Benefícios estão claros?',
+      'Solução resolve a dor?',
+      'Cliente consegue visualizar implementação?'
+    ]
+  },
+  { 
+    id: 'valor', 
+    name: 'VALOR', 
+    icon: DollarSign, 
+    description: 'ROI/Benefícios validados', 
+    color: 'text-green-600', 
+    bgColor: 'bg-green-50', 
+    borderColor: 'border-green-200',
+    questions: [
+      'ROI foi calculado?',
+      'Cliente concorda com ROI?',
+      'Valor justifica investimento?',
+      'Benefícios são mensuráveis?'
+    ]
+  },
+  { 
+    id: 'controle', 
+    name: 'CONTROLE', 
+    icon: Target, 
+    description: 'Controle do processo', 
+    color: 'text-orange-600', 
+    bgColor: 'bg-orange-50', 
+    borderColor: 'border-orange-200',
+    questions: [
+      'Você conduz o processo?',
+      'Próximos passos definidos?',
+      'Timeline acordada?',
+      'Competidores identificados?'
+    ]
+  },
+  { 
+    id: 'compras', 
+    name: 'COMPRAS', 
+    description: 'Processo de compras', 
+    icon: ShoppingCart, 
+    color: 'text-indigo-600', 
+    bgColor: 'bg-indigo-50', 
+    borderColor: 'border-indigo-200',
+    questions: [
+      'Processo de compras mapeado?',
+      'Budget aprovado?',
+      'Procurement envolvido?',
+      'Documentação necessária conhecida?'
+    ]
+  }
+];
+
 const scaleDefinitions = {
   dor: [
     { level: 0, text: "Não há identificação de necessidade ou dor pelo cliente" },
@@ -225,345 +451,147 @@ const scaleDefinitions = {
   ]
 };
 
-const CRMVentapel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+// --- CONTEXT API ---
+interface OpportunitiesContextType {
+  opportunities: Opportunity[];
+  loading: boolean;
+  error: string | null;
+  setError: (error: string | null) => void;
+  loadOpportunities: () => Promise<void>;
+  createOpportunity: (data: OpportunityFormData) => Promise<boolean>;
+  updateOpportunity: (id: number, data: OpportunityFormData) => Promise<boolean>;
+  deleteOpportunity: (id: number) => Promise<void>;
+  moveStage: (opportunity: Opportunity, newStage: number) => Promise<void>;
+}
+
+const OpportunitiesContext = createContext<OpportunitiesContextType | null>(null);
+
+const useOpportunitiesContext = () => {
+  const context = useContext(OpportunitiesContext);
+  if (!context) {
+    throw new Error('useOpportunitiesContext must be used within OpportunitiesProvider');
+  }
+  return context;
+};
+
+// --- PROVIDER COMPONENT ---
+const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
-  const [showNewOpportunity, setShowNewOpportunity] = useState(false);
-  const [editingOpportunity, setEditingOpportunity] = useState<Opportunity | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStage, setFilterStage] = useState('all');
-  const [filterVendor, setFilterVendor] = useState('all');
-  const [filterInactivity, setFilterInactivity] = useState('all');
-  const [dashboardVendorFilter, setDashboardVendorFilter] = useState('all');
-  const [selectedStageForList, setSelectedStageForList] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showStageChecklist, setShowStageChecklist] = useState<{opportunity: Opportunity, targetStage: number} | null>(null);
 
-  const stages = [
-    { 
-      id: 1, 
-      name: 'Prospecção', 
-      probability: 0, 
-      color: 'bg-gray-500',
-      requirements: ['Identificar dor do cliente', 'Contato inicial estabelecido'],
-      checklist: {
-        'Identificou a empresa potencial': 'empresa_identificada',
-        'Pesquisou sobre o negócio do cliente': 'pesquisa_negocio',
-        'Identificou pessoa de contato': 'contato_identificado',
-        'Realizou primeiro contato': 'primeiro_contato'
-      }
-    },
-    { 
-      id: 2, 
-      name: 'Qualificação', 
-      probability: 20, 
-      color: 'bg-blue-500',
-      requirements: ['Score DOR ≥ 5', 'Score PODER ≥ 4', 'Budget confirmado'],
-      checklist: {
-        'Cliente admite ter problema/dor (DOR ≥ 5)': 'dor_admitida',
-        'Identificou tomador de decisão (PODER ≥ 4)': 'decisor_identificado',
-        'Budget disponível confirmado': 'budget_confirmado',
-        'Timeline do projeto definida': 'timeline_definida',
-        'Critérios de decisão entendidos': 'criterios_entendidos'
-      }
-    },
-    { 
-      id: 3, 
-      name: 'Apresentação', 
-      probability: 40, 
-      color: 'bg-yellow-500',
-      requirements: ['Score VISÃO ≥ 5', 'Apresentação agendada', 'Stakeholders definidos'],
-      checklist: {
-        'Visão de solução criada (VISÃO ≥ 5)': 'visao_criada',
-        'Demo/Apresentação realizada': 'demo_realizada',
-        'Todos stakeholders presentes': 'stakeholders_presentes',
-        'Objeções principais identificadas': 'objecoes_identificadas',
-        'Próximos passos acordados': 'proximos_passos'
-      }
-    },
-    { 
-      id: 4, 
-      name: 'Validação/Teste', 
-      probability: 75, 
-      color: 'bg-orange-500',
-      requirements: ['Score VALOR ≥ 6', 'Teste/POC executado', 'ROI validado'],
-      checklist: {
-        'POC/Teste iniciado': 'poc_iniciado',
-        'Critérios de sucesso definidos': 'criterios_sucesso',
-        'ROI calculado e validado (VALOR ≥ 6)': 'roi_validado',
-        'Resultados documentados': 'resultados_documentados',
-        'Aprovação técnica obtida': 'aprovacao_tecnica'
-      }
-    },
-    { 
-      id: 5, 
-      name: 'Negociação', 
-      probability: 90, 
-      color: 'bg-green-500',
-      requirements: ['Score CONTROLE ≥ 7', 'Score COMPRAS ≥ 6', 'Proposta enviada'],
-      checklist: {
-        'Proposta comercial enviada': 'proposta_enviada',
-        'Termos negociados (COMPRAS ≥ 6)': 'termos_negociados',
-        'Controle do processo (CONTROLE ≥ 7)': 'controle_processo',
-        'Aprovação verbal recebida': 'aprovacao_verbal',
-        'Contrato em revisão legal': 'revisao_legal'
-      }
-    },
-    { 
-      id: 6, 
-      name: 'Fechado', 
-      probability: 100, 
-      color: 'bg-emerald-600',
-      requirements: ['Contrato assinado', 'Pagamento processado'],
-      checklist: {
-        'Contrato assinado': 'contrato_assinado',
-        'Pedido de compra emitido': 'pedido_compra',
-        'Kickoff agendado': 'kickoff_agendado',
-        'Pagamento processado': 'pagamento_processado'
-      }
-    }
-  ];
-
-  const scales = [
-    { 
-      id: 'dor', 
-      name: 'DOR', 
-      icon: AlertCircle, 
-      description: 'Dor identificada e admitida', 
-      color: 'text-red-600', 
-      bgColor: 'bg-red-50', 
-      borderColor: 'border-red-200',
-      questions: [
-        'Cliente admite ter o problema?',
-        'Problema está custando dinheiro?', 
-        'Consequências são mensuráveis?',
-        'Urgência para resolver?'
-      ]
-    },
-    { 
-      id: 'poder', 
-      name: 'PODER', 
-      icon: User, 
-      description: 'Acesso ao decisor', 
-      color: 'text-blue-600', 
-      bgColor: 'bg-blue-50', 
-      borderColor: 'border-blue-200',
-      questions: [
-        'Conhece o decisor final?',
-        'Tem acesso direto ao decisor?',
-        'Decisor participa das reuniões?',
-        'Processo de decisão mapeado?'
-      ]
-    },
-    { 
-      id: 'visao', 
-      name: 'VISÃO', 
-      icon: Eye, 
-      description: 'Visão de solução construída', 
-      color: 'text-purple-600', 
-      bgColor: 'bg-purple-50', 
-      borderColor: 'border-purple-200',
-      questions: [
-        'Cliente vê valor na solução?',
-        'Benefícios estão claros?',
-        'Solução resolve a dor?',
-        'Cliente consegue visualizar implementação?'
-      ]
-    },
-    { 
-      id: 'valor', 
-      name: 'VALOR', 
-      icon: DollarSign, 
-      description: 'ROI/Benefícios validados', 
-      color: 'text-green-600', 
-      bgColor: 'bg-green-50', 
-      borderColor: 'border-green-200',
-      questions: [
-        'ROI foi calculado?',
-        'Cliente concorda com ROI?',
-        'Valor justifica investimento?',
-        'Benefícios são mensuráveis?'
-      ]
-    },
-    { 
-      id: 'controle', 
-      name: 'CONTROLE', 
-      icon: Target, 
-      description: 'Controle do processo', 
-      color: 'text-orange-600', 
-      bgColor: 'bg-orange-50', 
-      borderColor: 'border-orange-200',
-      questions: [
-        'Você conduz o processo?',
-        'Próximos passos definidos?',
-        'Timeline acordada?',
-        'Competidores identificados?'
-      ]
-    },
-    { 
-      id: 'compras', 
-      name: 'COMPRAS', 
-      description: 'Processo de compras', 
-      icon: ShoppingCart, 
-      color: 'text-indigo-600', 
-      bgColor: 'bg-indigo-50', 
-      borderColor: 'border-indigo-200',
-      questions: [
-        'Processo de compras mapeado?',
-        'Budget aprovado?',
-        'Procurement envolvido?',
-        'Documentação necessária conhecida?'
-      ]
-    }
-  ];
-
-  const createEmptyScales = (): Scales => ({
-    dor: { score: 0, description: '' },
-    poder: { score: 0, description: '' },
-    visao: { score: 0, description: '' },
-    valor: { score: 0, description: '' },
-    controle: { score: 0, description: '' },
-    compras: { score: 0, description: '' }
-  });
-
-  const loadOpportunities = async () => {
+  const loadOpportunities = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      const data = await supabaseClient.select('opportunities');
-      console.log('Dados carregados:', data);
+      const data = await supabaseService.fetchOpportunities();
       
       const validatedData = data.map(opp => ({
         ...opp,
-        scales: opp.scales || createEmptyScales(),
+        scales: opp.scales || emptyScales(),
         value: Number(opp.value) || 0,
         probability: Number(opp.probability) || 0
       }));
       
       setOpportunities(validatedData);
-    } catch (error) {
-      console.error('Erro ao carregar oportunidades:', error);
-      setError('Erro ao carregar oportunidades. Tente novamente.');
+    } catch (err) {
+      console.error('Error al cargar oportunidades:', err);
+      setError('Error al cargar oportunidades. Por favor, inténtelo de nuevo.');
       setOpportunities([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const createOpportunity = async (opportunityData: any): Promise<boolean> => {
+  const createOpportunity = useCallback(async (formData: OpportunityFormData): Promise<boolean> => {
     try {
       setError(null);
       
       const newOpportunity = {
-        name: opportunityData.name.trim(),
-        client: opportunityData.client.trim(),
-        vendor: opportunityData.vendor,
-        value: parseFloat(opportunityData.value) || 0,
-        stage: parseInt(opportunityData.stage) || 1,
-        priority: opportunityData.priority || 'média',
-        expected_close: opportunityData.expectedClose || null,
-        next_action: opportunityData.nextAction?.trim() || null,
-        product: opportunityData.product?.trim() || null,
-        power_sponsor: opportunityData.powerSponsor?.trim() || null,
-        sponsor: opportunityData.sponsor?.trim() || null,
-        influencer: opportunityData.influencer?.trim() || null,
-        support_contact: opportunityData.supportContact?.trim() || null,
-        probability: stages.find(s => s.id === parseInt(opportunityData.stage))?.probability || 0,
+        name: formData.name.trim(),
+        client: formData.client.trim(),
+        vendor: formData.vendor as Vendor,
+        value: parseFloat(formData.value) || 0,
+        stage: formData.stage,
+        priority: formData.priority,
+        expected_close: formData.expected_close || null,
+        next_action: formData.next_action?.trim() || null,
+        product: formData.product?.trim() || null,
+        power_sponsor: formData.power_sponsor?.trim() || null,
+        sponsor: formData.sponsor?.trim() || null,
+        influencer: formData.influencer?.trim() || null,
+        support_contact: formData.support_contact?.trim() || null,
+        probability: stages.find(s => s.id === formData.stage)?.probability || 0,
         last_update: new Date().toISOString().split('T')[0],
-        scales: opportunityData.scales || createEmptyScales()
+        scales: formData.scales || emptyScales()
       };
 
-      console.log('Criando oportunidade:', newOpportunity);
-      
-      const result = await supabaseClient.insert('opportunities', newOpportunity);
-      console.log('Oportunidade criada:', result);
-      
+      await supabaseService.insertOpportunity(newOpportunity);
       await loadOpportunities();
       return true;
-    } catch (error) {
-      console.error('Erro ao criar oportunidade:', error);
-      setError('Erro ao criar oportunidade. Verifique os dados e tente novamente.');
+    } catch (err) {
+      console.error('Error al crear oportunidad:', err);
+      setError('Error al crear oportunidad. Verifique los datos e inténtelo de nuevo.');
       return false;
     }
-  };
+  }, [loadOpportunities]);
 
-  const updateOpportunity = async (opportunityData: any): Promise<boolean> => {
+  const updateOpportunity = useCallback(async (id: number, formData: OpportunityFormData): Promise<boolean> => {
     try {
       setError(null);
-      
-      if (!opportunityData.id) {
-        throw new Error('ID da oportunidade não encontrado');
-      }
       
       const updatedData = {
-        name: opportunityData.name.trim(),
-        client: opportunityData.client.trim(),
-        vendor: opportunityData.vendor,
-        value: parseFloat(opportunityData.value) || 0,
-        stage: parseInt(opportunityData.stage) || 1,
-        priority: opportunityData.priority || 'média',
-        expected_close: opportunityData.expectedClose || null,
-        next_action: opportunityData.nextAction?.trim() || null,
-        product: opportunityData.product?.trim() || null,
-        power_sponsor: opportunityData.powerSponsor?.trim() || null,
-        sponsor: opportunityData.sponsor?.trim() || null,
-        influencer: opportunityData.influencer?.trim() || null,
-        support_contact: opportunityData.supportContact?.trim() || null,
-        probability: stages.find(s => s.id === parseInt(opportunityData.stage))?.probability || 0,
+        name: formData.name.trim(),
+        client: formData.client.trim(),
+        vendor: formData.vendor as Vendor,
+        value: parseFloat(formData.value) || 0,
+        stage: formData.stage,
+        priority: formData.priority,
+        expected_close: formData.expected_close || null,
+        next_action: formData.next_action?.trim() || null,
+        product: formData.product?.trim() || null,
+        power_sponsor: formData.power_sponsor?.trim() || null,
+        sponsor: formData.sponsor?.trim() || null,
+        influencer: formData.influencer?.trim() || null,
+        support_contact: formData.support_contact?.trim() || null,
+        probability: stages.find(s => s.id === formData.stage)?.probability || 0,
         last_update: new Date().toISOString().split('T')[0],
-        scales: opportunityData.scales || createEmptyScales()
+        scales: formData.scales || emptyScales()
       };
 
-      console.log('Atualizando oportunidade ID:', opportunityData.id, 'com dados:', updatedData);
-      
-      const result = await supabaseClient.update('opportunities', opportunityData.id, updatedData);
-      console.log('Oportunidade atualizada:', result);
-      
+      await supabaseService.updateOpportunity(id, updatedData);
       await loadOpportunities();
       return true;
-    } catch (error) {
-      console.error('Erro ao atualizar oportunidade:', error);
-      setError('Erro ao atualizar oportunidade. Tente novamente.');
+    } catch (err) {
+      console.error('Error al actualizar oportunidad:', err);
+      setError('Error al actualizar oportunidad. Por favor, inténtelo de nuevo.');
       return false;
     }
-  };
+  }, [loadOpportunities]);
 
-  const deleteOpportunity = async (id: number): Promise<void> => {
-    if (!confirm('Tem certeza que deseja deletar esta oportunidade?')) {
+  const deleteOpportunity = useCallback(async (id: number): Promise<void> => {
+    if (!confirm('¿Está seguro de que desea eliminar esta oportunidad?')) {
       return;
     }
 
     try {
       setError(null);
-      console.log('Deletando oportunidade ID:', id);
-      
-      await supabaseClient.delete('opportunities', id);
-      
+      await supabaseService.deleteOpportunity(id);
       setOpportunities(prev => prev.filter(opp => opp.id !== id));
-      
-    } catch (error) {
-      console.error('Erro ao deletar oportunidade:', error);
-      setError('Erro ao deletar oportunidade. Tente novamente.');
+    } catch (err) {
+      console.error('Error al eliminar oportunidad:', err);
+      setError('Error al eliminar oportunidad. Por favor, inténtelo de nuevo.');
       await loadOpportunities();
     }
-  };
+  }, [loadOpportunities]);
 
-  const moveStage = async (opportunity: Opportunity, newStage: number): Promise<void> => {
+  const moveStage = useCallback(async (opportunity: Opportunity, newStage: number): Promise<void> => {
     const stage = stages.find(s => s.id === newStage);
     if (!stage) {
-      console.error('Estágio não encontrado:', newStage);
+      console.error('Etapa no encontrada:', newStage);
       return;
     }
 
-    // Se está avançando, mostrar checklist
-    if (newStage > opportunity.stage) {
-      setShowStageChecklist({ opportunity, targetStage: newStage });
-      return;
-    }
-
-    // Se está voltando, permitir diretamente
     try {
       setError(null);
       
@@ -573,77 +601,145 @@ const CRMVentapel: React.FC = () => {
         last_update: new Date().toISOString().split('T')[0]
       };
 
-      console.log('Movendo estágio da oportunidade ID:', opportunity.id, 'para estágio:', newStage);
-      
-      await supabaseClient.update('opportunities', opportunity.id, updatedData);
+      await supabaseService.updateOpportunity(opportunity.id, updatedData);
       
       setOpportunities(prev => prev.map(opp => 
         opp.id === opportunity.id 
-          ? { ...opp, stage: newStage, probability: stage.probability, last_update: updatedData.last_update }
+          ? { ...opp, ...updatedData }
           : opp
       ));
-      
-    } catch (error) {
-      console.error('Erro ao mover estágio:', error);
-      setError('Erro ao atualizar estágio. Tente novamente.');
+    } catch (err) {
+      console.error('Error al mover etapa:', err);
+      setError('Error al actualizar etapa. Por favor, inténtelo de nuevo.');
       await loadOpportunities();
     }
-  };
-
-  const checkStageRequirements = (opportunity: Opportunity, stageId: number): boolean => {
-    if (!opportunity.scales) return false;
-
-    switch (stageId) {
-      case 2:
-        return opportunity.scales.dor.score >= 5 && opportunity.scales.poder.score >= 4;
-      case 3:
-        return opportunity.scales.visao.score >= 5;
-      case 4:
-        return opportunity.scales.valor.score >= 6;
-      case 5:
-        return opportunity.scales.controle.score >= 7 && opportunity.scales.compras.score >= 6;
-      default:
-        return true;
-    }
-  };
-
-  const checkInactivity = (lastUpdate: string, days: number): boolean => {
-    const lastUpdateDate = new Date(lastUpdate);
-    const today = new Date();
-    const diffTime = Math.abs(today.getTime() - lastUpdateDate.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= days;
-  };
+  }, [loadOpportunities]);
 
   useEffect(() => {
     loadOpportunities();
-  }, []);
+  }, [loadOpportunities]);
 
-  const filteredOpportunities = opportunities.filter(opp => {
-    const matchesSearch = opp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         opp.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (opp.product && opp.product.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesStage = filterStage === 'all' || opp.stage.toString() === filterStage;
-    const matchesVendor = filterVendor === 'all' || opp.vendor === filterVendor;
-    
-    let matchesInactivity = true;
-    if (filterInactivity === '7days') {
-      matchesInactivity = checkInactivity(opp.last_update, 7);
-    } else if (filterInactivity === '30days') {
-      matchesInactivity = checkInactivity(opp.last_update, 30);
-    }
-    
-    return matchesSearch && matchesStage && matchesVendor && matchesInactivity;
-  });
+  const value = useMemo(() => ({
+    opportunities,
+    loading,
+    error,
+    setError,
+    loadOpportunities,
+    createOpportunity,
+    updateOpportunity,
+    deleteOpportunity,
+    moveStage
+  }), [opportunities, loading, error, loadOpportunities, createOpportunity, updateOpportunity, deleteOpportunity, moveStage]);
 
-  const getFilteredOpportunitiesForDashboard = () => {
+  return (
+    <OpportunitiesContext.Provider value={value}>
+      {children}
+    </OpportunitiesContext.Provider>
+  );
+};
+
+// --- HOOKS UTILITARIOS ---
+const useFilters = () => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStage, setFilterStage] = useState('all');
+  const [filterVendor, setFilterVendor] = useState('all');
+  const [filterInactivity, setFilterInactivity] = useState('all');
+
+  return {
+    searchTerm,
+    setSearchTerm,
+    filterStage,
+    setFilterStage,
+    filterVendor,
+    setFilterVendor,
+    filterInactivity,
+    setFilterInactivity
+  };
+};
+
+// --- COMPONENTES ---
+const ErrorAlert: React.FC<{ error: string; onClose: () => void }> = ({ error, onClose }) => (
+  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+    <div className="flex items-center">
+      <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+      <span className="text-red-800">{error}</span>
+      <button onClick={onClose} className="ml-auto text-red-600 hover:text-red-800">
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  </div>
+);
+
+const LoadingSpinner: React.FC = () => (
+  <div className="text-center py-12 bg-white rounded-xl border">
+    <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+    <p className="mt-4 text-gray-600">Cargando oportunidades...</p>
+  </div>
+);
+
+// --- FUNCIONES AUXILIARES ---
+const checkStageRequirements = (opportunity: Opportunity, stageId: number): boolean => {
+  if (!opportunity.scales) return false;
+
+  switch (stageId) {
+    case 2:
+      return opportunity.scales.dor.score >= 5 && opportunity.scales.poder.score >= 4;
+    case 3:
+      return opportunity.scales.visao.score >= 5;
+    case 4:
+      return opportunity.scales.valor.score >= 6;
+    case 5:
+      return opportunity.scales.controle.score >= 7 && opportunity.scales.compras.score >= 6;
+    default:
+      return true;
+  }
+};
+
+const checkInactivity = (lastUpdate: string, days: number): boolean => {
+  const lastUpdateDate = new Date(lastUpdate);
+  const today = new Date();
+  const diffTime = Math.abs(today.getTime() - lastUpdateDate.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays >= days;
+};
+
+// --- COMPONENTE PRINCIPAL ---
+const CRMVentapel: React.FC = () => {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [showNewOpportunity, setShowNewOpportunity] = useState(false);
+  const [editingOpportunity, setEditingOpportunity] = useState<Opportunity | null>(null);
+  const [dashboardVendorFilter, setDashboardVendorFilter] = useState('all');
+  const [selectedStageForList, setSelectedStageForList] = useState<number | null>(null);
+  const [showStageChecklist, setShowStageChecklist] = useState<{ opportunity: Opportunity, targetStage: number } | null>(null);
+
+  const { opportunities, loading, error, setError, createOpportunity, updateOpportunity, deleteOpportunity, moveStage } = useOpportunitiesContext();
+  const filters = useFilters();
+
+  const filteredOpportunities = useMemo(() => {
+    return opportunities.filter(opp => {
+      const matchesSearch = opp.name.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
+                           opp.client.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
+                           (opp.product && opp.product.toLowerCase().includes(filters.searchTerm.toLowerCase()));
+      const matchesStage = filters.filterStage === 'all' || opp.stage.toString() === filters.filterStage;
+      const matchesVendor = filters.filterVendor === 'all' || opp.vendor === filters.filterVendor;
+      
+      let matchesInactivity = true;
+      if (filters.filterInactivity === '7days') {
+        matchesInactivity = checkInactivity(opp.last_update, 7);
+      } else if (filters.filterInactivity === '30days') {
+        matchesInactivity = checkInactivity(opp.last_update, 30);
+      }
+      
+      return matchesSearch && matchesStage && matchesVendor && matchesInactivity;
+    });
+  }, [opportunities, filters.searchTerm, filters.filterStage, filters.filterVendor, filters.filterInactivity]);
+
+  const dashboardOpportunities = useMemo(() => {
     if (dashboardVendorFilter === 'all') return opportunities;
     return opportunities.filter(opp => opp.vendor === dashboardVendorFilter);
-  };
+  }, [opportunities, dashboardVendorFilter]);
 
-  const dashboardOpportunities = getFilteredOpportunitiesForDashboard();
-
-  const metrics = {
+  const metrics = useMemo(() => ({
     totalValue: dashboardOpportunities.reduce((sum, opp) => sum + (opp.value || 0), 0),
     weightedValue: dashboardOpportunities.reduce((sum, opp) => sum + ((opp.value || 0) * (opp.probability || 0) / 100), 0),
     totalOpportunities: dashboardOpportunities.length,
@@ -663,24 +759,21 @@ const CRMVentapel: React.FC = () => {
       weightedValue: dashboardOpportunities.filter(opp => opp.stage === stage.id).reduce((sum, opp) => sum + ((opp.value || 0) * (opp.probability || 0) / 100), 0),
       opportunities: dashboardOpportunities.filter(opp => opp.stage === stage.id)
     }))
-  };
+  }), [dashboardOpportunities]);
 
+  const handleMoveStage = useCallback(async (opportunity: Opportunity, newStage: number) => {
+    if (newStage > opportunity.stage && !checkStageRequirements(opportunity, opportunity.stage)) {
+      setShowStageChecklist({ opportunity, targetStage: newStage });
+      return;
+    }
+    
+    await moveStage(opportunity, newStage);
+  }, [moveStage]);
+
+  // --- COMPONENTES INTERNOS ---
   const Dashboard = () => (
     <div className="space-y-8">
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-center">
-            <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
-            <span className="text-red-800">{error}</span>
-            <button 
-              onClick={() => setError(null)}
-              className="ml-auto text-red-600 hover:text-red-800"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      {error && <ErrorAlert error={error} onClose={() => setError(null)} />}
 
       <div className="bg-gradient-to-r from-blue-600 to-green-600 text-white p-6 rounded-xl shadow-lg">
         <div className="flex items-center justify-between">
@@ -935,7 +1028,7 @@ const CRMVentapel: React.FC = () => {
             <div className="flex space-x-2">
               {prevStage && (
                 <button
-                  onClick={() => moveStage(opportunity, prevStage.id)}
+                  onClick={() => handleMoveStage(opportunity, prevStage.id)}
                   className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
                 >
                   ← {prevStage.name}
@@ -943,7 +1036,7 @@ const CRMVentapel: React.FC = () => {
               )}
               {nextStage && (
                 <button
-                  onClick={() => moveStage(opportunity, nextStage.id)}
+                  onClick={() => handleMoveStage(opportunity, nextStage.id)}
                   className={'px-3 py-1 text-xs rounded-md transition-colors flex items-center ' + (canAdvance 
                       ? 'bg-green-500 text-white hover:bg-green-600' 
                       : 'bg-red-100 text-red-600 cursor-not-allowed')}
@@ -1043,20 +1136,7 @@ const CRMVentapel: React.FC = () => {
 
   const OpportunityList = () => (
     <div className="space-y-6">
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-center">
-            <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
-            <span className="text-red-800">{error}</span>
-            <button 
-              onClick={() => setError(null)}
-              className="ml-auto text-red-600 hover:text-red-800"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      {error && <ErrorAlert error={error} onClose={() => setError(null)} />}
 
       <div className="bg-white p-6 rounded-xl shadow-sm border">
         <h3 className="text-lg font-semibold mb-4 text-gray-800">🔍 Filtros e Busca</h3>
@@ -1067,16 +1147,16 @@ const CRMVentapel: React.FC = () => {
               <input
                 type="text"
                 placeholder="Buscar por cliente, oportunidade ou produto..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={filters.searchTerm}
+                onChange={(e) => filters.setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
           <div>
             <select
-              value={filterStage}
-              onChange={(e) => setFilterStage(e.target.value)}
+              value={filters.filterStage}
+              onChange={(e) => filters.setFilterStage(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">📊 Todas as etapas</option>
@@ -1089,8 +1169,8 @@ const CRMVentapel: React.FC = () => {
           </div>
           <div>
             <select
-              value={filterVendor}
-              onChange={(e) => setFilterVendor(e.target.value)}
+              value={filters.filterVendor}
+              onChange={(e) => filters.setFilterVendor(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">👥 Todos vendedores</option>
@@ -1103,8 +1183,8 @@ const CRMVentapel: React.FC = () => {
           </div>
           <div>
             <select
-              value={filterInactivity}
-              onChange={(e) => setFilterInactivity(e.target.value)}
+              value={filters.filterInactivity}
+              onChange={(e) => filters.setFilterInactivity(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">⏰ Todas atividades</option>
@@ -1125,10 +1205,7 @@ const CRMVentapel: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="text-center py-12 bg-white rounded-xl border">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Carregando oportunidades...</p>
-        </div>
+        <LoadingSpinner />
       ) : (
         <div className="grid gap-6">
           {filteredOpportunities.map(opportunity => (
@@ -1158,22 +1235,21 @@ const CRMVentapel: React.FC = () => {
   }
 
   const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose }) => {
-    const [formData, setFormData] = useState({
-      id: opportunity?.id || 0,
+    const [formData, setFormData] = useState<OpportunityFormData>({
       name: opportunity?.name || '',
       client: opportunity?.client || '',
       vendor: opportunity?.vendor || VENDEDORES[0],
       value: opportunity?.value?.toString() || '',
       stage: opportunity?.stage || 1,
       priority: opportunity?.priority || 'média',
-      expectedClose: opportunity?.expected_close || '',
-      nextAction: opportunity?.next_action || '',
+      expected_close: opportunity?.expected_close || '',
+      next_action: opportunity?.next_action || '',
       product: opportunity?.product || '',
-      powerSponsor: opportunity?.power_sponsor || '',
+      power_sponsor: opportunity?.power_sponsor || '',
       sponsor: opportunity?.sponsor || '',
       influencer: opportunity?.influencer || '',
-      supportContact: opportunity?.support_contact || '',
-      scales: opportunity?.scales || createEmptyScales()
+      support_contact: opportunity?.support_contact || '',
+      scales: opportunity?.scales || emptyScales()
     });
 
     const [activeScale, setActiveScale] = useState<string | null>(null);
@@ -1190,7 +1266,7 @@ const CRMVentapel: React.FC = () => {
       
       try {
         const success = opportunity 
-          ? await updateOpportunity(formData)
+          ? await updateOpportunity(opportunity.id, formData)
           : await createOpportunity(formData);
           
         if (success) {
@@ -1343,8 +1419,8 @@ const CRMVentapel: React.FC = () => {
                         <label className="block text-sm font-medium mb-2 text-gray-700">Fechamento Previsto</label>
                         <input
                           type="date"
-                          value={formData.expectedClose}
-                          onChange={(e) => setFormData({...formData, expectedClose: e.target.value})}
+                          value={formData.expected_close}
+                          onChange={(e) => setFormData({...formData, expected_close: e.target.value})}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                           disabled={submitting}
                         />
@@ -1354,8 +1430,8 @@ const CRMVentapel: React.FC = () => {
                       <label className="block text-sm font-medium mb-2 text-gray-700">Próxima Ação</label>
                       <input
                         type="text"
-                        value={formData.nextAction}
-                        onChange={(e) => setFormData({...formData, nextAction: e.target.value})}
+                        value={formData.next_action}
+                        onChange={(e) => setFormData({...formData, next_action: e.target.value})}
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                         placeholder="Ex: Demo técnica agendada para 15/02"
                         disabled={submitting}
@@ -1371,8 +1447,8 @@ const CRMVentapel: React.FC = () => {
                       <label className="block text-sm font-medium mb-2 text-gray-700">Power Sponsor</label>
                       <input
                         type="text"
-                        value={formData.powerSponsor}
-                        onChange={(e) => setFormData({...formData, powerSponsor: e.target.value})}
+                        value={formData.power_sponsor}
+                        onChange={(e) => setFormData({...formData, power_sponsor: e.target.value})}
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                         placeholder="Quem assina o contrato"
                         disabled={submitting}
@@ -1404,8 +1480,8 @@ const CRMVentapel: React.FC = () => {
                       <label className="block text-sm font-medium mb-2 text-gray-700">Contato de Apoio</label>
                       <input
                         type="text"
-                        value={formData.supportContact}
-                        onChange={(e) => setFormData({...formData, supportContact: e.target.value})}
+                        value={formData.support_contact}
+                        onChange={(e) => setFormData({...formData, support_contact: e.target.value})}
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                         placeholder="Suporte interno"
                         disabled={submitting}
@@ -1571,7 +1647,6 @@ const CRMVentapel: React.FC = () => {
     const currentStage = stages.find(s => s.id === showStageChecklist.opportunity.stage);
     const targetStage = stages.find(s => s.id === showStageChecklist.targetStage);
     
-    // Inicializar todos os checkboxes como false
     const initCheckedItems = () => {
       const items: {[key: string]: boolean} = {};
       if (currentStage?.checklist) {
@@ -1599,27 +1674,10 @@ const CRMVentapel: React.FC = () => {
       }
 
       try {
-        setError(null);
-        
-        const updatedData = {
-          stage: showStageChecklist.targetStage,
-          probability: targetStage.probability,
-          last_update: new Date().toISOString().split('T')[0]
-        };
-
-        await supabaseClient.update('opportunities', showStageChecklist.opportunity.id, updatedData);
-        
-        setOpportunities(prev => prev.map(opp => 
-          opp.id === showStageChecklist.opportunity.id 
-            ? { ...opp, stage: showStageChecklist.targetStage, probability: targetStage.probability, last_update: updatedData.last_update }
-            : opp
-        ));
-        
+        await moveStage(showStageChecklist.opportunity, showStageChecklist.targetStage);
         setShowStageChecklist(null);
       } catch (error) {
-        console.error('Erro ao mover estágio:', error);
-        setError('Erro ao atualizar estágio. Tente novamente.');
-        await loadOpportunities();
+        console.error('Erro ao mover etapa:', error);
       }
     };
 
@@ -1770,4 +1828,13 @@ const CRMVentapel: React.FC = () => {
   );
 };
 
-export default CRMVentapel;
+// --- APP WRAPPER COM PROVIDER ---
+const App: React.FC = () => {
+  return (
+    <OpportunitiesProvider>
+      <CRMVentapel />
+    </OpportunitiesProvider>
+  );
+};
+
+export default App;
