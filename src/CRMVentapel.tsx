@@ -507,67 +507,71 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       setError(null);
       
-      const newOpportunity = {
-        name: formData.name.trim(),
-        client: formData.client.trim(),
-        vendor: formData.vendor as Vendor,
-        value: parseFloat(formData.value) || 0,
-        stage: formData.stage,
-        priority: formData.priority,
-        expected_close: formData.expected_close || null,
-        next_action: formData.next_action?.trim() || null,
-        product: formData.product?.trim() || null,
-        power_sponsor: formData.power_sponsor?.trim() || null,
-        sponsor: formData.sponsor?.trim() || null,
-        influencer: formData.influencer?.trim() || null,
-        support_contact: formData.support_contact?.trim() || null,
-        probability: stages.find(s => s.id === formData.stage)?.probability || 0,
-        last_update: new Date().toISOString().split('T')[0],
-        scales: formData.scales || emptyScales()
-      };
+      const createOpportunity = useCallback(async (formData: OpportunityFormData): Promise<boolean> => {
+  try {
+    setError(null);
+    
+    const newOpportunity = {
+      name: formData.name.trim(),
+      client: formData.client.trim(),
+      vendor: formData.vendor as Vendor,
+      value: parseFloat(formData.value) || 0,
+      stage: formData.stage,
+      priority: formData.priority,
+      expected_close: formData.expected_close || undefined,
+      next_action: formData.next_action?.trim() || undefined,
+      product: formData.product?.trim() || undefined,
+      power_sponsor: formData.power_sponsor?.trim() || undefined,
+      sponsor: formData.sponsor?.trim() || undefined,
+      influencer: formData.influencer?.trim() || undefined,
+      support_contact: formData.support_contact?.trim() || undefined,
+      probability: stages.find(s => s.id === formData.stage)?.probability || 0,
+      last_update: new Date().toISOString().split('T')[0],
+      scales: formData.scales || emptyScales()
+    };
 
-      await supabaseService.insertOpportunity(newOpportunity);
-      await loadOpportunities();
-      return true;
-    } catch (err) {
-      console.error('Error al crear oportunidad:', err);
-      setError('Error al crear oportunidad. Verifique los datos e inténtelo de nuevo.');
-      return false;
-    }
-  }, [loadOpportunities]);
-
-  const updateOpportunity = useCallback(async (id: number, formData: OpportunityFormData): Promise<boolean> => {
-    try {
-      setError(null);
+    await supabaseService.insertOpportunity(newOpportunity);
+    await loadOpportunities();
+    return true;
+  } catch (err) {
+    console.error('Error al crear oportunidad:', err);
+    setError('Error al crear oportunidad. Verifique los datos e inténtelo de nuevo.');
+    return false;
+  }
+}, [loadOpportunities]);
       
-      const updatedData = {
-        name: formData.name.trim(),
-        client: formData.client.trim(),
-        vendor: formData.vendor as Vendor,
-        value: parseFloat(formData.value) || 0,
-        stage: formData.stage,
-        priority: formData.priority,
-        expected_close: formData.expected_close || null,
-        next_action: formData.next_action?.trim() || null,
-        product: formData.product?.trim() || null,
-        power_sponsor: formData.power_sponsor?.trim() || null,
-        sponsor: formData.sponsor?.trim() || null,
-        influencer: formData.influencer?.trim() || null,
-        support_contact: formData.support_contact?.trim() || null,
-        probability: stages.find(s => s.id === formData.stage)?.probability || 0,
-        last_update: new Date().toISOString().split('T')[0],
-        scales: formData.scales || emptyScales()
-      };
+  const updateOpportunity = useCallback(async (id: number, formData: OpportunityFormData): Promise<boolean> => {
+  try {
+    setError(null);
+    
+    const updatedData = {
+      name: formData.name.trim(),
+      client: formData.client.trim(),
+      vendor: formData.vendor as Vendor,
+      value: parseFloat(formData.value) || 0,
+      stage: formData.stage,
+      priority: formData.priority,
+      expected_close: formData.expected_close || undefined,
+      next_action: formData.next_action?.trim() || undefined,
+      product: formData.product?.trim() || undefined,
+      power_sponsor: formData.power_sponsor?.trim() || undefined,
+      sponsor: formData.sponsor?.trim() || undefined,
+      influencer: formData.influencer?.trim() || undefined,
+      support_contact: formData.support_contact?.trim() || undefined,
+      probability: stages.find(s => s.id === formData.stage)?.probability || 0,
+      last_update: new Date().toISOString().split('T')[0],
+      scales: formData.scales || emptyScales()
+    };
 
-      await supabaseService.updateOpportunity(id, updatedData);
-      await loadOpportunities();
-      return true;
-    } catch (err) {
-      console.error('Error al actualizar oportunidad:', err);
-      setError('Error al actualizar oportunidad. Por favor, inténtelo de nuevo.');
-      return false;
-    }
-  }, [loadOpportunities]);
+    await supabaseService.updateOpportunity(id, updatedData);
+    await loadOpportunities();
+    return true;
+  } catch (err) {
+    console.error('Error al actualizar oportunidad:', err);
+    setError('Error al actualizar oportunidad. Por favor, inténtelo de nuevo.');
+    return false;
+  }
+}, [loadOpportunities]);
 
   const deleteOpportunity = useCallback(async (id: number): Promise<void> => {
     if (!confirm('¿Está seguro de que desea eliminar esta oportunidad?')) {
