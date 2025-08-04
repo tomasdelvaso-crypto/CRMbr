@@ -63,7 +63,7 @@ interface StageRequirement {
   checklist?: Record<string, string>;
 }
 
-// --- CONFIGURACIÓN Y CONSTANTES ---
+// --- CONFIGURAÇÃO E CONSTANTES ---
 const VENDEDORES = ['Jordi', 'Renata', 'Carlos', 'Paulo', 'Tomás'] as const;
 type Vendor = typeof VENDEDORES[number];
 
@@ -73,8 +73,8 @@ const supabaseConfig = {
 };
 
 // --- UTILIDADES ---
-const fetchWithRetry = async <T>(
-fn: () => Promise<T>,
+const fetchWithRetry = async <T,>(
+  fn: () => Promise<T>,
   retries = 3,
   backoffMultiplier = 1000
 ): Promise<T> => {
