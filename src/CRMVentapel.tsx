@@ -74,7 +74,7 @@ const supabaseConfig = {
 
 // --- UTILIDADES ---
 const fetchWithRetry = async <T>(
-  fn: () => Promise<T>,
+  fn: () => Promise<T,>,
   retries = 3,
   backoffMultiplier = 1000
 ): Promise<T> => {
