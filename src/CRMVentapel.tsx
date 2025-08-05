@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
 import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users } from 'lucide-react';
+import AIAssistant, { OpportunityHealthScore } from './AIAssistant';
 
 // --- TIPOS Y INTERFACES ---
 interface Scale {
@@ -775,6 +776,9 @@ const CRMVentapel: React.FC = () => {
     <div className="space-y-8">
       {error && <ErrorAlert error={error} onClose={() => setError(null)} />}
 
+      {/* Integración del Asistente IA */}
+      <AIAssistant opportunities={opportunities} />
+
       <div className="bg-gradient-to-r from-blue-600 to-green-600 text-white p-6 rounded-xl shadow-lg">
         <div className="flex items-center justify-between">
           <div>
@@ -967,6 +971,7 @@ const CRMVentapel: React.FC = () => {
           <div className="flex-1">
             <div className="flex items-center space-x-3 mb-2">
               <h3 className="text-xl font-bold text-gray-900">{opportunity.name}</h3>
+              <OpportunityHealthScore opportunity={opportunity} />
               {isInactive30Days && (
                 <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full flex items-center">
                   <Clock className="w-3 h-3 mr-1" />
@@ -1824,6 +1829,12 @@ const CRMVentapel: React.FC = () => {
       )}
 
       <StageChecklistModal />
+      
+      {/* Asistente IA flotante en todas las vistas */}
+      <AIAssistant 
+        opportunities={opportunities} 
+        currentOpportunity={editingOpportunity}
+      />
     </div>
   );
 };
