@@ -1832,7 +1832,7 @@ const CRMVentapel: React.FC = () => {
   );
 };
 
-// --- APP WRAPPER COM PROVIDER ---
+// --- APP WRAPPER CON PROVIDER ---
 const App: React.FC = () => {
   return (
     <OpportunitiesProvider>
