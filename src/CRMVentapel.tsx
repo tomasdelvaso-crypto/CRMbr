@@ -1831,7 +1831,8 @@ const CRMVentapel: React.FC = () => {
     </div>
   );
 };
-
+}; 
+      
 // --- APP WRAPPER CON PROVIDER ---
 const App: React.FC = () => {
   return (
