@@ -744,3 +744,140 @@ export const OpportunityHealthScore: React.FC<{ opportunity: Opportunity }> = ({
 };
 
 export default AIAssistant;
+
+// Agregar estas funciones en AIAssistant.tsx después de los imports
+
+// Configuración de APIs (mover a variables de entorno en producción)
+const SEARCH_API_KEY = process.env.REACT_APP_SERPER_API_KEY || '';
+const CLAUDE_API_KEY = process.env.REACT_APP_CLAUDE_API_KEY || '';
+
+// Función para búsqueda web real
+const searchWebReal = async (query: string): Promise<any> => {
+  try {
+    // Opción 1: Serper API (recomendada por simplicidad)
+    const response = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': SEARCH_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        q: query,
+        num: 10,
+        gl: 'br', // Brasil
+        hl: 'pt' // Português
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error('Error en búsqueda web');
+    }
+    
+    const data = await response.json();
+    return data.organic || [];
+    
+  } catch (error) {
+    console.error('Error buscando en web:', error);
+    return [];
+  }
+};
+
+// Función mejorada para investigar clientes con búsqueda real
+const searchClientInfoReal = async (clientName: string) => {
+  setSearchingClient(true);
+  
+  try {
+    // 1. Buscar información general de la empresa
+    const generalResults = await searchWebReal(`${clientName} empresa Brasil`);
+    
+    // 2. Buscar noticias recientes
+    const newsResults = await searchWebReal(`${clientName} notícias 2024 2025`);
+    
+    // 3. Buscar información de tecnología/industria
+    const techResults = await searchWebReal(`${clientName} tecnologia embalagem logística`);
+    
+    // 4. Compilar toda la información para Claude
+    const searchContext = `
+    Resultados de búsqueda web para ${clientName}:
+    
+    Información General:
+    ${generalResults.slice(0, 3).map((r: any) => `- ${r.title}: ${r.snippet}`).join('\n')}
+    
+    Noticias Recientes:
+    ${newsResults.slice(0, 3).map((r: any) => `- ${r.title}: ${r.snippet}`).join('\n')}
+    
+    Información de Tecnología/Industria:
+    ${techResults.slice(0, 3).map((r: any) => `- ${r.title}: ${r.snippet}`).join('\n')}
+    `;
+    
+    // 5. Pedir a Claude que analice y estructure la información
+    const prompt = `
+    Con base en estos resultados de búsqueda web sobre ${clientName}, crea un perfil detallado de la empresa.
+    
+    ${searchContext}
+    
+    Analiza la información y estructura un perfil con:
+    1. Información general verificada
+    2. Industria y tamaño estimado
+    3. Tecnologías que probablemente usan
+    4. Noticias o cambios recientes importantes
+    5. Posibles puntos de dolor para soluciones de embalaje
+    6. Competidores identificados
+    7. Oportunidades específicas para Ventapel
+    
+    Responde en JSON con el formato establecido.
+    `;
+    
+    const response = await callClaudeAPIWithKey(prompt);
+    const profile = JSON.parse(response);
+    setClientProfile(profile);
+    
+  } catch (error) {
+    console.error('Error en investigación:', error);
+    alert('Error al investigar cliente. Verifica las API keys.');
+  } finally {
+    setSearchingClient(false);
+  }
+};
+
+// Función actualizada para llamar a Claude con API Key
+const callClaudeAPIWithKey = async (prompt: string): Promise<string> => {
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": CLAUDE_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-3-sonnet-20241022", // Modelo más reciente
+        max_tokens: 2000,
+        messages: [
+          { 
+            role: "user", 
+            content: `Você é um assistente de vendas especializado na metodologia PPVVCC para a Ventapel Brasil.
+            
+            Contexto da empresa:
+            - Vendemos soluções de embalagem e fechamento
+            - Fitas adesivas, máquinas seladoras, strech film
+            - Atendemos e-commerce e indústria
+            - Foco em otimização de processos de embalagem
+            
+            ${prompt}`
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Claude API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.content[0].text;
+  } catch (error) {
+    console.error('Erro na API Claude:', error);
+    return 'Erro ao processar com Claude. Verifique a API key.';
+  }
+};
