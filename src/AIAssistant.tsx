@@ -130,6 +130,14 @@ Responda em JSON com formato:
             { 
               role: "user", 
               content: `Você é um assistente de vendas especializado na metodologia PPVVCC para a Ventapel Brasil.
+              
+              Contexto da Ventapel:
+              - Vendemos soluções de embalagem e fechamento
+              - Produtos: fitas adesivas, máquinas seladoras, stretch film, void fill
+              - Atendemos e-commerce, indústria e logística
+              - Foco em otimização de processos de embalagem
+              - Redução de custos e aumento de eficiência
+              
               Sempre responda em português do Brasil de forma direta e acionável.
               ${prompt}`
             }
@@ -145,20 +153,83 @@ Responda em JSON com formato:
     }
   };
 
+  // Función para búsqueda web real con Serper
+  const searchWebWithSerper = async (query: string): Promise<any[]> => {
+    try {
+      const response = await fetch('https://google.serper.dev/search', {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': '6114580de197c31d2c2c5e2f5ec77e937cfab076',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          q: query,
+          num: 10,
+          gl: 'br', // Brasil
+          hl: 'pt' // Português
+        })
+      });
+      
+      if (!response.ok) {
+        console.error('Error en Serper API:', response.status);
+        return [];
+      }
+      
+      const data = await response.json();
+      return data.organic || [];
+    } catch (error) {
+      console.error('Error buscando en web:', error);
+      return [];
+    }
+  };
+
   const searchClientInfo = async () => {
     if (!clientSearchQuery.trim()) return;
     
     setSearchingClient(true);
     
-    const prompt = `Pesquise informações sobre a empresa "${clientSearchQuery}" e crie um perfil detalhado.
+    try {
+      // 1. Buscar información general de la empresa
+      console.log('Buscando información de:', clientSearchQuery);
+      const generalResults = await searchWebWithSerper(`${clientSearchQuery} empresa Brasil informações`);
+      
+      // 2. Buscar noticias recientes
+      const newsResults = await searchWebWithSerper(`${clientSearchQuery} notícias 2024 2025`);
+      
+      // 3. Buscar información específica de embalaje/logística
+      const industryResults = await searchWebWithSerper(`${clientSearchQuery} embalagem logística e-commerce`);
+      
+      // 4. Compilar resultados para Claude
+      const searchContext = `
+Resultados da pesquisa web para ${clientSearchQuery}:
 
-Inclua:
-1. Informações gerais (indústria, tamanho, localização)
-2. Tecnologias que provavelmente usam
-3. Notícias recentes ou mudanças importantes
-4. Possíveis pontos de dor baseados na indústria
-5. Principais competidores
-6. Oportunidades de venda para produtos de embalagem/fechamento
+Informações Gerais:
+${generalResults.slice(0, 3).map((r: any) => `- ${r.title}: ${r.snippet}`).join('\n')}
+
+Notícias Recentes:
+${newsResults.slice(0, 3).map((r: any) => `- ${r.title}: ${r.snippet}`).join('\n')}
+
+Informações de Indústria/Logística:
+${industryResults.slice(0, 3).map((r: any) => `- ${r.title}: ${r.snippet}`).join('\n')}
+
+Links relevantes:
+${generalResults.slice(0, 3).map((r: any) => `- ${r.link}`).join('\n')}
+`;
+
+      const prompt = `Com base nestes resultados REAIS de pesquisa web sobre ${clientSearchQuery}, crie um perfil detalhado.
+
+${searchContext}
+
+Analise as informações e estruture um perfil com:
+1. Informações gerais verificadas (apenas o que foi encontrado)
+2. Indústria e tamanho estimado
+3. Tecnologias que provavelmente usam (baseado nos resultados)
+4. Notícias ou mudanças recentes importantes
+5. Possíveis pontos de dor para soluções de embalagem
+6. Competidores identificados
+7. Oportunidades específicas para Ventapel (fitas, máquinas seladoras, stretch film)
+
+IMPORTANTE: Use apenas informações dos resultados da pesquisa. Não invente dados.
 
 Responda em JSON:
 {
@@ -173,12 +244,16 @@ Responda em JSON:
   "opportunities": ["oportunidades de venda"]
 }`;
 
-    try {
       const response = await callClaudeAPI(prompt);
       const profile = JSON.parse(response);
       setClientProfile(profile);
+      
+      // Mostrar notificação de sucesso
+      console.log('Perfil gerado:', profile);
+      
     } catch (error) {
       console.error('Erro ao pesquisar cliente:', error);
+      alert('Erro ao pesquisar informações. Tente novamente.');
     } finally {
       setSearchingClient(false);
     }
@@ -744,140 +819,3 @@ export const OpportunityHealthScore: React.FC<{ opportunity: Opportunity }> = ({
 };
 
 export default AIAssistant;
-
-// Agregar estas funciones en AIAssistant.tsx después de los imports
-
-// Configuración de APIs (mover a variables de entorno en producción)
-const SEARCH_API_KEY = process.env.REACT_APP_SERPER_API_KEY || '';
-const CLAUDE_API_KEY = process.env.REACT_APP_CLAUDE_API_KEY || '';
-
-// Función para búsqueda web real
-const searchWebReal = async (query: string): Promise<any> => {
-  try {
-    // Opción 1: Serper API (recomendada por simplicidad)
-    const response = await fetch('https://google.serper.dev/search', {
-      method: 'POST',
-      headers: {
-        'X-API-KEY': SEARCH_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        q: query,
-        num: 10,
-        gl: 'br', // Brasil
-        hl: 'pt' // Português
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error('Error en búsqueda web');
-    }
-    
-    const data = await response.json();
-    return data.organic || [];
-    
-  } catch (error) {
-    console.error('Error buscando en web:', error);
-    return [];
-  }
-};
-
-// Función mejorada para investigar clientes con búsqueda real
-const searchClientInfoReal = async (clientName: string) => {
-  setSearchingClient(true);
-  
-  try {
-    // 1. Buscar información general de la empresa
-    const generalResults = await searchWebReal(`${clientName} empresa Brasil`);
-    
-    // 2. Buscar noticias recientes
-    const newsResults = await searchWebReal(`${clientName} notícias 2024 2025`);
-    
-    // 3. Buscar información de tecnología/industria
-    const techResults = await searchWebReal(`${clientName} tecnologia embalagem logística`);
-    
-    // 4. Compilar toda la información para Claude
-    const searchContext = `
-    Resultados de búsqueda web para ${clientName}:
-    
-    Información General:
-    ${generalResults.slice(0, 3).map((r: any) => `- ${r.title}: ${r.snippet}`).join('\n')}
-    
-    Noticias Recientes:
-    ${newsResults.slice(0, 3).map((r: any) => `- ${r.title}: ${r.snippet}`).join('\n')}
-    
-    Información de Tecnología/Industria:
-    ${techResults.slice(0, 3).map((r: any) => `- ${r.title}: ${r.snippet}`).join('\n')}
-    `;
-    
-    // 5. Pedir a Claude que analice y estructure la información
-    const prompt = `
-    Con base en estos resultados de búsqueda web sobre ${clientName}, crea un perfil detallado de la empresa.
-    
-    ${searchContext}
-    
-    Analiza la información y estructura un perfil con:
-    1. Información general verificada
-    2. Industria y tamaño estimado
-    3. Tecnologías que probablemente usan
-    4. Noticias o cambios recientes importantes
-    5. Posibles puntos de dolor para soluciones de embalaje
-    6. Competidores identificados
-    7. Oportunidades específicas para Ventapel
-    
-    Responde en JSON con el formato establecido.
-    `;
-    
-    const response = await callClaudeAPIWithKey(prompt);
-    const profile = JSON.parse(response);
-    setClientProfile(profile);
-    
-  } catch (error) {
-    console.error('Error en investigación:', error);
-    alert('Error al investigar cliente. Verifica las API keys.');
-  } finally {
-    setSearchingClient(false);
-  }
-};
-
-// Función actualizada para llamar a Claude con API Key
-const callClaudeAPIWithKey = async (prompt: string): Promise<string> => {
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": CLAUDE_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-3-sonnet-20241022", // Modelo más reciente
-        max_tokens: 2000,
-        messages: [
-          { 
-            role: "user", 
-            content: `Você é um assistente de vendas especializado na metodologia PPVVCC para a Ventapel Brasil.
-            
-            Contexto da empresa:
-            - Vendemos soluções de embalagem e fechamento
-            - Fitas adesivas, máquinas seladoras, strech film
-            - Atendemos e-commerce e indústria
-            - Foco em otimização de processos de embalagem
-            
-            ${prompt}`
-          }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Claude API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.content[0].text;
-  } catch (error) {
-    console.error('Erro na API Claude:', error);
-    return 'Erro ao processar com Claude. Verifique a API key.';
-  }
-};
