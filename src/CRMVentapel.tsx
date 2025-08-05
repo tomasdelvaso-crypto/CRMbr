@@ -1226,615 +1226,615 @@ const CRMVentapel: React.FC = () => {
           )}
         </div>
       )}
-    </div
-      );
+    </div>
+  );
 
- interface OpportunityFormProps {
-   opportunity?: Opportunity | null;
-   onClose: () => void;
- }
+  interface OpportunityFormProps {
+    opportunity?: Opportunity | null;
+    onClose: () => void;
+  }
 
- const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose }) => {
-   const [formData, setFormData] = useState<OpportunityFormData>({
-     name: opportunity?.name || '',
-     client: opportunity?.client || '',
-     vendor: opportunity?.vendor || VENDEDORES[0],
-     value: opportunity?.value?.toString() || '',
-     stage: opportunity?.stage || 1,
-     priority: opportunity?.priority || 'média',
-     expected_close: opportunity?.expected_close || '',
-     next_action: opportunity?.next_action || '',
-     product: opportunity?.product || '',
-     power_sponsor: opportunity?.power_sponsor || '',
-     sponsor: opportunity?.sponsor || '',
-     influencer: opportunity?.influencer || '',
-     support_contact: opportunity?.support_contact || '',
-     scales: opportunity?.scales || emptyScales()
-   });
+  const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose }) => {
+    const [formData, setFormData] = useState<OpportunityFormData>({
+      name: opportunity?.name || '',
+      client: opportunity?.client || '',
+      vendor: opportunity?.vendor || VENDEDORES[0],
+      value: opportunity?.value?.toString() || '',
+      stage: opportunity?.stage || 1,
+      priority: opportunity?.priority || 'média',
+      expected_close: opportunity?.expected_close || '',
+      next_action: opportunity?.next_action || '',
+      product: opportunity?.product || '',
+      power_sponsor: opportunity?.power_sponsor || '',
+      sponsor: opportunity?.sponsor || '',
+      influencer: opportunity?.influencer || '',
+      support_contact: opportunity?.support_contact || '',
+      scales: opportunity?.scales || emptyScales()
+    });
 
-   const [activeScale, setActiveScale] = useState<string | null>(null);
-   const [submitting, setSubmitting] = useState(false);
-   const [showScaleSelector, setShowScaleSelector] = useState<string | null>(null);
+    const [activeScale, setActiveScale] = useState<string | null>(null);
+    const [submitting, setSubmitting] = useState(false);
+    const [showScaleSelector, setShowScaleSelector] = useState<string | null>(null);
 
-   const handleSubmit = async () => {
-     if (!formData.name || !formData.client || !formData.vendor || !formData.value) {
-       alert('Por favor, preencha todos os campos obrigatórios');
-       return;
-     }
+    const handleSubmit = async () => {
+      if (!formData.name || !formData.client || !formData.vendor || !formData.value) {
+        alert('Por favor, preencha todos os campos obrigatórios');
+        return;
+      }
 
-     setSubmitting(true);
-     
-     try {
-       const success = opportunity 
-         ? await updateOpportunity(opportunity.id, formData)
-         : await createOpportunity(formData);
-         
-       if (success) {
-         onClose();
-       }
-     } finally {
-       setSubmitting(false);
-     }
-   };
+      setSubmitting(true);
+      
+      try {
+        const success = opportunity 
+          ? await updateOpportunity(opportunity.id, formData)
+          : await createOpportunity(formData);
+          
+        if (success) {
+          onClose();
+        }
+      } finally {
+        setSubmitting(false);
+      }
+    };
 
-   const updateScale = (scaleId: string, field: 'score' | 'description', value: string | number) => {
-     setFormData(prev => ({
-       ...prev,
-       scales: {
-         ...prev.scales,
-         [scaleId]: {
-           ...prev.scales[scaleId as keyof Scales],
-           [field]: value
-         }
-       }
-     }));
-   };
+    const updateScale = (scaleId: string, field: 'score' | 'description', value: string | number) => {
+      setFormData(prev => ({
+        ...prev,
+        scales: {
+          ...prev.scales,
+          [scaleId]: {
+            ...prev.scales[scaleId as keyof Scales],
+            [field]: value
+          }
+        }
+      }));
+    };
 
-   const selectScaleLevel = (scaleId: string, level: number, description: string) => {
-     updateScale(scaleId, 'score', level);
-     updateScale(scaleId, 'description', description);
-     setShowScaleSelector(null);
-   };
+    const selectScaleLevel = (scaleId: string, level: number, description: string) => {
+      updateScale(scaleId, 'score', level);
+      updateScale(scaleId, 'description', description);
+      setShowScaleSelector(null);
+    };
 
-   return (
-     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-       <div className="bg-white rounded-xl max-w-6xl w-full max-h-screen overflow-y-auto">
-         <div className="p-8">
-           <div className="flex justify-between items-center mb-8">
-             <div>
-               <h2 className="text-3xl font-bold text-gray-900">
-                 {opportunity ? '✏️ Editar Oportunidade' : '➕ Nova Oportunidade'}
-               </h2>
-               <p className="text-gray-600 mt-1">
-                 {opportunity ? 'Atualize os dados da oportunidade' : 'Adicione uma nova oportunidade ao pipeline Ventapel'}
-               </p>
-             </div>
-             <button 
-               onClick={onClose}
-               className="p-3 hover:bg-gray-100 rounded-xl transition-colors"
-               disabled={submitting}
-             >
-               <X className="w-6 h-6" />
-             </button>
-           </div>
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-xl max-w-6xl w-full max-h-screen overflow-y-auto">
+          <div className="p-8">
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-900">
+                  {opportunity ? '✏️ Editar Oportunidade' : '➕ Nova Oportunidade'}
+                </h2>
+                <p className="text-gray-600 mt-1">
+                  {opportunity ? 'Atualize os dados da oportunidade' : 'Adicione uma nova oportunidade ao pipeline Ventapel'}
+                </p>
+              </div>
+              <button 
+                onClick={onClose}
+                className="p-3 hover:bg-gray-100 rounded-xl transition-colors"
+                disabled={submitting}
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
 
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-             <div className="space-y-6">
-               <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
-                 <h3 className="text-lg font-semibold mb-4 text-blue-800">📋 Informações Básicas</h3>
-                 <div className="space-y-4">
-                   <div>
-                     <label className="block text-sm font-medium mb-2 text-gray-700">Nome da Oportunidade *</label>
-                     <input
-                       type="text"
-                       value={formData.name}
-                       onChange={(e) => setFormData({...formData, name: e.target.value})}
-                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                       placeholder="Ex: Solução de Fechamento Amazon"
-                       disabled={submitting}
-                     />
-                   </div>
-                   <div>
-                     <label className="block text-sm font-medium mb-2 text-gray-700">Cliente *</label>
-                     <input
-                       type="text"
-                       value={formData.client}
-                       onChange={(e) => setFormData({...formData, client: e.target.value})}
-                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                       placeholder="Nome da empresa"
-                       disabled={submitting}
-                     />
-                   </div>
-                   <div className="grid grid-cols-2 gap-4">
-                     <div>
-                       <label className="block text-sm font-medium mb-2 text-gray-700">Vendedor *</label>
-                       <select
-                         value={formData.vendor}
-                         onChange={(e) => setFormData({...formData, vendor: e.target.value})}
-                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                         disabled={submitting}
-                       >
-                         {VENDEDORES.map(vendor => (
-                           <option key={vendor} value={vendor}>
-                             {vendor}
-                           </option>
-                         ))}
-                       </select>
-                     </div>
-                     <div>
-                       <label className="block text-sm font-medium mb-2 text-gray-700">Valor (R$) *</label>
-                       <input
-                         type="number"
-                         value={formData.value}
-                         onChange={(e) => setFormData({...formData, value: e.target.value})}
-                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                         placeholder="250000"
-                         disabled={submitting}
-                       />
-                     </div>
-                   </div>
-                   <div className="grid grid-cols-2 gap-4">
-                     <div>
-                       <label className="block text-sm font-medium mb-2 text-gray-700">Etapa *</label>
-                       <select
-                         value={formData.stage}
-                         onChange={(e) => setFormData({...formData, stage: parseInt(e.target.value)})}
-                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                         disabled={submitting}
-                       >
-                         {stages.slice(0, 5).map(stage => (
-                           <option key={stage.id} value={stage.id}>
-                             {stage.name} ({stage.probability}%)
-                           </option>
-                         ))}
-                       </select>
-                     </div>
-                     <div>
-                       <label className="block text-sm font-medium mb-2 text-gray-700">Prioridade</label>
-                       <select
-                         value={formData.priority}
-                         onChange={(e) => setFormData({...formData, priority: e.target.value})}
-                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                         disabled={submitting}
-                       >
-                         <option value="baixa">Baixa</option>
-                         <option value="média">Média</option>
-                         <option value="alta">Alta</option>
-                       </select>
-                     </div>
-                   </div>
-                   <div className="grid grid-cols-2 gap-4">
-                     <div>
-                       <label className="block text-sm font-medium mb-2 text-gray-700">Produto</label>
-                       <input
-                         type="text"
-                         value={formData.product}
-                         onChange={(e) => setFormData({...formData, product: e.target.value})}
-                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                         placeholder="Ex: Máquinas BP + Cinta"
-                         disabled={submitting}
-                       />
-                     </div>
-                     <div>
-                       <label className="block text-sm font-medium mb-2 text-gray-700">Fechamento Previsto</label>
-                       <input
-                         type="date"
-                         value={formData.expected_close}
-                         onChange={(e) => setFormData({...formData, expected_close: e.target.value})}
-                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                         disabled={submitting}
-                       />
-                     </div>
-                   </div>
-                   <div>
-                     <label className="block text-sm font-medium mb-2 text-gray-700">Próxima Ação</label>
-                     <input
-                       type="text"
-                       value={formData.next_action}
-                       onChange={(e) => setFormData({...formData, next_action: e.target.value})}
-                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                       placeholder="Ex: Demo técnica agendada para 15/02"
-                       disabled={submitting}
-                     />
-                   </div>
-                 </div>
-               </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+                  <h3 className="text-lg font-semibold mb-4 text-blue-800">📋 Informações Básicas</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Nome da Oportunidade *</label>
+                      <input
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) => setFormData({...formData, name: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Ex: Solução de Fechamento Amazon"
+                        disabled={submitting}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Cliente *</label>
+                      <input
+                        type="text"
+                        value={formData.client}
+                        onChange={(e) => setFormData({...formData, client: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Nome da empresa"
+                        disabled={submitting}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700">Vendedor *</label>
+                        <select
+                          value={formData.vendor}
+                          onChange={(e) => setFormData({...formData, vendor: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          disabled={submitting}
+                        >
+                          {VENDEDORES.map(vendor => (
+                            <option key={vendor} value={vendor}>
+                              {vendor}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700">Valor (R$) *</label>
+                        <input
+                          type="number"
+                          value={formData.value}
+                          onChange={(e) => setFormData({...formData, value: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="250000"
+                          disabled={submitting}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700">Etapa *</label>
+                        <select
+                          value={formData.stage}
+                          onChange={(e) => setFormData({...formData, stage: parseInt(e.target.value)})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          disabled={submitting}
+                        >
+                          {stages.slice(0, 5).map(stage => (
+                            <option key={stage.id} value={stage.id}>
+                              {stage.name} ({stage.probability}%)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700">Prioridade</label>
+                        <select
+                          value={formData.priority}
+                          onChange={(e) => setFormData({...formData, priority: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          disabled={submitting}
+                        >
+                          <option value="baixa">Baixa</option>
+                          <option value="média">Média</option>
+                          <option value="alta">Alta</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700">Produto</label>
+                        <input
+                          type="text"
+                          value={formData.product}
+                          onChange={(e) => setFormData({...formData, product: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="Ex: Máquinas BP + Cinta"
+                          disabled={submitting}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700">Fechamento Previsto</label>
+                        <input
+                          type="date"
+                          value={formData.expected_close}
+                          onChange={(e) => setFormData({...formData, expected_close: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          disabled={submitting}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Próxima Ação</label>
+                      <input
+                        type="text"
+                        value={formData.next_action}
+                        onChange={(e) => setFormData({...formData, next_action: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Ex: Demo técnica agendada para 15/02"
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
+                </div>
 
-               <div className="bg-green-50 rounded-xl p-6 border border-green-200">
-                 <h3 className="text-lg font-semibold mb-4 text-green-800">👥 Contatos Principais</h3>
-                 <div className="grid grid-cols-2 gap-4">
-                   <div>
-                     <label className="block text-sm font-medium mb-2 text-gray-700">Power Sponsor</label>
-                     <input
-                       type="text"
-                       value={formData.power_sponsor}
-                       onChange={(e) => setFormData({...formData, power_sponsor: e.target.value})}
-                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                       placeholder="Quem assina o contrato"
-                       disabled={submitting}
-                     />
-                   </div>
-                   <div>
-                     <label className="block text-sm font-medium mb-2 text-gray-700">Sponsor</label>
-                     <input
-                       type="text"
-                       value={formData.sponsor}
-                       onChange={(e) => setFormData({...formData, sponsor: e.target.value})}
-                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                       placeholder="Decisor usuário"
-                       disabled={submitting}
-                     />
-                   </div>
-                   <div>
-                     <label className="block text-sm font-medium mb-2 text-gray-700">Principal Influenciador</label>
-                     <input
-                       type="text"
-                       value={formData.influencer}
-                       onChange={(e) => setFormData({...formData, influencer: e.target.value})}
-                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                       placeholder="Influencia a decisão"
-                       disabled={submitting}
-                     />
-                   </div>
-                   <div>
-                     <label className="block text-sm font-medium mb-2 text-gray-700">Contato de Apoio</label>
-                     <input
-                       type="text"
-                       value={formData.support_contact}
-                       onChange={(e) => setFormData({...formData, support_contact: e.target.value})}
-                       className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                       placeholder="Suporte interno"
-                       disabled={submitting}
-                     />
-                   </div>
-                 </div>
-               </div>
-             </div>
+                <div className="bg-green-50 rounded-xl p-6 border border-green-200">
+                  <h3 className="text-lg font-semibold mb-4 text-green-800">👥 Contatos Principais</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Power Sponsor</label>
+                      <input
+                        type="text"
+                        value={formData.power_sponsor}
+                        onChange={(e) => setFormData({...formData, power_sponsor: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Quem assina o contrato"
+                        disabled={submitting}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Sponsor</label>
+                      <input
+                        type="text"
+                        value={formData.sponsor}
+                        onChange={(e) => setFormData({...formData, sponsor: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Decisor usuário"
+                        disabled={submitting}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Principal Influenciador</label>
+                      <input
+                        type="text"
+                        value={formData.influencer}
+                        onChange={(e) => setFormData({...formData, influencer: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Influencia a decisão"
+                        disabled={submitting}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Contato de Apoio</label>
+                      <input
+                        type="text"
+                        value={formData.support_contact}
+                        onChange={(e) => setFormData({...formData, support_contact: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Suporte interno"
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-             <div className="space-y-6">
-               <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
-                 <h3 className="text-lg font-semibold mb-4 text-purple-800">📊 Escalas PPVVCC</h3>
-                 <div className="space-y-4">
-                   {scales.map(scale => {
-                     const Icon = scale.icon;
-                     const scaleData = formData.scales[scale.id as keyof Scales];
-                     const isActive = activeScale === scale.id;
-                     const isSelectorOpen = showScaleSelector === scale.id;
+              <div className="space-y-6">
+                <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
+                  <h3 className="text-lg font-semibold mb-4 text-purple-800">📊 Escalas PPVVCC</h3>
+                  <div className="space-y-4">
+                    {scales.map(scale => {
+                      const Icon = scale.icon;
+                      const scaleData = formData.scales[scale.id as keyof Scales];
+                      const isActive = activeScale === scale.id;
+                      const isSelectorOpen = showScaleSelector === scale.id;
 
-                     return (
-                       <div key={scale.id} className={scale.bgColor + ' ' + scale.borderColor + ' border-2 rounded-lg p-4 transition-all ' + (isActive ? 'ring-2 ring-purple-400' : '')}>
-                         <div 
-                           className="flex items-center justify-between cursor-pointer"
-                           onClick={() => setActiveScale(isActive ? null : scale.id)}
-                         >
-                           <div className="flex items-center">
-                             <Icon className={'w-5 h-5 mr-3 ' + scale.color} />
-                             <div>
-                               <span className="font-bold text-sm">{scale.name}</span>
-                               <p className="text-xs text-gray-600">{scale.description}</p>
-                             </div>
-                           </div>
-                           <div className="flex items-center space-x-2">
-                             <span className="text-2xl font-bold">{scaleData.score}</span>
-                             <ChevronRight className={'w-4 h-4 transition-transform ' + (isActive ? 'rotate-90' : '')} />
-                           </div>
-                         </div>
+                      return (
+                        <div key={scale.id} className={scale.bgColor + ' ' + scale.borderColor + ' border-2 rounded-lg p-4 transition-all ' + (isActive ? 'ring-2 ring-purple-400' : '')}>
+                          <div 
+                            className="flex items-center justify-between cursor-pointer"
+                            onClick={() => setActiveScale(isActive ? null : scale.id)}
+                          >
+                            <div className="flex items-center">
+                              <Icon className={'w-5 h-5 mr-3 ' + scale.color} />
+                              <div>
+                                <span className="font-bold text-sm">{scale.name}</span>
+                                <p className="text-xs text-gray-600">{scale.description}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-2xl font-bold">{scaleData.score}</span>
+                              <ChevronRight className={'w-4 h-4 transition-transform ' + (isActive ? 'rotate-90' : '')} />
+                            </div>
+                          </div>
 
-                         {isActive && (
-                           <div className="mt-4 pt-4 border-t border-gray-200">
-                             <div className="space-y-3">
-                               <div>
-                                 <div className="flex justify-between items-center mb-2">
-                                   <label className="block text-sm font-medium">Score (0-10)</label>
-                                   <button
-                                     type="button"
-                                     onClick={(e) => {
-                                       e.stopPropagation();
-                                       setShowScaleSelector(isSelectorOpen ? null : scale.id);
-                                     }}
-                                     className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-lg hover:bg-purple-200 transition-colors flex items-center"
-                                   >
-                                     Ver opções de escala
-                                     {isSelectorOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
-                                   </button>
-                                 </div>
+                          {isActive && (
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                              <div className="space-y-3">
+                                <div>
+                                  <div className="flex justify-between items-center mb-2">
+                                    <label className="block text-sm font-medium">Score (0-10)</label>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowScaleSelector(isSelectorOpen ? null : scale.id);
+                                      }}
+                                      className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-lg hover:bg-purple-200 transition-colors flex items-center"
+                                    >
+                                      Ver opções de escala
+                                      {isSelectorOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
+                                    </button>
+                                  </div>
 
-                                 {isSelectorOpen && (
-                                   <div className="mb-4 bg-white rounded-lg p-3 max-h-60 overflow-y-auto border border-purple-200">
-                                     {scaleDefinitions[scale.id as keyof typeof scaleDefinitions].map((def) => (
-                                       <button
-                                         key={def.level}
-                                         type="button"
-                                         onClick={() => selectScaleLevel(scale.id, def.level, def.text)}
-                                         className={'w-full text-left p-2 mb-1 rounded-lg transition-colors ' + 
-                                           (scaleData.score === def.level 
-                                             ? 'bg-purple-100 border-2 border-purple-500' 
-                                             : 'hover:bg-gray-50 border border-gray-200')}
-                                       >
-                                         <div className="flex items-start">
-                                           <span className="font-bold text-purple-700 mr-2 min-w-[20px]">{def.level}</span>
-                                           <span className="text-xs text-gray-700">{def.text}</span>
-                                         </div>
-                                       </button>
-                                     ))}
-                                   </div>
-                                 )}
+                                  {isSelectorOpen && (
+                                    <div className="mb-4 bg-white rounded-lg p-3 max-h-60 overflow-y-auto border border-purple-200">
+                                      {scaleDefinitions[scale.id as keyof typeof scaleDefinitions].map((def) => (
+                                        <button
+                                          key={def.level}
+                                          type="button"
+                                          onClick={() => selectScaleLevel(scale.id, def.level, def.text)}
+                                          className={'w-full text-left p-2 mb-1 rounded-lg transition-colors ' + 
+                                            (scaleData.score === def.level 
+                                              ? 'bg-purple-100 border-2 border-purple-500' 
+                                              : 'hover:bg-gray-50 border border-gray-200')}
+                                        >
+                                          <div className="flex items-start">
+                                            <span className="font-bold text-purple-700 mr-2 min-w-[20px]">{def.level}</span>
+                                            <span className="text-xs text-gray-700">{def.text}</span>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
 
-                                 <input
-                                   type="range"
-                                   min="0"
-                                   max="10"
-                                   value={scaleData.score}
-                                   onChange={(e) => updateScale(scale.id, 'score', parseInt(e.target.value))}
-                                   className="w-full"
-                                   disabled={submitting}
-                                 />
-                                 <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                   <span>0</span>
-                                   <span className="font-bold">{scaleData.score}</span>
-                                   <span>10</span>
-                                 </div>
-                               </div>
-                               <div>
-                                 <label className="block text-sm font-medium mb-2">Observações</label>
-                                 <textarea
-                                   value={scaleData.description}
-                                   onChange={(e) => updateScale(scale.id, 'description', e.target.value)}
-                                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                   rows={3}
-                                   placeholder="Descreva a situação atual..."
-                                   disabled={submitting}
-                                 />
-                               </div>
-                               <div className="bg-white p-3 rounded-lg">
-                                 <p className="text-xs font-medium text-gray-700 mb-2">Perguntas-chave:</p>
-                                 <ul className="text-xs text-gray-600 space-y-1">
-                                   {scale.questions?.map((question, idx) => (
-                                     <li key={idx} className="flex items-start">
-                                       <span className="text-purple-500 mr-2">•</span>
-                                       {question}
-                                     </li>
-                                   ))}
-                                 </ul>
-                               </div>
-                             </div>
-                           </div>
-                         )}
-                       </div>
-                     );
-                   })}
-                 </div>
-               </div>
-             </div>
-           </div>
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max="10"
+                                    value={scaleData.score}
+                                    onChange={(e) => updateScale(scale.id, 'score', parseInt(e.target.value))}
+                                    className="w-full"
+                                    disabled={submitting}
+                                  />
+                                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                    <span>0</span>
+                                    <span className="font-bold">{scaleData.score}</span>
+                                    <span>10</span>
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium mb-2">Observações</label>
+                                  <textarea
+                                    value={scaleData.description}
+                                    onChange={(e) => updateScale(scale.id, 'description', e.target.value)}
+                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    rows={3}
+                                    placeholder="Descreva a situação atual..."
+                                    disabled={submitting}
+                                  />
+                                </div>
+                                <div className="bg-white p-3 rounded-lg">
+                                  <p className="text-xs font-medium text-gray-700 mb-2">Perguntas-chave:</p>
+                                  <ul className="text-xs text-gray-600 space-y-1">
+                                    {scale.questions?.map((question, idx) => (
+                                      <li key={idx} className="flex items-start">
+                                        <span className="text-purple-500 mr-2">•</span>
+                                        {question}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
 
-           <div className="flex justify-end space-x-4 mt-8 pt-6 border-t">
-             <button
-               onClick={onClose}
-               className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-               disabled={submitting}
-             >
-               Cancelar
-             </button>
-             <button
-               onClick={handleSubmit}
-               className="px-6 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg hover:from-blue-700 hover:to-green-700 flex items-center transition-colors font-medium disabled:opacity-50"
-               disabled={submitting}
-             >
-               {submitting ? (
-                 <React.Fragment>
-                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                   Salvando...
-                 </React.Fragment>
-               ) : (
-                 <React.Fragment>
-                   <Save className="w-5 h-5 mr-2" />
-                   {opportunity ? 'Atualizar' : 'Criar'} Oportunidade
-                 </React.Fragment>
-               )}
-             </button>
-           </div>
-         </div>
-       </div>
-     </div>
-   );
- };
+            <div className="flex justify-end space-x-4 mt-8 pt-6 border-t">
+              <button
+                onClick={onClose}
+                className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                disabled={submitting}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSubmit}
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg hover:from-blue-700 hover:to-green-700 flex items-center transition-colors font-medium disabled:opacity-50"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <React.Fragment>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    Salvando...
+                  </React.Fragment>
+                ) : (
+                  <React.Fragment>
+                    <Save className="w-5 h-5 mr-2" />
+                    {opportunity ? 'Atualizar' : 'Criar'} Oportunidade
+                  </React.Fragment>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
- // Componente de Checklist para mudança de estágio
- const StageChecklistModal = () => {
-   if (!showStageChecklist) return null;
+  // Componente de Checklist para mudança de estágio
+  const StageChecklistModal = () => {
+    if (!showStageChecklist) return null;
 
-   const currentStage = stages.find(s => s.id === showStageChecklist.opportunity.stage);
-   const targetStage = stages.find(s => s.id === showStageChecklist.targetStage);
-   
-   const initCheckedItems = () => {
-     const items: {[key: string]: boolean} = {};
-     if (currentStage?.checklist) {
-       Object.values(currentStage.checklist).forEach(key => {
-         items[key] = false;
-       });
-     }
-     return items;
-   };
-   
-   const [checkedItems, setCheckedItems] = useState<{[key: string]: boolean}>(initCheckedItems);
+    const currentStage = stages.find(s => s.id === showStageChecklist.opportunity.stage);
+    const targetStage = stages.find(s => s.id === showStageChecklist.targetStage);
+    
+    const initCheckedItems = () => {
+      const items: {[key: string]: boolean} = {};
+      if (currentStage?.checklist) {
+        Object.values(currentStage.checklist).forEach(key => {
+          items[key] = false;
+        });
+      }
+      return items;
+    };
+    
+    const [checkedItems, setCheckedItems] = useState<{[key: string]: boolean}>(initCheckedItems);
 
-   if (!currentStage || !targetStage) return null;
+    if (!currentStage || !targetStage) return null;
 
-   const handleCheckChange = (key: string) => {
-     setCheckedItems(prev => ({...prev, [key]: !prev[key]}));
-   };
+    const handleCheckChange = (key: string) => {
+      setCheckedItems(prev => ({...prev, [key]: !prev[key]}));
+    };
 
-   const allChecked = currentStage.checklist && Object.values(currentStage.checklist).every(key => checkedItems[key] === true);
+    const allChecked = currentStage.checklist && Object.values(currentStage.checklist).every(key => checkedItems[key] === true);
 
-   const confirmStageChange = async () => {
-     if (!allChecked) {
-       alert('Por favor, complete todos os itens do checklist antes de avançar.');
-       return;
-     }
+    const confirmStageChange = async () => {
+      if (!allChecked) {
+        alert('Por favor, complete todos os itens do checklist antes de avançar.');
+        return;
+      }
 
-     try {
-       await moveStage(showStageChecklist.opportunity, showStageChecklist.targetStage);
-       setShowStageChecklist(null);
-     } catch (error) {
-       console.error('Erro ao mover etapa:', error);
-     }
-   };
+      try {
+        await moveStage(showStageChecklist.opportunity, showStageChecklist.targetStage);
+        setShowStageChecklist(null);
+      } catch (error) {
+        console.error('Erro ao mover etapa:', error);
+      }
+    };
 
-   return (
-     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-       <div className="bg-white rounded-xl max-w-2xl w-full">
-         <div className="p-6 border-b">
-           <h3 className="text-xl font-bold text-gray-900">
-             ✅ Checklist para avançar para {targetStage.name}
-           </h3>
-           <p className="text-gray-600 mt-1">
-             Complete todos os itens antes de mover a oportunidade
-           </p>
-         </div>
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-xl max-w-2xl w-full">
+          <div className="p-6 border-b">
+            <h3 className="text-xl font-bold text-gray-900">
+              ✅ Checklist para avançar para {targetStage.name}
+            </h3>
+            <p className="text-gray-600 mt-1">
+              Complete todos os itens antes de mover a oportunidade
+            </p>
+          </div>
 
-         <div className="p-6">
-           <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-             <h4 className="font-semibold text-blue-800 mb-2">📋 {showStageChecklist.opportunity.name}</h4>
-             <p className="text-sm text-blue-700">{showStageChecklist.opportunity.client}</p>
-           </div>
+          <div className="p-6">
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <h4 className="font-semibold text-blue-800 mb-2">📋 {showStageChecklist.opportunity.name}</h4>
+              <p className="text-sm text-blue-700">{showStageChecklist.opportunity.client}</p>
+            </div>
 
-           <div className="space-y-3">
-             {currentStage.checklist && Object.entries(currentStage.checklist).map(([label, key]) => {
-               const isChecked = checkedItems[key] === true;
-               return (
-                 <label key={key} className="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors">
-                   <input
-                     type="checkbox"
-                     checked={isChecked}
-                     onChange={() => handleCheckChange(key)}
-                     className="mt-0.5 mr-3 w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                   />
-                   <div className="flex-1">
-                     <span className="text-gray-800 font-medium">{label}</span>
-                     {isChecked && (
-                       <CheckCircle className="inline-block w-5 h-5 text-green-600 ml-2" />
-                     )}
-                   </div>
-                 </label>
-               );
-             })}
-           </div>
+            <div className="space-y-3">
+              {currentStage.checklist && Object.entries(currentStage.checklist).map(([label, key]) => {
+                const isChecked = checkedItems[key] === true;
+                return (
+                  <label key={key} className="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => handleCheckChange(key)}
+                      className="mt-0.5 mr-3 w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="flex-1">
+                      <span className="text-gray-800 font-medium">{label}</span>
+                      {isChecked && (
+                        <CheckCircle className="inline-block w-5 h-5 text-green-600 ml-2" />
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
 
-           <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
-             <p className="text-sm text-amber-800">
-               <AlertCircle className="inline-block w-4 h-4 mr-1" />
-               <strong>Atenção:</strong> Confirme que todos os requisitos foram cumpridos antes de avançar.
-             </p>
-           </div>
-         </div>
+            <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+              <p className="text-sm text-amber-800">
+                <AlertCircle className="inline-block w-4 h-4 mr-1" />
+                <strong>Atenção:</strong> Confirme que todos os requisitos foram cumpridos antes de avançar.
+              </p>
+            </div>
+          </div>
 
-         <div className="p-6 border-t flex justify-end space-x-4">
-           <button
-             onClick={() => setShowStageChecklist(null)}
-             className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-           >
-             Cancelar
-           </button>
-           <button
-             onClick={confirmStageChange}
-             className={'px-6 py-3 rounded-lg transition-colors flex items-center font-medium ' + 
-               (allChecked 
-                 ? 'bg-gradient-to-r from-blue-600 to-green-600 text-white hover:from-blue-700 hover:to-green-700' 
-                 : 'bg-gray-300 text-gray-500 cursor-not-allowed')}
-             disabled={!allChecked}
-           >
-             <Check className="w-5 h-5 mr-2" />
-             Confirmar e Avançar
-           </button>
-         </div>
-       </div>
-     </div>
-   );
- };
+          <div className="p-6 border-t flex justify-end space-x-4">
+            <button
+              onClick={() => setShowStageChecklist(null)}
+              className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmStageChange}
+              className={'px-6 py-3 rounded-lg transition-colors flex items-center font-medium ' + 
+                (allChecked 
+                  ? 'bg-gradient-to-r from-blue-600 to-green-600 text-white hover:from-blue-700 hover:to-green-700' 
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed')}
+              disabled={!allChecked}
+            >
+              <Check className="w-5 h-5 mr-2" />
+              Confirmar e Avançar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
- return (
-   <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-50">
-     <header className="bg-white shadow-lg border-b-2 border-blue-200">
-       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-         <div className="flex justify-between items-center py-6">
-           <div className="flex items-center">
-             <div className="p-3 bg-gradient-to-r from-blue-600 to-green-600 rounded-xl">
-               <Factory className="w-8 h-8 text-white" />
-             </div>
-             <div className="ml-4">
-               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                 🇧🇷 CRM Ventapel Brasil
-               </h1>
-               <p className="text-sm text-gray-600">Metodologia PPVVCC - Gestão Completa de Oportunidades</p>
-             </div>
-           </div>
-           <div className="text-right">
-             <p className="text-sm font-medium text-blue-600">🌐 ventapel.com.br</p>
-             <div className="flex items-center text-xs text-green-600">
-               <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
-               Online
-             </div>
-           </div>
-         </div>
-       </div>
-     </header>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-50">
+      <header className="bg-white shadow-lg border-b-2 border-blue-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div className="flex items-center">
+              <div className="p-3 bg-gradient-to-r from-blue-600 to-green-600 rounded-xl">
+                <Factory className="w-8 h-8 text-white" />
+              </div>
+              <div className="ml-4">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                  🇧🇷 CRM Ventapel Brasil
+                </h1>
+                <p className="text-sm text-gray-600">Metodologia PPVVCC - Gestão Completa de Oportunidades</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-medium text-blue-600">🌐 ventapel.com.br</p>
+              <div className="flex items-center text-xs text-green-600">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
+                Online
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
 
-     <nav className="bg-white shadow-sm border-b border-gray-200">
-       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-         <div className="flex space-x-8">
-           <button
-             onClick={() => setActiveTab('dashboard')}
-             className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'dashboard'
-                 ? 'border-blue-500 text-blue-600'
-                 : 'border-transparent text-gray-500 hover:text-gray-700')}
-           >
-             <BarChart3 className="w-4 h-4 mr-2" />
-             📊 Dashboard
-           </button>
-           <button
-             onClick={() => setActiveTab('opportunities')}
-             className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'opportunities'
-                 ? 'border-blue-500 text-blue-600'
-                 : 'border-transparent text-gray-500 hover:text-gray-700')}
-           >
-             <Target className="w-4 h-4 mr-2" />
-             🎯 Oportunidades
-           </button>
-         </div>
-       </div>
-     </nav>
+      <nav className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex space-x-8">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'dashboard'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700')}
+            >
+              <BarChart3 className="w-4 h-4 mr-2" />
+              📊 Dashboard
+            </button>
+            <button
+              onClick={() => setActiveTab('opportunities')}
+              className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'opportunities'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700')}
+            >
+              <Target className="w-4 h-4 mr-2" />
+              🎯 Oportunidades
+            </button>
+          </div>
+        </div>
+      </nav>
 
-     <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-       {activeTab === 'dashboard' && <Dashboard />}
-       {activeTab === 'opportunities' && <OpportunityList />}
-     </main>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {activeTab === 'dashboard' && <Dashboard />}
+        {activeTab === 'opportunities' && <OpportunityList />}
+      </main>
 
-     {showNewOpportunity && (
-       <OpportunityForm 
-         onClose={() => setShowNewOpportunity(false)} 
-       />
-     )}
+      {showNewOpportunity && (
+        <OpportunityForm 
+          onClose={() => setShowNewOpportunity(false)} 
+        />
+      )}
 
-     {editingOpportunity && (
-       <OpportunityForm 
-         opportunity={editingOpportunity}
-         onClose={() => setEditingOpportunity(null)} 
-       />
-     )}
+      {editingOpportunity && (
+        <OpportunityForm 
+          opportunity={editingOpportunity}
+          onClose={() => setEditingOpportunity(null)} 
+        />
+      )}
 
-     <StageChecklistModal />
-   </div>
- );
+      <StageChecklistModal />
+    </div>
+  );
 };
 
 // --- APP WRAPPER CON PROVIDER ---
 const App: React.FC = () => {
- return (
-   <OpportunitiesProvider>
-     <CRMVentapel />
-   </OpportunitiesProvider>
- );
+  return (
+    <OpportunitiesProvider>
+      <CRMVentapel />
+    </OpportunitiesProvider>
+  );
 };
 
 export default App;
