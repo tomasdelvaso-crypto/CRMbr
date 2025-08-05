@@ -640,7 +640,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       {children}
     </OpportunitiesContext.Provider>
   );
-};
+const useFilters = () => {
 
 // --- HOOKS UTILITARIOS ---
 const useFilters = () => {
