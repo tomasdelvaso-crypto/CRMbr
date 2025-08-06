@@ -372,6 +372,99 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
       prompt: `Analiza las escalas actuales de ${currentOpportunity.client} y dame acciones específicas para subir cada una 2 puntos`
     });
 
+    // === NUEVOS QUICK ACTIONS PARA EMAIL Y VENTAS ===
+    
+    // Calcular días sin contacto
+    const daysSince = currentOpportunity.last_update ? 
+      Math.floor((new Date() - new Date(currentOpportunity.last_update)) / (1000 * 60 * 60 * 24)) : 0;
+
+    // Email contextualizado (siempre visible)
+    actions.push({
+      icon: '📧',
+      label: daysSince > 7 ? 'Email reactivación' : 'Generar email',
+      prompt: `Genera un email profesional para ${currentOpportunity.client}. 
+        Contexto: DOR=${painValue}/10, PODER=${powerValue}/10, VALOR=${valueValue}/10.
+        ${daysSince > 7 ? `URGENTE: ${daysSince} días sin contacto, necesito reactivar este deal frío.` : ''} 
+        ${painValue < 5 ? 'Objetivo principal: que admita el problema de violación de cajas.' : 
+          powerValue < 4 ? 'Objetivo principal: conseguir acceso al tomador de decisión.' : 
+          valueValue < 5 ? 'Objetivo principal: validar ROI y valor de la solución.' :
+          'Objetivo principal: avanzar al cierre con propuesta formal.'}
+        Industria: ${currentOpportunity.industry || 'logística'}.
+        Valor del deal: R$${currentOpportunity.value}.
+        Contactos: Power Sponsor: ${currentOpportunity.power_sponsor || 'no identificado'}, 
+        Sponsor: ${currentOpportunity.sponsor || 'no identificado'}.`
+    });
+
+    // Script de llamada (siempre visible)
+    actions.push({
+      icon: '📞',
+      label: 'Script de llamada',
+      prompt: `Dame un script completo de llamada telefónica para ${currentOpportunity.client}. 
+        Industria: ${currentOpportunity.industry || 'logística'}. 
+        Escalas actuales: DOR=${painValue}/10, PODER=${powerValue}/10, VALOR=${valueValue}/10.
+        Contacto actual: ${currentOpportunity.power_sponsor || currentOpportunity.sponsor || 'no identificado'}.
+        Incluye: apertura de 15 segundos, preguntas SPIN específicas, manejo de objeciones comunes, y cierre con próximo paso.`
+    });
+
+    // Demo (solo si dolor admitido y algo de poder)
+    if (painValue >= 5 && powerValue >= 3) {
+      actions.push({
+        icon: '🎬',
+        label: 'Preparar demo',
+        prompt: `Prepara una agenda detallada de demo de 30 minutos para ${currentOpportunity.client}. 
+          Valor del deal: R$${currentOpportunity.value}. 
+          Industria: ${currentOpportunity.industry || 'logística'}.
+          Dolor principal admitido (score ${painValue}/10).
+          Incluye: 3 momentos WOW específicos, casos de éxito de ${currentOpportunity.industry || 'su industria'}, 
+          cálculo de ROI personalizado, y dejar algo pendiente para próxima reunión.`
+      });
+    }
+
+    // Manejo de objeciones (si valor no está validado)
+    if (valueValue < 7) {
+      actions.push({
+        icon: '💡',
+        label: 'Manejar objeción precio',
+        prompt: `${currentOpportunity.client} probablemente objetará el precio de R$${currentOpportunity.value}. 
+          Dame 3 formas diferentes de responder a "es muy caro" sin confrontar. 
+          Usa casos de éxito de ${currentOpportunity.industry || 'la industria'}, 
+          ROI específico, y reframe a inversión vs costo.`
+      });
+    }
+
+    // Estrategia para deals grandes
+    if (currentOpportunity.value > 100000) {
+      actions.push({
+        icon: '🎖️',
+        label: 'Estrategia de cuenta',
+        prompt: `Diseña una estrategia completa para cerrar ${currentOpportunity.client} (R$${currentOpportunity.value}). 
+          Situación actual: DOR=${painValue}, PODER=${powerValue}, VALOR=${valueValue}.
+          Incluye: mapa de todos los stakeholders, timeline de 30-60-90 días, 
+          principales riesgos y mitigación, competencia probable, y próximos 5 pasos concretos.`
+      });
+    }
+
+    // Análisis de competencia (siempre útil)
+    actions.push({
+      icon: '⚔️',
+      label: 'Vs Competencia',
+      prompt: `${currentOpportunity.client} está evaluando alternativas (3M, Scotch, o soluciones genéricas). 
+        Dame argumentos diferenciadores clave de Ventapel vs cada competidor, 
+        sin hablar mal de la competencia. 
+        Foco en nuestra solución integral (máquina + cinta + soporte) y garantía de 40% reducción.
+        Industria: ${currentOpportunity.industry || 'logística'}.`
+    });
+
+    // Casos de éxito relevantes
+    actions.push({
+      icon: '🏆',
+      label: 'Casos de éxito',
+      prompt: `Dame 3 casos de éxito relevantes para ${currentOpportunity.client} en industria ${currentOpportunity.industry || 'similar'}. 
+        Incluye: empresa, problema inicial, solución implementada, resultados cuantificados, ROI logrado.
+        Casos disponibles: MercadoLibre (40% reducción retrabalho), Natura (60% menos violaciones), 
+        Magazine Luiza (35% reducción devoluciones), Dafiti (eliminó retrabalho manual).`
+    });
+
     return actions;
   };
 
@@ -564,7 +657,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
 
           {/* Quick Actions */}
           <div className="p-3 bg-gray-50 border-b overflow-x-auto">
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-nowrap">
               {getQuickActions().map((action, idx) => (
                 <button
                   key={idx}
@@ -585,6 +678,14 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
               <div className="text-center text-gray-500 text-sm">
                 <p className="mb-2">Analizando {currentOpportunity.client}...</p>
                 <p className="text-xs">Escalas promedio: {analysis?.avgScale}/10</p>
+                <p className="text-xs mt-2">💡 Pregúntame sobre:</p>
+                <ul className="text-xs text-left mt-1 space-y-1">
+                  <li>• Email de reactivación o follow-up</li>
+                  <li>• Script para llamada telefónica</li>
+                  <li>• Cómo preparar la demo</li>
+                  <li>• Manejo de objeciones de precio</li>
+                  <li>• Estrategia contra competencia</li>
+                </ul>
               </div>
             )}
             {messages.map((msg, idx) => (
