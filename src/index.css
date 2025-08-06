@@ -2,16 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Estilos personalizados de Ventapel si querés agregar */
-@layer base {
-  body {
-    @apply antialiased;
+/* Estilos adicionales opcionales */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scroll suave */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Para el spinner de loading */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
-@layer components {
-  /* Componentes custom si necesitás */
-  .btn-ventapel {
-    @apply px-4 py-2 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg hover:from-blue-700 hover:to-green-700 transition-colors font-bold;
-  }
+.animate-spin {
+  animation: spin 1s linear infinite;
 }
