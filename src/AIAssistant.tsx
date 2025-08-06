@@ -1,566 +1,220 @@
 import React, { useState, useEffect } from 'react';
-import { MessageCircle, X, Send, Loader, Phone, DollarSign, Shield, Zap, Target, AlertTriangle, CheckCircle, Brain, FileText, ArrowRight, Clock, TrendingUp, XCircle, ChevronDown, Users, Sparkles } from 'lucide-react';
-import { VENTAPEL_COMMERCIAL_CONTEXT, PPVVCC_SCORING_GUIDE, ROI_CALCULATION_TEMPLATE, OBJECTION_HANDLING_SCRIPTS, SUCCESS_STORIES_DETAILED } from './contexts/VentapelCommercialContext';
+import { MessageCircle, X, AlertTriangle, TrendingUp, Phone, Target } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
-// Interfaces
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
-
-interface Opportunity {
-  id: number;
-  name: string;
-  client: string;
-  vendor: string;
-  value: number;
-  stage: number;
-  priority: string;
-  probability: number;
-  expected_close?: string;
-  next_action?: string;
-  product?: string;
-  scales: {
-    dor: { score: number; description: string };
-    poder: { score: number; description: string };
-    visao: { score: number; description: string };
-    valor: { score: number; description: string };
-    controle: { score: number; description: string };
-    compras: { score: number; description: string };
-  };
-}
-
-interface AIAssistantProps {
-  opportunities: Opportunity[];
-  currentOpportunity?: Opportunity | null;
-}
-
-// Funciones auxiliares para llamar a las APIs
-const searchWeb = async (query: string): Promise<any> => {
-  try {
-    const response = await fetch('/api/assistant', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'search',
-        data: {
-          q: query,
-          gl: 'br',
-          hl: 'pt',
-          num: 10
-        }
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error searching web:', error);
-    throw error;
-  }
-};
-
-const generateWithClaude = async (messages: any[], system?: string): Promise<string> => {
-  // System prompt AGRESIVO para VENDER
-  const salesKillerPrompt = `
-${VENTAPEL_COMMERCIAL_CONTEXT}
-
-${PPVVCC_SCORING_GUIDE || ''}
-
-${ROI_CALCULATION_TEMPLATE || ''}
-
-SCRIPTS DE MANEJO DE OBJECIONES:
-${OBJECTION_HANDLING_SCRIPTS ? JSON.stringify(OBJECTION_HANDLING_SCRIPTS, null, 2) : ''}
-
-CASOS DE ÉXITO PARA USAR:
-${SUCCESS_STORIES_DETAILED ? JSON.stringify(SUCCESS_STORIES_DETAILED, null, 2) : ''}
-
-🔥 INSTRUCCIONES CRÍTICAS - MODO VENDEDOR KILLER 🔥
-
-TU ÚNICO OBJETIVO: Ayudar al vendedor a CERRAR DEALS YA.
-
-REGLAS INQUEBRANTABLES:
-1. Máximo 3-4 bullets por respuesta
-2. SIEMPRE terminar con "⚡ PRÓXIMA ACCIÓN: [algo específico para hacer YA]"
-3. Usar verbos de acción: "Llamá", "Enviá", "Pedí", "Cerrá", "Presioná"
-4. Dar scripts EXACTOS, palabra por palabra
-5. Crear URGENCIA en cada interacción
-6. NO análisis largos, solo ACCIONES
-
-FORMATO DE RESPUESTA PARA OBJECIONES:
-🎯 OBJECIÓN DETECTADA: [cual es]
-💬 RESPUESTA EXACTA: "[script palabra por palabra]"
-📊 DATO KILLER: [caso o número que destruye la objeción]
-⚡ PRÓXIMA ACCIÓN: [qué hacer inmediatamente]
-
-FORMATO PARA CIERRE:
-💰 TÉCNICA: [nombre de la técnica]
-🗣️ SCRIPT: "[exactamente qué decir]"
-⏰ CREAR URGENCIA: "[frase específica]"
-⚡ PRÓXIMA ACCIÓN: [cerrar o siguiente paso]
-
-LENGUAJE:
-- Directo, sin vueltas (estilo Tomás)
-- Argentino/Brasileño según el cliente
-- Confianza total: "Esto se cierra hoy"
-- Mentalidad ganadora SIEMPRE
-
-ALERTAS PROACTIVAS:
-- Si hay más de 7 días sin contacto: "🔥 ALERTA: Llamar YA o se enfría"
-- Si PPVVCC > 40: "💎 MADURO PARA CIERRE - Pedir la orden HOY"
-- Si DOLOR > 7: "🎯 Cliente con dolor alto - PRESIONAR para demo YA"
-
-${system ? `\nCONTEXTO ADICIONAL: ${system}` : ''}
-
-Ahora respondé como el mejor closer de Ventapel. Cada palabra debe empujar hacia el CIERRE.
-`;
-
-  try {
-    const response = await fetch('/api/assistant', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'claude',
-        data: {
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 4096,
-          messages: messages,
-          system: salesKillerPrompt
-        }
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.content[0].text;
-  } catch (error) {
-    console.error('Error generating with Claude:', error);
-    throw error;
-  }
-};
-
-// Componente de Alertas de Venta
-const SalesAlerts: React.FC<{ opportunities: Opportunity[] }> = ({ opportunities }) => {
-  const alerts = React.useMemo(() => {
-    const urgentAlerts = [];
-    
-    for (const opp of opportunities) {
-      const totalScore = Object.values(opp.scales).reduce((sum, s) => sum + s.score, 0);
-      
-      // Oportunidades maduras para cerrar
-      if (totalScore > 40) {
-        urgentAlerts.push({
-          type: 'close',
-          icon: DollarSign,
-          color: 'text-green-600 bg-green-100',
-          message: `💎 ${opp.client} está MADURO (score ${totalScore}/60) - CERRAR YA`,
-          action: `Llamar HOY y pedir la orden`
-        });
-      }
-      
-      // Alto dolor sin acción
-      if (opp.scales.dor.score >= 7 && opp.scales.poder.score < 5) {
-        urgentAlerts.push({
-          type: 'poder',
-          icon: Target,
-          color: 'text-red-600 bg-red-100',
-          message: `🔥 ${opp.client} tiene DOLOR alto (${opp.scales.dor.score}) pero no tenés al decisor`,
-          action: `Exigir reunión con el jefe HOY`
-        });
-      }
-      
-      // Oportunidades enfriándose
-      const lastUpdate = new Date(opp.expected_close || new Date());
-      const daysSince = Math.floor((new Date().getTime() - lastUpdate.getTime()) / (1000 * 3600 * 24));
-      if (daysSince > 7) {
-        urgentAlerts.push({
-          type: 'cold',
-          icon: AlertTriangle,
-          color: 'text-yellow-600 bg-yellow-100',
-          message: `⚠️ ${opp.client} - ${daysSince} días sin contacto - SE ENFRÍA`,
-          action: `WhatsApp AHORA: "Tengo novedades importantes"`
-        });
-      }
-    }
-    
-    return urgentAlerts.slice(0, 3); // Top 3 alertas
-  }, [opportunities]);
-
-  if (alerts.length === 0) return null;
-
-  return (
-    <div className="space-y-2 p-3 bg-red-50 border-b border-red-200">
-      <h4 className="font-bold text-sm text-red-800 flex items-center">
-        <Zap className="w-4 h-4 mr-1 animate-pulse" />
-        ACCIONES URGENTES - HACER YA
-      </h4>
-      {alerts.map((alert, idx) => {
-        const Icon = alert.icon;
-        return (
-          <div key={idx} className={`p-2 rounded-lg flex items-start ${alert.color}`}>
-            <Icon className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-xs font-semibold">{alert.message}</p>
-              <p className="text-xs mt-1">→ {alert.action}</p>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-// Componente principal AIAssistant
-const AIAssistant: React.FC<AIAssistantProps> = ({ opportunities, currentOpportunity }) => {
+const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputMessage, setInputMessage] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [analysis, setAnalysis] = useState(null);
+  const [alerts, setAlerts] = useState([]);
 
-  // Quick Actions KILLER para VENDER
-  const quickActions = [
-    { 
-      icon: Phone, 
-      label: '📞 Qué decir AHORA', 
-      action: 'call_script',
-      color: 'hover:bg-green-100 hover:border-green-500'
-    },
-    { 
-      icon: DollarSign, 
-      label: '💰 CERRAR este deal', 
-      action: 'close_now',
-      color: 'hover:bg-yellow-100 hover:border-yellow-500'
-    },
-    { 
-      icon: Shield, 
-      label: '🚫 Vencer objeción', 
-      action: 'objection',
-      color: 'hover:bg-red-100 hover:border-red-500'
-    },
-    { 
-      icon: Zap, 
-      label: '⚡ Crear URGENCIA', 
-      action: 'urgency',
-      color: 'hover:bg-orange-100 hover:border-orange-500'
-    },
-    { 
-      icon: Target, 
-      label: '🎯 Próximo paso', 
-      action: 'next_step',
-      color: 'hover:bg-blue-100 hover:border-blue-500'
-    },
-    { 
-      icon: FileText, 
-      label: '📧 Email que cierra', 
-      action: 'email_template',
-      color: 'hover:bg-purple-100 hover:border-purple-500'
+  // Analizar oportunidad cuando cambia
+  useEffect(() => {
+    if (currentOpportunity) {
+      analyzeOpportunity(currentOpportunity);
+      checkOpportunityHealth(currentOpportunity);
     }
-  ];
+  }, [currentOpportunity]);
 
-  // Comandos rápidos
-  const quickCommands = {
-    '/llamada': 'call_script',
-    '/cerrar': 'close_now',
-    '/objecion': 'objection',
-    '/urgencia': 'urgency',
-    '/siguiente': 'next_step',
-    '/email': 'email_template',
-    '/precio': 'price_objection',
-    '/competencia': 'competition',
-    '/demo': 'demo_script'
-  };
+  // Función para analizar la oportunidad actual
+  const analyzeOpportunity = (opp) => {
+    if (!opp || !opp.scales) return;
 
-  const handleQuickAction = async (action: string) => {
-    if (!currentOpportunity && action !== 'general') {
-      setInputMessage('⚠️ Seleccioná una oportunidad primero');
-      return;
-    }
-
-    const prompts: { [key: string]: string } = {
-      call_script: `Dame el script EXACTO para llamar a ${currentOpportunity?.client} AHORA.
-
-Contexto:
-- Etapa: ${currentOpportunity?.stage}
-- Score DOLOR: ${currentOpportunity?.scales.dor.score}
-- Score PODER: ${currentOpportunity?.scales.poder.score}
-- Último contacto: ${currentOpportunity?.next_action}
-
-Necesito:
-1. Primera frase para abrir (máx 2 líneas)
-2. Pregunta poderosa para crear dolor
-3. Cómo pedir la reunión/demo
-4. Si dice "no tengo tiempo": respuesta exacta
-5. Cierre de la llamada
-
-TODO palabra por palabra, listo para leer.`,
-      
-      close_now: `ESTRATEGIA PARA CERRAR ${currentOpportunity?.client} HOY.
-
-Situación:
-- Valor: R$ ${currentOpportunity?.value.toLocaleString('pt-BR')}
-- Score total PPVVCC: ${Object.values(currentOpportunity?.scales || {}).reduce((sum, s) => sum + s.score, 0)}/60
-- Producto: ${currentOpportunity?.product}
-
-Dame:
-1. Técnica de cierre específica a usar
-2. Script EXACTO del cierre (palabra por palabra)
-3. Cómo crear urgencia REAL
-4. Si pide descuento: respuesta exacta
-5. Si dice "lo tengo que pensar": contra-respuesta
-6. Frase para sellar el deal
-
-MODO KILLER: Este deal se cierra HOY.`,
-      
-      objection: `MANEJO DE OBJECIONES para ${currentOpportunity?.client}.
-
-Top 5 objeciones probables y RESPUESTA EXACTA:
-
-1. "Es muy caro"
-   → Script completo (3 frases máximo)
-   → Caso de éxito con números
-   
-2. "Ya tenemos proveedor"
-   → Script de respuesta
-   → Diferenciador KILLER
-   
-3. "No es el momento"
-   → Crear urgencia (script exacto)
-   → Costo de no actuar
-   
-4. "Necesito pensarlo"
-   → Técnica para cerrar ahora
-   → Pregunta que compromete
-   
-5. "No veo el ROI"
-   → Números específicos
-   → Garantía para ofrecer
-
-Para cada una: QUÉ DECIR EXACTAMENTE.`,
-      
-      urgency: `Crear URGENCIA REAL para ${currentOpportunity?.client}.
-
-Dame 5 formas de crear urgencia HOY:
-1. Urgencia por precio (qué decir exacto)
-2. Urgencia por disponibilidad 
-3. Urgencia por competencia
-4. Urgencia por pérdida actual
-5. Urgencia por oportunidad única
-
-Para cada una:
-- Script exacto (máx 2 frases)
-- Por qué funciona
-- Cuándo usarla
-
-OBJETIVO: Que firme esta semana.`,
-      
-      next_step: `PRÓXIMA ACCIÓN EXACTA para ${currentOpportunity?.client}.
-
-Estado actual:
-- Etapa: ${currentOpportunity?.stage}
-- Scores PPVVCC: ${JSON.stringify(currentOpportunity?.scales)}
-- Último contacto: ${currentOpportunity?.next_action}
-
-Dame:
-1. QUÉ hacer en las próximas 24 horas (específico)
-2. A QUIÉN contactar y cómo encontrarlo
-3. QUÉ decir/escribir (script exacto)
-4. QUÉ documento/demo preparar
-5. CÓMO asegurar la siguiente reunión
-6. Plan B si no responde
-
-SÉ ESPECÍFICO: Nada de "hacer seguimiento", quiero acciones exactas.`,
-      
-      email_template: `Email KILLER para ${currentOpportunity?.client}.
-
-Necesito email listo para copiar/pegar:
-
-OPCIÓN A - Email para conseguir reunión
-- Asunto que garantiza apertura
-- Cuerpo (máx 5 líneas)
-- Call to action claro
-
-OPCIÓN B - Email post-demo para cerrar
-- Asunto urgente
-- Recordar valor principal (1 línea)
-- Crear urgencia
-- Pedir la orden
-
-OPCIÓN C - Email para reactivar (no responde)
-- Asunto provocador
-- Mensaje super corto
-- Pregunta que obliga respuesta
-
-Formato listo para enviar.`,
-
-      price_objection: `OBJECIÓN DE PRECIO para ${currentOpportunity?.client}.
-
-"Es muy caro" / "No tenemos presupuesto"
-
-Dame:
-1. SCRIPT EXACTO de respuesta (método Ventapel)
-2. Cómo convertir precio en inversión
-3. Caso de éxito con ROI específico
-4. Cálculo de pérdida actual (números)
-5. Opciones de pago/financiación disponibles
-6. Pregunta de cierre post-objeción
-
-Todo palabra por palabra, probado y efectivo.`,
-
-      competition: `${currentOpportunity?.client} menciona COMPETIDORES.
-
-Respuestas EXACTAS para:
-1. "Estamos viendo a 3M también"
-2. "El otro proveedor es más barato"
-3. "Ya trabajamos con [competidor]"
-4. "Vamos a comparar propuestas"
-
-Para cada situación:
-- Script de respuesta (máx 3 frases)
-- Diferenciador ÚNICO de Ventapel
-- Pregunta para retomar control
-- Cómo evitar guerra de precios
-
-OBJETIVO: Ganar sin bajar precio.`,
-
-      demo_script: `DEMO PERFECTA para ${currentOpportunity?.client}.
-
-Guión de demo que VENDE:
-1. Apertura (crear expectativa) - 1 min
-2. Dolor principal a atacar - 2 min
-3. Solución Ventapel (solo lo relevante) - 3 min
-4. Caso de éxito similar - 2 min
-5. ROI específico para ellos - 2 min
-6. Cierre con próximos pasos - 1 min
-
-Para cada parte:
-- Qué decir EXACTAMENTE
-- Qué mostrar/demostrar
-- Pregunta de confirmación
-
-Total: 11 minutos que cierran deals.`
-    };
-
-    if (prompts[action]) {
-      setInputMessage(prompts[action]);
-      await handleSendMessage(prompts[action]);
-    }
-  };
-
-  const handleSendMessage = async (messageText?: string) => {
-    let text = messageText || inputMessage;
+    const scales = opp.scales;
+    const avgScale = Object.values(scales).reduce((a, b) => a + b, 0) / 6;
     
-    // Chequear comandos rápidos
-    const command = text.trim().toLowerCase();
-    if (quickCommands[command]) {
-      await handleQuickAction(quickCommands[command]);
-      return;
+    // Identificar escalas críticas
+    const criticalScales = [];
+    if (scales.pain < 5) criticalScales.push({ name: 'DOR', value: scales.pain, issue: 'Cliente no admite el problema' });
+    if (scales.power < 4) criticalScales.push({ name: 'PODER', value: scales.power, issue: 'Sin acceso al decisor' });
+    if (scales.vision < 4) criticalScales.push({ name: 'VISÃO', value: scales.vision, issue: 'Cliente no ve la solución' });
+    if (scales.value < 4) criticalScales.push({ name: 'VALOR', value: scales.value, issue: 'No percibe el ROI' });
+
+    // Calcular probabilidad de cierre
+    let probability = 0;
+    if (avgScale >= 7) probability = 70;
+    else if (avgScale >= 5) probability = 40;
+    else if (avgScale >= 3) probability = 20;
+    else probability = 5;
+
+    setAnalysis({
+      avgScale: avgScale.toFixed(1),
+      probability,
+      criticalScales,
+      nextAction: generateNextAction(opp)
+    });
+  };
+
+  // Generar próxima acción recomendada
+  const generateNextAction = (opp) => {
+    const scales = opp.scales;
+    
+    if (scales.pain < 5) {
+      return {
+        action: "Identificar y documentar el dolor",
+        script: "Necesitás que admita el problema. Preguntá: '¿Cuántas horas por mes dedican a re-embalar productos dañados?'"
+      };
+    }
+    if (scales.power < 4) {
+      return {
+        action: "Acceder al tomador de decisión",
+        script: "Pedí acceso directo: 'Para diseñar la mejor solución, ¿podríamos incluir al gerente de logística en la próxima reunión?'"
+      };
+    }
+    if (scales.vision < 5) {
+      return {
+        action: "Construir visión de solución",
+        script: "Mostrá el valor completo: 'Les muestro cómo reducimos 40% el retrabalho en MercadoLibre con nuestra solución integrada'"
+      };
+    }
+    if (scales.value < 5) {
+      return {
+        action: "Demostrar ROI concreto",
+        script: "Cuantificá el retorno: 'Con su volumen de 10,000 envíos/mes, ahorrarían R$15,000 mensuales solo en retrabalho'"
+      };
+    }
+    return {
+      action: "Avanzar al cierre",
+      script: "Cerrá con confianza: '¿Qué necesitamos para comenzar la implementación en 30 días?'"
+    };
+  };
+
+  // Verificar salud de la oportunidad
+  const checkOpportunityHealth = (opp) => {
+    const newAlerts = [];
+    
+    // Verificar último contacto
+    if (opp.lastContact) {
+      const daysSince = Math.floor((new Date() - new Date(opp.lastContact)) / (1000 * 60 * 60 * 24));
+      if (daysSince > 5) {
+        newAlerts.push({
+          type: 'urgent',
+          message: `🔴 ${daysSince} días sin contacto - LLAMAR HOY`,
+          action: 'generateReengagement'
+        });
+      }
     }
 
-    if (!text.trim()) return;
+    // Verificar escalas vs valor
+    const avgScale = Object.values(opp.scales).reduce((a, b) => a + b, 0) / 6;
+    if (avgScale < 4 && opp.value > 100000) {
+      newAlerts.push({
+        type: 'warning',
+        message: `⚠️ R$${opp.value.toLocaleString()} en riesgo - Escalas bajas (${avgScale.toFixed(1)}/10)`,
+        action: 'generateRecoveryPlan'
+      });
+    }
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: text,
-      timestamp: new Date()
-    };
+    // Verificar etapa vs escalas
+    if (opp.stage === 'presentation' && opp.scales.pain < 7) {
+      newAlerts.push({
+        type: 'danger',
+        message: '⛔ NO presentes todavía - El dolor no está confirmado',
+        action: 'backToQualification'
+      });
+    }
 
+    setAlerts(newAlerts);
+  };
+
+  // Quick Actions dinámicas basadas en la oportunidad
+  const getQuickActions = () => {
+    if (!currentOpportunity) return [];
+    
+    const actions = [];
+    const scales = currentOpportunity.scales;
+
+    if (scales.pain < 5) {
+      actions.push({
+        icon: '🎯',
+        label: 'Generar preguntas SPIN',
+        prompt: `Dame 5 preguntas SPIN específicas para que ${currentOpportunity.client} admita problemas de violación y retrabalho en su operación logística`
+      });
+    }
+
+    if (scales.power < 4) {
+      actions.push({
+        icon: '👔',
+        label: 'Script para acceder al decisor',
+        prompt: `Dame un script exacto para pedirle a mi contacto actual que me presente al gerente de operaciones de ${currentOpportunity.client}`
+      });
+    }
+
+    if (scales.value < 5) {
+      actions.push({
+        icon: '💰',
+        label: 'Calcular ROI específico',
+        prompt: `Calcula el ROI para ${currentOpportunity.client} con inversión de R$${currentOpportunity.value}. Industria: ${currentOpportunity.industry || 'logística'}`
+      });
+    }
+
+    if (alerts.length > 0) {
+      actions.push({
+        icon: '🚨',
+        label: 'Plan de recuperación',
+        prompt: `${currentOpportunity.client} está frío. Dame un plan de 3 pasos para reactivar esta oportunidad de R$${currentOpportunity.value}`
+      });
+    }
+
+    actions.push({
+      icon: '📊',
+      label: 'Análisis PPVVCC completo',
+      prompt: `Analiza las escalas actuales de ${currentOpportunity.client} y dame acciones específicas para subir cada una 2 puntos`
+    });
+
+    return actions;
+  };
+
+  // Enviar mensaje al asistente
+  const sendMessage = async (messageText = input) => {
+    if (!messageText.trim()) return;
+
+    const userMessage = { role: 'user', content: messageText };
     setMessages(prev => [...prev, userMessage]);
-    setInputMessage('');
+    setInput('');
     setIsLoading(true);
 
     try {
-      let assistantResponse = '';
-
-      // Detectar necesidad de búsqueda
-      if (text.toLowerCase().includes('busca') || 
-          text.toLowerCase().includes('investiga') || 
-          text.toLowerCase().includes('información')) {
+      // Incluir contexto de la oportunidad actual
+      const contextualPrompt = currentOpportunity ? `
+        CONTEXTO DE LA OPORTUNIDAD ACTUAL:
+        Cliente: ${currentOpportunity.client}
+        Valor: R$${currentOpportunity.value}
+        Etapa: ${currentOpportunity.stage}
+        Escalas PPVVCC:
+        - DOR: ${currentOpportunity.scales.pain}/10
+        - PODER: ${currentOpportunity.scales.power}/10
+        - VISÃO: ${currentOpportunity.scales.vision}/10
+        - VALOR: ${currentOpportunity.scales.value}/10
+        - CONTROLE: ${currentOpportunity.scales.control}/10
+        - COMPRAS: ${currentOpportunity.scales.purchase}/10
         
-        const searchQuery = text.replace(/busca|investiga|información|sobre|empresa|la|el|de/gi, '').trim();
+        Último contacto: ${currentOpportunity.lastContact || 'No registrado'}
+        Próximo paso: ${currentOpportunity.nextStep || 'No definido'}
         
-        try {
-          const searchResults = await searchWeb(searchQuery + ' Brasil empresa');
-          
-          const searchContext = searchResults.organic?.slice(0, 3).map((result: any) => 
-            `${result.title}: ${result.snippet}`
-          ).join('\n\n') || 'No se encontraron resultados';
+        PREGUNTA: ${messageText}
+      ` : messageText;
 
-          const claudeMessages = [
-            { 
-              role: 'user', 
-              content: `Info encontrada sobre "${searchQuery}":\n\n${searchContext}\n\nDame ACCIONES ESPECÍFICAS para venderles. ${text}` 
-            }
-          ];
+      const response = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...messages, userMessage],
+          context: contextualPrompt,
+          opportunityData: currentOpportunity
+        })
+      });
 
-          assistantResponse = await generateWithClaude(claudeMessages);
-        } catch (error) {
-          assistantResponse = '❌ Error en búsqueda. Igual te doy acciones para vender.';
-        }
-      } else {
-        // Respuesta normal con contexto
-        const opportunityContext = currentOpportunity ? `
-OPORTUNIDAD ACTUAL - ${currentOpportunity.name}:
-- Cliente: ${currentOpportunity.client}
-- Valor: R$ ${currentOpportunity.value.toLocaleString('pt-BR')}
-- Etapa: ${currentOpportunity.stage}
-- Producto: ${currentOpportunity.product || 'No definido'}
-
-SCORES PPVVCC:
-- DOR: ${currentOpportunity.scales.dor.score}/10
-- PODER: ${currentOpportunity.scales.poder.score}/10  
-- VISÃO: ${currentOpportunity.scales.visao.score}/10
-- VALOR: ${currentOpportunity.scales.valor.score}/10
-- CONTROLE: ${currentOpportunity.scales.controle.score}/10
-- COMPRAS: ${currentOpportunity.scales.compras.score}/10
-- TOTAL: ${Object.values(currentOpportunity.scales).reduce((sum, s) => sum + s.score, 0)}/60
-
-${Object.values(currentOpportunity.scales).reduce((sum, s) => sum + s.score, 0) > 40 ? 
-  '🔥 ALERTA: OPORTUNIDAD MADURA - PRESIONAR PARA CIERRE' : 
-  '⚠️ NECESITA TRABAJO - SUBIR SCORES BAJOS URGENTE'}
-        ` : '';
-
-        const claudeMessages = [
-          { 
-            role: 'user', 
-            content: `${opportunityContext}\n\n${text}` 
-          }
-        ];
-
-        assistantResponse = await generateWithClaude(claudeMessages);
-      }
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: assistantResponse,
-        timestamp: new Date()
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
+      const data = await response.json();
+      setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
     } catch (error) {
       console.error('Error:', error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: '❌ Error. Igual hacé esto: Llamá al cliente AHORA y pedí la reunión. No esperes.',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: 'Error al procesar la solicitud. Intenta nuevamente.' 
+      }]);
     } finally {
       setIsLoading(false);
     }
@@ -568,109 +222,143 @@ ${Object.values(currentOpportunity.scales).reduce((sum, s) => sum + s.score, 0) 
 
   return (
     <>
-      {/* Botón flotante */}
+      {/* Panel de Análisis en el CRM */}
+      {currentOpportunity && analysis && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 mb-4 rounded-lg shadow-md">
+          <div className="flex justify-between items-start mb-3">
+            <h3 className="font-bold text-lg flex items-center">
+              <Target className="mr-2" /> Análisis AI: {currentOpportunity.client}
+            </h3>
+            <div className="text-right">
+              <div className="text-2xl font-bold text-blue-600">{analysis.probability}%</div>
+              <div className="text-xs text-gray-600">Probabilidad cierre</div>
+            </div>
+          </div>
+
+          {/* Semáforo de Escalas */}
+          <div className="grid grid-cols-6 gap-2 mb-4">
+            {Object.entries(currentOpportunity.scales).map(([key, value]) => (
+              <div key={key} className={`text-center p-2 rounded-lg ${
+                value < 4 ? 'bg-red-500' : 
+                value < 7 ? 'bg-yellow-500' : 
+                'bg-green-500'
+              }`}>
+                <div className="text-white text-xs font-semibold">
+                  {key === 'pain' ? 'DOR' :
+                   key === 'power' ? 'PODER' :
+                   key === 'vision' ? 'VISÃO' :
+                   key === 'value' ? 'VALOR' :
+                   key === 'control' ? 'CONTROL' :
+                   'COMPRAS'}
+                </div>
+                <div className="text-white text-xl font-bold">{value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Alertas Críticas */}
+          {alerts.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {alerts.map((alert, idx) => (
+                <div key={idx} className={`p-2 rounded-lg flex items-center ${
+                  alert.type === 'urgent' ? 'bg-red-100 text-red-700' :
+                  alert.type === 'warning' ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-orange-100 text-orange-700'
+                }`}>
+                  <AlertTriangle className="mr-2 w-4 h-4" />
+                  <span className="text-sm font-medium">{alert.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Próxima Acción Recomendada */}
+          {analysis.nextAction && (
+            <div className="bg-white p-3 rounded-lg border border-blue-200">
+              <h4 className="font-semibold text-sm mb-1 flex items-center">
+                <TrendingUp className="mr-1 w-4 h-4" /> Próxima Acción:
+              </h4>
+              <p className="text-sm text-gray-700 mb-2">{analysis.nextAction.action}</p>
+              <div className="bg-blue-50 p-2 rounded border-l-2 border-blue-400">
+                <p className="text-xs text-gray-600 italic">"{analysis.nextAction.script}"</p>
+              </div>
+              <button 
+                onClick={() => {
+                  setIsOpen(true);
+                  setInput(analysis.nextAction.script);
+                }}
+                className="mt-2 bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition"
+              >
+                Generar Script Completo
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Botón flotante del asistente */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all z-50 flex items-center group animate-pulse hover:animate-none"
+        className="fixed bottom-6 right-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all z-50"
       >
-        <Zap className="w-6 h-6" />
-        <span className="ml-2 max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 whitespace-nowrap font-bold">
-          VENDER AHORA
-        </span>
-        <DollarSign className="w-4 h-4 ml-2" />
+        <MessageCircle size={24} />
+        {alerts.length > 0 && (
+          <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+        )}
       </button>
 
-      {/* Panel del asistente */}
+      {/* Chat del asistente */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-[450px] bg-white rounded-xl shadow-2xl border-2 border-red-500 z-50 flex flex-col" style={{ height: '650px' }}>
-          {/* Header */}
-          <div className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-4 rounded-t-xl flex justify-between items-center">
-            <div className="flex items-center">
-              <DollarSign className="w-6 h-6 mr-2 animate-pulse" />
-              <h3 className="font-bold text-lg">VENTAPEL SALES KILLER</h3>
-              <Zap className="w-5 h-5 ml-2 text-yellow-300" />
-            </div>
-            <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded">
-              <X className="w-5 h-5" />
+        <div className="fixed bottom-24 right-6 w-96 h-[600px] bg-white rounded-lg shadow-2xl z-50 flex flex-col">
+          <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 rounded-t-lg flex justify-between items-center">
+            <h3 className="font-semibold">Asistente Ventapel AI</h3>
+            <button onClick={() => setIsOpen(false)}>
+              <X size={20} />
             </button>
           </div>
 
-          {/* Sales Alerts */}
-          {opportunities.length > 0 && (
-            <SalesAlerts opportunities={opportunities} />
-          )}
-
-          {/* Quick Actions GRID */}
-          <div className="p-3 border-b bg-gradient-to-r from-gray-50 to-red-50">
-            <div className="grid grid-cols-3 gap-2">
-              {quickActions.map((action, idx) => {
-                const Icon = action.icon;
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => handleQuickAction(action.action)}
-                    className={`flex flex-col items-center p-2 bg-white border-2 border-gray-300 rounded-lg transition-all ${action.color} hover:scale-105`}
-                  >
-                    <Icon className="w-5 h-5 text-red-600 mb-1" />
-                    <span className="text-xs font-bold text-gray-700">{action.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-            
-            {/* Comandos rápidos info */}
-            <div className="mt-2 text-xs text-gray-600 text-center">
-              Comandos: /llamada /cerrar /objecion /precio /demo
+          {/* Quick Actions */}
+          <div className="p-3 bg-gray-50 border-b overflow-x-auto">
+            <div className="flex gap-2">
+              {getQuickActions().map((action, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => sendMessage(action.prompt)}
+                  className="flex-shrink-0 bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs hover:bg-gray-100 transition flex items-center gap-1"
+                >
+                  <span>{action.icon}</span>
+                  <span>{action.label}</span>
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-            {messages.length === 0 && (
-              <div className="text-center text-gray-700 mt-8">
-                <div className="text-4xl mb-3">💰🔥🎯</div>
-                <p className="text-sm font-bold">ASISTENTE KILLER ACTIVADO</p>
-                <p className="text-xs mt-2 text-red-600 font-semibold">Objetivo: CERRAR DEALS</p>
-                
-                <div className="mt-4 p-3 bg-white rounded-lg border-2 border-red-200">
-                  <p className="text-xs font-bold text-gray-700 mb-2">LO QUE HAGO:</p>
-                  <ul className="text-xs space-y-1 text-left">
-                    <li>✅ Scripts exactos para llamadas</li>
-                    <li>✅ Técnicas de cierre que funcionan</li>
-                    <li>✅ Respuestas a TODAS las objeciones</li>
-                    <li>✅ Emails que consiguen reuniones</li>
-                    <li>✅ Crear urgencia real</li>
-                    <li>✅ Próximos pasos específicos</li>
-                  </ul>
-                </div>
-                
-                <p className="text-xs mt-3 text-red-600 font-bold animate-pulse">
-                  Seleccioná una oportunidad y VAMOS A VENDER
-                </p>
+          {/* Mensajes */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {messages.length === 0 && currentOpportunity && (
+              <div className="text-center text-gray-500 text-sm">
+                <p className="mb-2">Analizando {currentOpportunity.client}...</p>
+                <p className="text-xs">Escalas promedio: {analysis?.avgScale}/10</p>
               </div>
             )}
-            
-            {messages.map(message => (
-              <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-lg ${
-                  message.role === 'user' 
-                    ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white font-medium' 
-                    : 'bg-white text-gray-800 border-2 border-red-200 shadow-md'
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] p-3 rounded-lg ${
+                  msg.role === 'user' 
+                    ? 'bg-blue-500 text-white' 
+                    : 'bg-gray-100 text-gray-800'
                 }`}>
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                  <p className="text-xs mt-1 opacity-70">
-                    {message.timestamp.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                 </div>
               </div>
             ))}
-            
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-white p-3 rounded-lg border-2 border-red-200 shadow-md">
-                  <div className="flex items-center">
-                    <Loader className="w-5 h-5 animate-spin text-red-600 mr-2" />
-                    <span className="text-xs text-gray-600">Preparando estrategia killer...</span>
+                <div className="bg-gray-100 p-3 rounded-lg">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
                   </div>
                 </div>
               </div>
@@ -678,23 +366,22 @@ ${Object.values(currentOpportunity.scales).reduce((sum, s) => sum + s.score, 0) 
           </div>
 
           {/* Input */}
-          <div className="p-4 border-t-2 border-red-200 bg-white rounded-b-xl">
-            <div className="flex space-x-2">
+          <div className="p-4 border-t">
+            <div className="flex gap-2">
               <input
                 type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSendMessage()}
-                placeholder="¿Cómo cierro este deal? ¿Qué le digo?"
-                className="flex-1 p-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm font-medium"
-                disabled={isLoading}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                placeholder="Pregunta sobre la oportunidad..."
+                className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
-                onClick={() => handleSendMessage()}
-                disabled={isLoading || !inputMessage.trim()}
-                className="p-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed animate-pulse hover:animate-none"
+                onClick={() => sendMessage()}
+                disabled={isLoading}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition disabled:opacity-50"
               >
-                <Send className="w-5 h-5" />
+                Enviar
               </button>
             </div>
           </div>
@@ -703,6 +390,4 @@ ${Object.values(currentOpportunity.scales).reduce((sum, s) => sum + s.score, 0) 
     </>
   );
 };
-
-// Export default
 export default AIAssistant;
