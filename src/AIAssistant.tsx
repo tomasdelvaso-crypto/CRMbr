@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageCircle, X, AlertTriangle, TrendingUp, Phone, Target } from 'lucide-react';
+import { MessageCircle, X, AlertTriangle, TrendingUp, Phone, Target, RefreshCw } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
 const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
@@ -9,14 +9,72 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [alerts, setAlerts] = useState([]);
+  const [allOpportunities, setAllOpportunities] = useState([]);
+  const [pipelineHealth, setPipelineHealth] = useState(null);
 
-  // Analizar oportunidad cuando cambia
+  // Cargar todas las oportunidades del pipeline al iniciar
   useEffect(() => {
-    if (currentOpportunity) {
-      analyzeOpportunity(currentOpportunity);
-      checkOpportunityHealth(currentOpportunity);
+    loadPipelineData();
+    // Suscribirse a cambios en tiempo real
+    const subscription = supabase
+      .channel('opportunities-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'opportunities' },
+        handleRealtimeUpdate
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Cargar datos del pipeline completo
+  const loadPipelineData = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('opportunities')
+        .select('*')
+        .order('value', { ascending: false });
+
+      if (!error && data) {
+        setAllOpportunities(data);
+        analyzePipelineHealth(data);
+      }
+    } catch (err) {
+      console.error('Error loading pipeline:', err);
     }
-  }, [currentOpportunity]);
+  };
+
+  // Manejar actualizaciones en tiempo real
+  const handleRealtimeUpdate = (payload) => {
+    console.log('Realtime update:', payload);
+    loadPipelineData(); // Recargar todo el pipeline
+    if (currentOpportunity && payload.new?.id === currentOpportunity.id) {
+      analyzeOpportunity(payload.new);
+    }
+  };
+
+  // Analizar salud general del pipeline
+  const analyzePipelineHealth = (opportunities) => {
+    const totalValue = opportunities.reduce((sum, opp) => sum + (opp.value || 0), 0);
+    const avgScales = opportunities.map(opp => {
+      const scales = opp.scales || {};
+      return Object.values(scales).reduce((a, b) => a + b, 0) / 6;
+    });
+    const riskOpps = opportunities.filter(opp => {
+      const avg = Object.values(opp.scales || {}).reduce((a, b) => a + b, 0) / 6;
+      return avg < 4 && opp.value > 50000;
+    });
+
+    setPipelineHealth({
+      total: opportunities.length,
+      totalValue,
+      atRisk: riskOpps.length,
+      riskValue: riskOpps.reduce((sum, opp) => sum + opp.value, 0),
+      averageHealth: (avgScales.reduce((a, b) => a + b, 0) / avgScales.length).toFixed(1)
+    });
+  };
 
   // Función para analizar la oportunidad actual
   const analyzeOpportunity = (opp) => {
@@ -167,7 +225,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
     return actions;
   };
 
-  // Enviar mensaje al asistente
+  // Enviar mensaje al asistente con contexto del pipeline completo
   const sendMessage = async (messageText = input) => {
     if (!messageText.trim()) return;
 
@@ -177,11 +235,30 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
     setIsLoading(true);
 
     try {
-      // Incluir contexto de la oportunidad actual
-      const contextualPrompt = currentOpportunity ? `
-        CONTEXTO DE LA OPORTUNIDAD ACTUAL:
+      // Incluir contexto de la oportunidad actual Y del pipeline completo
+      const pipelineContext = {
+        currentOpportunity: currentOpportunity || null,
+        allOpportunities: allOpportunities.map(opp => ({
+          name: opp.client,
+          value: opp.value,
+          stage: opp.stage,
+          scales: opp.scales,
+          lastContact: opp.lastContact
+        })),
+        pipelineHealth: pipelineHealth
+      };
+
+      const contextualPrompt = `
+        CONTEXTO DEL PIPELINE COMPLETO:
+        Total oportunidades: ${pipelineHealth?.total || 0}
+        Valor total pipeline: R${pipelineHealth?.totalValue?.toLocaleString() || 0}
+        Oportunidades en riesgo: ${pipelineHealth?.atRisk || 0}
+        Valor en riesgo: R${pipelineHealth?.riskValue?.toLocaleString() || 0}
+        
+        ${currentOpportunity ? `
+        OPORTUNIDAD ACTUAL:
         Cliente: ${currentOpportunity.client}
-        Valor: R$${currentOpportunity.value}
+        Valor: R${currentOpportunity.value}
         Etapa: ${currentOpportunity.stage}
         Escalas PPVVCC:
         - DOR: ${currentOpportunity.scales.pain}/10
@@ -190,12 +267,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
         - VALOR: ${currentOpportunity.scales.value}/10
         - CONTROLE: ${currentOpportunity.scales.control}/10
         - COMPRAS: ${currentOpportunity.scales.purchase}/10
-        
-        Último contacto: ${currentOpportunity.lastContact || 'No registrado'}
-        Próximo paso: ${currentOpportunity.nextStep || 'No definido'}
+        ` : 'No hay oportunidad seleccionada'}
         
         PREGUNTA: ${messageText}
-      ` : messageText;
+      `;
 
       const response = await fetch('/api/assistant', {
         method: 'POST',
@@ -203,7 +278,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
         body: JSON.stringify({
           messages: [...messages, userMessage],
           context: contextualPrompt,
-          opportunityData: currentOpportunity
+          opportunityData: currentOpportunity,
+          pipelineData: pipelineContext
         })
       });
 
@@ -222,18 +298,37 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
 
   return (
     <>
-      {/* Panel de Análisis en el CRM */}
+      {/* Panel de Análisis en el CRM con datos de Supabase */}
       {currentOpportunity && analysis && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 mb-4 rounded-lg shadow-md">
           <div className="flex justify-between items-start mb-3">
             <h3 className="font-bold text-lg flex items-center">
               <Target className="mr-2" /> Análisis AI: {currentOpportunity.client}
             </h3>
-            <div className="text-right">
-              <div className="text-2xl font-bold text-blue-600">{analysis.probability}%</div>
-              <div className="text-xs text-gray-600">Probabilidad cierre</div>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={loadPipelineData}
+                className="text-blue-600 hover:text-blue-800"
+                title="Actualizar datos"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <div className="text-right">
+                <div className="text-2xl font-bold text-blue-600">{analysis.probability}%</div>
+                <div className="text-xs text-gray-600">Probabilidad cierre</div>
+              </div>
             </div>
           </div>
+
+          {/* Info del Pipeline Total */}
+          {pipelineHealth && (
+            <div className="bg-white/50 p-2 rounded mb-3 text-xs">
+              <div className="flex justify-between">
+                <span>Pipeline Total: R${pipelineHealth.totalValue.toLocaleString()}</span>
+                <span className="text-red-600">En Riesgo: R${pipelineHealth.riskValue.toLocaleString()}</span>
+              </div>
+            </div>
+          )}
 
           {/* Semáforo de Escalas */}
           <div className="grid grid-cols-6 gap-2 mb-4">
@@ -390,4 +485,5 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
     </>
   );
 };
+
 export default AIAssistant;
