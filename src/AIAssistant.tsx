@@ -8,7 +8,7 @@ const searchWeb = async (query: string): Promise<any> => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        action: 'search',  // <-- Cambió de 'searchWeb' a 'search'
+        action: 'search',
         data: {
           q: query,
           gl: 'br',
@@ -38,7 +38,7 @@ const generateWithClaude = async (messages: any[], system?: string): Promise<str
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        action: 'claude',  // <-- Cambió de 'generateWithClaude' a 'claude'
+        action: 'claude',
         data: {
           model: 'claude-3-5-sonnet-20241022',
           max_tokens: 4096,
@@ -53,10 +53,9 @@ const generateWithClaude = async (messages: any[], system?: string): Promise<str
       throw new Error(error.error || `HTTP error! status: ${response.status}`);
     }
 
-    const data = await response.json();
+        const data = await response.json();
     return data.content[0].text;
   } catch (error) {
     console.error('Error generating with Claude:', error);
     throw error;
   }
-};
