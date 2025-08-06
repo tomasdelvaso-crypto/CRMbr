@@ -4,7 +4,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { messages, context, opportunityData } = req.body;
+  const { messages, context, opportunityData, pipelineData } = req.body;
 
   // System prompt con metodología PPVVCC
   const systemPrompt = `
@@ -58,6 +58,22 @@ PERSONALIDADES DE DECISORES:
 - Gerente Calidad: Satisfacción cliente y compliance
 - Director General: ROI y ventaja competitiva
 - Sustentabilidad: Reducción plástico y huella carbono
+
+${pipelineData ? `
+ANÁLISIS DEL PIPELINE COMPLETO:
+Total oportunidades activas: ${pipelineData.allOpportunities?.length || 0}
+Valor total en pipeline: R${pipelineData.pipelineHealth?.totalValue?.toLocaleString() || 0}
+Salud promedio del pipeline: ${pipelineData.pipelineHealth?.averageHealth || 0}/10
+
+OPORTUNIDADES CRÍTICAS QUE REQUIEREN ATENCIÓN:
+${pipelineData.allOpportunities?.filter(opp => {
+  const avg = Object.values(opp.scales || {}).reduce((a,b) => a+b, 0) / 6;
+  return avg < 4 || !opp.lastContact || 
+    (new Date() - new Date(opp.lastContact)) > 5 * 24 * 60 * 60 * 1000;
+}).map(opp => `- ${opp.name}: ${opp.value} (Promedio PPVVCC: ${
+  (Object.values(opp.scales || {}).reduce((a,b) => a+b, 0) / 6).toFixed(1)
+})`).join('\n') || 'Ninguna en estado crítico'}
+` : ''}
 
 ${opportunityData ? `
 DATOS ESPECÍFICOS DE LA OPORTUNIDAD:
