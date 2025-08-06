@@ -1025,7 +1025,7 @@ const CRMVentapel: React.FC = () => {
               value={dashboardVendorFilter}
               onChange={(e) => setDashboardVendorFilter(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              disabled={submitting || (!currentVendorInfo?.is_admin && Boolean(currentUser))}
+              disabled={!currentVendorInfo?.is_admin && Boolean(currentUser)}
             >
               <option value="all">👥 Todos vendedores</option>
               {vendors.map(vendor => (
