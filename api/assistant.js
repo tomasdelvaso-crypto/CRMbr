@@ -20,7 +20,7 @@ export default async function handler(req, res) {
       const response = await fetch('https://google.serper.dev/search', {
         method: 'POST',
         headers: {
-          'X-API-KEY': process.env.REACT_APP_SERPER_API_KEY,
+          'X-API-KEY': process.env.SERPER_API_KEY,  // ✅ CAMBIADO - Sin REACT_APP_
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(data)
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': process.env.REACT_APP_CLAUDE_API_KEY,
+          'x-api-key': process.env.CLAUDE_API_KEY,  // ✅ CAMBIADO - Sin REACT_APP_
           'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify(data)
