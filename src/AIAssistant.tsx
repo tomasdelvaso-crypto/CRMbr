@@ -12,110 +12,22 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
   const [allOpportunities, setAllOpportunities] = useState([]);
   const [pipelineHealth, setPipelineHealth] = useState(null);
   const [userPerformance, setUserPerformance] = useState(null);
-  const [availableVendors, setAvailableVendors] = useState([]);
-  const [vendorProfiles, setVendorProfiles] = useState({});
 
-  // Cargar todas las oportunidades y vendedores al iniciar
+  // Cargar todas las oportunidades al iniciar
   useEffect(() => {
     loadPipelineData();
-    loadVendors();
     if (currentUser) {
       calculateUserPerformance();
     }
-    
-    // Suscribirse a cambios en tiempo real
-    const subscription = supabase
-      .channel('opportunities-changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'opportunities' },
-        handleRealtimeUpdate
-      )
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-    };
   }, [currentUser]);
 
-  // Cargar vendedores desde la base de datos
-  const loadVendors = async () => {
-    try {
-      // Opción 1: Si tienes tabla de usuarios/vendors
-      const { data: vendorsData, error: vendorsError } = await supabase
-        .from('vendors')
-        .select('*')
-        .eq('is_active', true);
-      
-      if (vendorsData && vendorsData.length > 0) {
-        setAvailableVendors(vendorsData);
-        // Crear mapa de perfiles
-        const profiles = {};
-        vendorsData.forEach(v => {
-          profiles[v.name] = {
-            role: v.role || 'Vendedor',
-            style: v.style || 'General',
-            strengths: v.strengths || [],
-            email: v.email,
-            is_admin: v.is_admin || false
-          };
-        });
-        setVendorProfiles(profiles);
-      } else {
-        // Opción 2: Si no hay tabla vendors, obtener únicos de opportunities
-        const { data: oppsData, error: oppsError } = await supabase
-          .from('opportunities')
-          .select('vendor')
-          .not('vendor', 'is', null);
-        
-        if (oppsData) {
-          // Obtener vendedores únicos
-          const uniqueVendors = [...new Set(oppsData.map(o => o.vendor))].filter(Boolean);
-          setAvailableVendors(uniqueVendors.map(name => ({ name, role: 'Vendedor' })));
-          
-          // Crear perfiles básicos basados en nombres conocidos
-          const profiles = {};
-          uniqueVendors.forEach(name => {
-            profiles[name] = {
-              role: name === 'Tomás' ? 'CEO/Head of Sales' : 
-                    name === 'Jordi' ? 'Sales Manager' :
-                    name === 'Matheus' ? 'Account Executive' : 'Vendedor',
-              style: name === 'Tomás' ? 'Estratégico, deals grandes' :
-                     name === 'Jordi' ? 'Técnico, metódico' :
-                     name === 'Matheus' ? 'Relacional, retail' : 'General',
-              is_admin: name === 'Tomás'
-            };
-          });
-          setVendorProfiles(profiles);
-        }
-      }
-      
-      // Opción 3: Si usas Supabase Auth
-      const { data: { users } } = await supabase.auth.admin.listUsers();
-      if (users && users.length > 0) {
-        // Usar usuarios de auth como vendedores
-        const authVendors = users.map(u => ({
-          name: u.user_metadata?.name || u.email?.split('@')[0],
-          email: u.email,
-          role: u.user_metadata?.role || 'Vendedor'
-        }));
-        setAvailableVendors(authVendors);
-      }
-    } catch (err) {
-      console.error('Error loading vendors:', err);
+  // Analizar oportunidad cuando cambia
+  useEffect(() => {
+    if (currentOpportunity) {
+      analyzeOpportunity(currentOpportunity);
+      checkOpportunityHealth(currentOpportunity);
     }
-  };
-
-  // Obtener perfil del vendedor actual
-  const getCurrentVendorProfile = () => {
-    if (!currentUser) return null;
-    
-    return vendorProfiles[currentUser] || {
-      name: currentUser,
-      role: 'Vendedor',
-      style: 'General',
-      is_admin: false
-    };
-  };
+  }, [currentOpportunity]);
 
   // Calcular performance del vendedor actual
   const calculateUserPerformance = async () => {
@@ -127,16 +39,37 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
         .select('*')
         .eq('vendor', currentUser);
         
-      if (data) {
-        const totalValue = data.reduce((sum, opp) => sum + opp.value, 0);
+      if (data && !error) {
+        const totalValue = data.reduce((sum, opp) => sum + (opp.value || 0), 0);
+        
+        // Calcular promedio de escalas correctamente
         const avgScales = data.length > 0 ? 
           data.reduce((sum, opp) => {
-            const scales = Object.values(opp.scales || {}).reduce((a, b) => a + b, 0) / 6;
-            return sum + scales;
+            if (!opp.scales) return sum;
+            
+            // Manejar tanto formato antiguo como nuevo
+            let scaleSum = 0;
+            let scaleCount = 0;
+            
+            Object.values(opp.scales).forEach(scale => {
+              // Si es objeto con .score
+              if (typeof scale === 'object' && scale.score !== undefined) {
+                scaleSum += scale.score;
+                scaleCount++;
+              }
+              // Si es número directo (formato antiguo)
+              else if (typeof scale === 'number') {
+                scaleSum += scale;
+                scaleCount++;
+              }
+            });
+            
+            const avgForOpp = scaleCount > 0 ? scaleSum / scaleCount : 0;
+            return sum + avgForOpp;
           }, 0) / data.length : 0;
         
         const thisMonth = data.filter(opp => {
-          const closeDate = new Date(opp.expectedCloseDate);
+          const closeDate = new Date(opp.expected_close || opp.last_update);
           const now = new Date();
           return closeDate.getMonth() === now.getMonth() && 
                  closeDate.getFullYear() === now.getFullYear();
@@ -146,8 +79,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
           totalOpps: data.length,
           totalValue,
           avgHealth: avgScales.toFixed(1),
-          thisMonthTarget: thisMonth.reduce((sum, opp) => sum + opp.value, 0),
-          closedThisMonth: data.filter(opp => opp.stage === 'closed').length
+          thisMonthTarget: thisMonth.reduce((sum, opp) => sum + (opp.value || 0), 0),
+          closedThisMonth: data.filter(opp => opp.stage === 6).length
         });
       }
     } catch (err) {
@@ -172,24 +105,45 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
     }
   };
 
-  // Manejar actualizaciones en tiempo real
-  const handleRealtimeUpdate = (payload) => {
-    console.log('Realtime update:', payload);
-    loadPipelineData(); // Recargar todo el pipeline
-    if (currentOpportunity && payload.new?.id === currentOpportunity.id) {
-      analyzeOpportunity(payload.new);
-    }
-  };
-
   // Analizar salud general del pipeline
   const analyzePipelineHealth = (opportunities) => {
     const totalValue = opportunities.reduce((sum, opp) => sum + (opp.value || 0), 0);
+    
     const avgScales = opportunities.map(opp => {
-      const scales = opp.scales || {};
-      return Object.values(scales).reduce((a, b) => a + b, 0) / 6;
+      if (!opp.scales) return 0;
+      
+      let scaleSum = 0;
+      let scaleCount = 0;
+      
+      Object.values(opp.scales).forEach(scale => {
+        if (typeof scale === 'object' && scale.score !== undefined) {
+          scaleSum += scale.score;
+          scaleCount++;
+        } else if (typeof scale === 'number') {
+          scaleSum += scale;
+          scaleCount++;
+        }
+      });
+      
+      return scaleCount > 0 ? scaleSum / scaleCount : 0;
     });
+    
     const riskOpps = opportunities.filter(opp => {
-      const avg = Object.values(opp.scales || {}).reduce((a, b) => a + b, 0) / 6;
+      if (!opp.scales) return false;
+      
+      let avg = 0;
+      let count = 0;
+      Object.values(opp.scales).forEach(scale => {
+        if (typeof scale === 'object' && scale.score !== undefined) {
+          avg += scale.score;
+          count++;
+        } else if (typeof scale === 'number') {
+          avg += scale;
+          count++;
+        }
+      });
+      
+      avg = count > 0 ? avg / count : 0;
       return avg < 4 && opp.value > 50000;
     });
 
@@ -197,9 +151,22 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
       total: opportunities.length,
       totalValue,
       atRisk: riskOpps.length,
-      riskValue: riskOpps.reduce((sum, opp) => sum + opp.value, 0),
-      averageHealth: (avgScales.reduce((a, b) => a + b, 0) / avgScales.length).toFixed(1)
+      riskValue: riskOpps.reduce((sum, opp) => sum + (opp.value || 0), 0),
+      averageHealth: avgScales.length > 0 ? 
+        (avgScales.reduce((a, b) => a + b, 0) / avgScales.length).toFixed(1) : '0'
     });
+  };
+
+  // Función para obtener el valor de una escala
+  const getScaleValue = (scale) => {
+    if (!scale) return 0;
+    if (typeof scale === 'object' && scale.score !== undefined) {
+      return scale.score;
+    }
+    if (typeof scale === 'number') {
+      return scale;
+    }
+    return 0;
   };
 
   // Función para analizar la oportunidad actual
@@ -207,14 +174,57 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
     if (!opp || !opp.scales) return;
 
     const scales = opp.scales;
-    const avgScale = Object.values(scales).reduce((a, b) => a + b, 0) / 6;
+    
+    // Calcular promedio manejando ambos formatos
+    let totalScore = 0;
+    let count = 0;
+    
+    const scaleValues = {
+      pain: getScaleValue(scales.dor || scales.pain),
+      power: getScaleValue(scales.poder || scales.power),
+      vision: getScaleValue(scales.visao || scales.vision),
+      value: getScaleValue(scales.valor || scales.value),
+      control: getScaleValue(scales.controle || scales.control),
+      purchase: getScaleValue(scales.compras || scales.purchase)
+    };
+    
+    Object.values(scaleValues).forEach(val => {
+      totalScore += val;
+      count++;
+    });
+    
+    const avgScale = count > 0 ? totalScore / count : 0;
     
     // Identificar escalas críticas
     const criticalScales = [];
-    if (scales.pain < 5) criticalScales.push({ name: 'DOR', value: scales.pain, issue: 'Cliente no admite el problema' });
-    if (scales.power < 4) criticalScales.push({ name: 'PODER', value: scales.power, issue: 'Sin acceso al decisor' });
-    if (scales.vision < 4) criticalScales.push({ name: 'VISÃO', value: scales.vision, issue: 'Cliente no ve la solución' });
-    if (scales.value < 4) criticalScales.push({ name: 'VALOR', value: scales.value, issue: 'No percibe el ROI' });
+    if (scaleValues.pain < 5) {
+      criticalScales.push({ 
+        name: 'DOR', 
+        value: scaleValues.pain, 
+        issue: 'Cliente no admite el problema' 
+      });
+    }
+    if (scaleValues.power < 4) {
+      criticalScales.push({ 
+        name: 'PODER', 
+        value: scaleValues.power, 
+        issue: 'Sin acceso al decisor' 
+      });
+    }
+    if (scaleValues.vision < 4) {
+      criticalScales.push({ 
+        name: 'VISÃO', 
+        value: scaleValues.vision, 
+        issue: 'Cliente no ve la solución' 
+      });
+    }
+    if (scaleValues.value < 4) {
+      criticalScales.push({ 
+        name: 'VALOR', 
+        value: scaleValues.value, 
+        issue: 'No percibe el ROI' 
+      });
+    }
 
     // Calcular probabilidad de cierre
     let probability = 0;
@@ -227,33 +237,31 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
       avgScale: avgScale.toFixed(1),
       probability,
       criticalScales,
-      nextAction: generateNextAction(opp)
+      nextAction: generateNextAction(opp, scaleValues)
     });
   };
 
   // Generar próxima acción recomendada
-  const generateNextAction = (opp) => {
-    const scales = opp.scales;
-    
-    if (scales.pain < 5) {
+  const generateNextAction = (opp, scaleValues) => {
+    if (scaleValues.pain < 5) {
       return {
         action: "Identificar y documentar el dolor",
         script: "Necesitás que admita el problema. Preguntá: '¿Cuántas horas por mes dedican a re-embalar productos dañados?'"
       };
     }
-    if (scales.power < 4) {
+    if (scaleValues.power < 4) {
       return {
         action: "Acceder al tomador de decisión",
         script: "Pedí acceso directo: 'Para diseñar la mejor solución, ¿podríamos incluir al gerente de logística en la próxima reunión?'"
       };
     }
-    if (scales.vision < 5) {
+    if (scaleValues.vision < 5) {
       return {
         action: "Construir visión de solución",
         script: "Mostrá el valor completo: 'Les muestro cómo reducimos 40% el retrabalho en MercadoLibre con nuestra solución integrada'"
       };
     }
-    if (scales.value < 5) {
+    if (scaleValues.value < 5) {
       return {
         action: "Demostrar ROI concreto",
         script: "Cuantificá el retorno: 'Con su volumen de 10,000 envíos/mes, ahorrarían R$15,000 mensuales solo en retrabalho'"
@@ -270,8 +278,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
     const newAlerts = [];
     
     // Verificar último contacto
-    if (opp.lastContact) {
-      const daysSince = Math.floor((new Date() - new Date(opp.lastContact)) / (1000 * 60 * 60 * 24));
+    if (opp.last_update) {
+      const daysSince = Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24));
       if (daysSince > 5) {
         newAlerts.push({
           type: 'urgent',
@@ -282,7 +290,18 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
     }
 
     // Verificar escalas vs valor
-    const avgScale = Object.values(opp.scales).reduce((a, b) => a + b, 0) / 6;
+    let avgScale = 0;
+    let count = 0;
+    
+    if (opp.scales) {
+      Object.values(opp.scales).forEach(scale => {
+        const value = getScaleValue(scale);
+        avgScale += value;
+        count++;
+      });
+      avgScale = count > 0 ? avgScale / count : 0;
+    }
+    
     if (avgScale < 4 && opp.value > 100000) {
       newAlerts.push({
         type: 'warning',
@@ -292,7 +311,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
     }
 
     // Verificar etapa vs escalas
-    if (opp.stage === 'presentation' && opp.scales.pain < 7) {
+    const painValue = opp.scales ? getScaleValue(opp.scales.dor || opp.scales.pain) : 0;
+    if (opp.stage === 3 && painValue < 7) {
       newAlerts.push({
         type: 'danger',
         message: '⛔ NO presentes todavía - El dolor no está confirmado',
@@ -305,12 +325,16 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
 
   // Quick Actions dinámicas basadas en la oportunidad
   const getQuickActions = () => {
-    if (!currentOpportunity) return [];
+    if (!currentOpportunity || !currentOpportunity.scales) return [];
     
     const actions = [];
     const scales = currentOpportunity.scales;
+    
+    const painValue = getScaleValue(scales.dor || scales.pain);
+    const powerValue = getScaleValue(scales.poder || scales.power);
+    const valueValue = getScaleValue(scales.valor || scales.value);
 
-    if (scales.pain < 5) {
+    if (painValue < 5) {
       actions.push({
         icon: '🎯',
         label: 'Generar preguntas SPIN',
@@ -318,7 +342,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
       });
     }
 
-    if (scales.power < 4) {
+    if (powerValue < 4) {
       actions.push({
         icon: '👔',
         label: 'Script para acceder al decisor',
@@ -326,7 +350,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
       });
     }
 
-    if (scales.value < 5) {
+    if (valueValue < 5) {
       actions.push({
         icon: '💰',
         label: 'Calcular ROI específico',
@@ -351,7 +375,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
     return actions;
   };
 
-  // Enviar mensaje al asistente con contexto del pipeline completo
+  // Enviar mensaje al asistente
   const sendMessage = async (messageText = input) => {
     if (!messageText.trim()) return;
 
@@ -361,61 +385,48 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
     setIsLoading(true);
 
     try {
-      // Incluir contexto de la oportunidad actual Y del pipeline completo
-      const pipelineContext = {
-        currentOpportunity: currentOpportunity || null,
-        allOpportunities: allOpportunities.map(opp => ({
-          name: opp.client,
-          value: opp.value,
-          stage: opp.stage,
-          scales: opp.scales,
-          lastContact: opp.lastContact
-        })),
-        pipelineHealth: pipelineHealth
-      };
-
-      const contextualPrompt = `
-        CONTEXTO DEL PIPELINE COMPLETO:
-        Total oportunidades: ${pipelineHealth?.total || 0}
-        Valor total pipeline: R${pipelineHealth?.totalValue?.toLocaleString() || 0}
-        Oportunidades en riesgo: ${pipelineHealth?.atRisk || 0}
-        Valor en riesgo: R${pipelineHealth?.riskValue?.toLocaleString() || 0}
-        
-        ${currentOpportunity ? `
-        OPORTUNIDAD ACTUAL:
-        Cliente: ${currentOpportunity.client}
-        Valor: R${currentOpportunity.value}
-        Etapa: ${currentOpportunity.stage}
-        Escalas PPVVCC:
-        - DOR: ${currentOpportunity.scales.pain}/10
-        - PODER: ${currentOpportunity.scales.power}/10
-        - VISÃO: ${currentOpportunity.scales.vision}/10
-        - VALOR: ${currentOpportunity.scales.value}/10
-        - CONTROLE: ${currentOpportunity.scales.control}/10
-        - COMPRAS: ${currentOpportunity.scales.purchase}/10
-        ` : 'No hay oportunidad seleccionada'}
-        
-        PREGUNTA: ${messageText}
-      `;
+      // Preparar contexto con formato correcto de escalas
+      const opportunityContext = currentOpportunity ? {
+        ...currentOpportunity,
+        scales: {
+          pain: getScaleValue(currentOpportunity.scales?.dor || currentOpportunity.scales?.pain),
+          power: getScaleValue(currentOpportunity.scales?.poder || currentOpportunity.scales?.power),
+          vision: getScaleValue(currentOpportunity.scales?.visao || currentOpportunity.scales?.vision),
+          value: getScaleValue(currentOpportunity.scales?.valor || currentOpportunity.scales?.value),
+          control: getScaleValue(currentOpportunity.scales?.controle || currentOpportunity.scales?.control),
+          purchase: getScaleValue(currentOpportunity.scales?.compras || currentOpportunity.scales?.purchase)
+        }
+      } : null;
 
       const response = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [...messages, userMessage],
-          context: contextualPrompt,
-          opportunityData: currentOpportunity,
-          pipelineData: pipelineContext
+          context: messageText,
+          opportunityData: opportunityContext,
+          pipelineData: {
+            currentOpportunity: opportunityContext,
+            allOpportunities: allOpportunities,
+            pipelineHealth: pipelineHealth
+          }
         })
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const data = await response.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: data.response || 'No se pudo procesar la respuesta.' 
+      }]);
     } catch (error) {
       console.error('Error:', error);
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: 'Error al procesar la solicitud. Intenta nuevamente.' 
+        content: 'Error al procesar la solicitud. Por favor, verifica la configuración del API.' 
       }]);
     } finally {
       setIsLoading(false);
@@ -424,7 +435,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
 
   return (
     <>
-      {/* Panel de Análisis en el CRM con datos de Supabase */}
+      {/* Panel de Análisis en el CRM */}
       {currentOpportunity && analysis && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 mb-4 rounded-lg shadow-md">
           <div className="flex justify-between items-start mb-3">
@@ -457,25 +468,30 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
           )}
 
           {/* Semáforo de Escalas */}
-          <div className="grid grid-cols-6 gap-2 mb-4">
-            {Object.entries(currentOpportunity.scales).map(([key, value]) => (
-              <div key={key} className={`text-center p-2 rounded-lg ${
-                value < 4 ? 'bg-red-500' : 
-                value < 7 ? 'bg-yellow-500' : 
-                'bg-green-500'
-              }`}>
-                <div className="text-white text-xs font-semibold">
-                  {key === 'pain' ? 'DOR' :
-                   key === 'power' ? 'PODER' :
-                   key === 'vision' ? 'VISÃO' :
-                   key === 'value' ? 'VALOR' :
-                   key === 'control' ? 'CONTROL' :
-                   'COMPRAS'}
-                </div>
-                <div className="text-white text-xl font-bold">{value}</div>
-              </div>
-            ))}
-          </div>
+          {currentOpportunity.scales && (
+            <div className="grid grid-cols-6 gap-2 mb-4">
+              {[
+                { key: 'dor', label: 'DOR', altKey: 'pain' },
+                { key: 'poder', label: 'PODER', altKey: 'power' },
+                { key: 'visao', label: 'VISÃO', altKey: 'vision' },
+                { key: 'valor', label: 'VALOR', altKey: 'value' },
+                { key: 'controle', label: 'CONTROL', altKey: 'control' },
+                { key: 'compras', label: 'COMPRAS', altKey: 'purchase' }
+              ].map(({ key, label, altKey }) => {
+                const value = getScaleValue(currentOpportunity.scales[key] || currentOpportunity.scales[altKey]);
+                return (
+                  <div key={key} className={`text-center p-2 rounded-lg ${
+                    value < 4 ? 'bg-red-500' : 
+                    value < 7 ? 'bg-yellow-500' : 
+                    'bg-green-500'
+                  }`}>
+                    <div className="text-white text-xs font-semibold">{label}</div>
+                    <div className="text-white text-xl font-bold">{value}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Alertas Críticas */}
           {alerts.length > 0 && (
@@ -528,7 +544,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
         )}
       </button>
 
-                {/* Chat del asistente */}
+      {/* Chat del asistente */}
       {isOpen && (
         <div className="fixed bottom-24 right-6 w-96 h-[600px] bg-white rounded-lg shadow-2xl z-50 flex flex-col">
           <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 rounded-t-lg">
@@ -538,10 +554,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
                 <X size={20} />
               </button>
             </div>
-            {currentUser && (
+            {currentUser && userPerformance && (
               <div className="text-xs opacity-90">
-                Hola {currentUser} • {userPerformance?.totalOpps || 0} oportunidades • 
-                R${userPerformance?.totalValue?.toLocaleString() || 0} en gestión
+                Hola {currentUser} • {userPerformance.totalOpps || 0} oportunidades • 
+                R${userPerformance.totalValue?.toLocaleString() || 0} en gestión
               </div>
             )}
           </div>
@@ -554,6 +570,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
                   key={idx}
                   onClick={() => sendMessage(action.prompt)}
                   className="flex-shrink-0 bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs hover:bg-gray-100 transition flex items-center gap-1"
+                  disabled={isLoading}
                 >
                   <span>{action.icon}</span>
                   <span>{action.label}</span>
@@ -601,13 +618,14 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
                 placeholder="Pregunta sobre la oportunidad..."
                 className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isLoading}
               />
               <button
                 onClick={() => sendMessage()}
-                disabled={isLoading}
+                disabled={isLoading || !input.trim()}
                 className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition disabled:opacity-50"
               >
                 Enviar
