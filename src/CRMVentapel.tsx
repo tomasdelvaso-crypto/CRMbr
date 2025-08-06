@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
 import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 import AIAssistant from './AIAssistant';
+
+// --- CONFIGURACIÓN DE SUPABASE ---
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://wtrbvgqxgcfjacqcndmb.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cmJ2Z3F4Z2NmamFjcWNuZG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4MTg4NjcsImV4cCI6MjA2OTM5NDg2N30.8PB0OjF2vvCtCCDnYCeemMSyvR51E2SAHe7slS1UyQU';
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // --- TIPOS Y INTERFACES ---
 interface Scale {
@@ -36,6 +43,7 @@ interface Opportunity {
   influencer?: string;
   support_contact?: string;
   scales: Scales;
+  industry?: string;
 }
 
 interface OpportunityFormData {
@@ -53,6 +61,7 @@ interface OpportunityFormData {
   influencer?: string;
   support_contact?: string;
   scales: Scales;
+  industry?: string;
 }
 
 interface StageRequirement {
@@ -71,35 +80,7 @@ interface VendorInfo {
   is_admin?: boolean;
 }
 
-// --- CONFIGURAÇÃO E CONSTANTES ---
-const supabaseConfig = {
-  url: import.meta.env.VITE_SUPABASE_URL || 'https://wtrbvgqxgcfjacqcndmb.supabase.co',
-  key: import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cmJ2Z3F4Z2NmamFjcWNuZG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4MTg4NjcsImV4cCI6MjA2OTM5NDg2N30.8PB0OjF2vvCtCCDnYCeemMSyvR51E2SAHe7slS1UyQU'
-};
-
 // --- UTILIDADES ---
-const fetchWithRetry = async <T,>(
-  fn: () => Promise<T>,
-  retries = 3,
-  backoffMultiplier = 1000
-): Promise<T> => {
-  let lastError: Error | null = null;
-  
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err as Error;
-      if (i === retries - 1) throw err;
-      
-      const delay = Math.pow(2, i) * backoffMultiplier;
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-  
-  throw lastError || new Error('Failed after retries');
-};
-
 const emptyScales = (): Scales => ({
   dor: { score: 0, description: '' },
   poder: { score: 0, description: '' },
@@ -109,145 +90,169 @@ const emptyScales = (): Scales => ({
   compras: { score: 0, description: '' }
 });
 
-// --- API SERVICE ---
+// Función helper para obtener el valor de una escala
+const getScaleScore = (scale: Scale | number | undefined): number => {
+  if (!scale) return 0;
+  if (typeof scale === 'number') return scale;
+  if (typeof scale === 'object' && 'score' in scale) return scale.score;
+  return 0;
+};
+
+// --- API SERVICE MEJORADO ---
 class SupabaseService {
-  private headers: HeadersInit;
-
-  constructor() {
-    this.headers = {
-      'apikey': supabaseConfig.key,
-      'Authorization': `Bearer ${supabaseConfig.key}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
-    };
-  }
-
   async fetchOpportunities(): Promise<Opportunity[]> {
-    return fetchWithRetry(async () => {
-      const url = `${supabaseConfig.url}/rest/v1/opportunities?select=*`;
-      const response = await fetch(url, { headers: this.headers });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
-      }
-      
-      const data = await response.json();
-      return Array.isArray(data) ? data : [];
-    });
+    try {
+      const { data, error } = await supabase
+        .from('opportunities')
+        .select('*')
+        .order('value', { ascending: false });
+
+      if (error) throw error;
+
+      // Normalizar datos - asegurar que scales siempre tenga el formato correcto
+      return (data || []).map(opp => ({
+        ...opp,
+        scales: this.normalizeScales(opp.scales),
+        value: Number(opp.value) || 0,
+        probability: Number(opp.probability) || 0
+      }));
+    } catch (error) {
+      console.error('Error fetching opportunities:', error);
+      throw error;
+    }
   }
 
   async fetchVendors(): Promise<VendorInfo[]> {
-    return fetchWithRetry(async () => {
-      // Primeiro tenta buscar de uma tabela vendors se existir
-      try {
-        const url = `${supabaseConfig.url}/rest/v1/vendors?select=*&is_active=eq.true`;
-        const response = await fetch(url, { headers: this.headers });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (Array.isArray(data) && data.length > 0) {
-            return data;
-          }
-        }
-      } catch (err) {
-        console.log('Tabela vendors não encontrada, buscando de opportunities...');
+    try {
+      // Primero intentar tabla vendors
+      const { data: vendorsData, error: vendorsError } = await supabase
+        .from('vendors')
+        .select('*')
+        .eq('is_active', true);
+
+      if (vendorsData && vendorsData.length > 0) {
+        return vendorsData;
       }
 
-      // Se não houver tabela vendors, busca vendedores únicos das oportunidades
-      const url = `${supabaseConfig.url}/rest/v1/opportunities?select=vendor`;
-      const response = await fetch(url, { headers: this.headers });
+      // Si no hay tabla vendors, obtener únicos de opportunities
+      const { data: oppsData, error: oppsError } = await supabase
+        .from('opportunities')
+        .select('vendor');
+
+      if (oppsError) throw oppsError;
+
+      const uniqueVendors = [...new Set(oppsData?.map(o => o.vendor).filter(Boolean) || [])];
       
-      if (!response.ok) {
-        throw new Error(`Error fetching vendors: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      const uniqueVendors = [...new Set(data.map((o: any) => o.vendor).filter(Boolean))];
-      
-      // Retorna com informações básicas inferidas dos nomes
       return uniqueVendors.map(name => ({
         name,
-        role: name === 'Tomás' ? 'CEO/Head of Sales' : 
-              name === 'Jordi' ? 'Sales Manager' :
-              name === 'Matheus' ? 'Account Executive' : 
-              'Vendedor',
+        role: this.getVendorRole(name),
         is_admin: name === 'Tomás'
       }));
-    });
+    } catch (error) {
+      console.error('Error fetching vendors:', error);
+      // Fallback a lista por defecto
+      return ['Tomás', 'Jordi', 'Matheus', 'Carlos', 'Paulo'].map(name => ({
+        name,
+        role: this.getVendorRole(name),
+        is_admin: name === 'Tomás'
+      }));
+    }
+  }
+
+  private getVendorRole(name: string): string {
+    const roles: Record<string, string> = {
+      'Tomás': 'CEO/Head of Sales',
+      'Jordi': 'Sales Manager',
+      'Matheus': 'Account Executive'
+    };
+    return roles[name] || 'Vendedor';
+  }
+
+  private normalizeScales(scales: any): Scales {
+    if (!scales) return emptyScales();
+
+    // Si ya tiene el formato correcto
+    if (scales.dor && typeof scales.dor === 'object' && 'score' in scales.dor) {
+      return scales;
+    }
+
+    // Si tiene formato antiguo con valores numéricos directos
+    if (typeof scales.dor === 'number' || typeof scales.pain === 'number') {
+      return {
+        dor: { score: scales.dor || scales.pain || 0, description: '' },
+        poder: { score: scales.poder || scales.power || 0, description: '' },
+        visao: { score: scales.visao || scales.vision || 0, description: '' },
+        valor: { score: scales.valor || scales.value || 0, description: '' },
+        controle: { score: scales.controle || scales.control || 0, description: '' },
+        compras: { score: scales.compras || scales.purchase || 0, description: '' }
+      };
+    }
+
+    return emptyScales();
   }
 
   async insertOpportunity(data: Omit<Opportunity, 'id' | 'created_at'>): Promise<Opportunity> {
-    return fetchWithRetry(async () => {
-      const url = `${supabaseConfig.url}/rest/v1/opportunities`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify(data)
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
-      }
-      
-      const result = await response.json();
-      return Array.isArray(result) ? result[0] : result;
-    });
+    try {
+      const { data: result, error } = await supabase
+        .from('opportunities')
+        .insert([data])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return result;
+    } catch (error) {
+      console.error('Error inserting opportunity:', error);
+      throw error;
+    }
   }
 
   async updateOpportunity(id: number, data: Partial<Opportunity>): Promise<Opportunity> {
-    return fetchWithRetry(async () => {
-      const url = `${supabaseConfig.url}/rest/v1/opportunities?id=eq.${id}`;
-      const response = await fetch(url, {
-        method: 'PATCH',
-        headers: this.headers,
-        body: JSON.stringify(data)
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
-      }
-      
-      const text = await response.text();
-      if (!text) return {} as Opportunity;
-      
-      const result = JSON.parse(text);
-      return Array.isArray(result) ? result[0] : result;
-    });
+    try {
+      const { data: result, error } = await supabase
+        .from('opportunities')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return result;
+    } catch (error) {
+      console.error('Error updating opportunity:', error);
+      throw error;
+    }
   }
 
   async deleteOpportunity(id: number): Promise<void> {
-    return fetchWithRetry(async () => {
-      const url = `${supabaseConfig.url}/rest/v1/opportunities?id=eq.${id}`;
-      const response = await fetch(url, {
-        method: 'DELETE',
-        headers: this.headers
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Error ${response.status}: ${response.statusText} - ${errorText}`);
-      }
-    });
+    try {
+      const { error } = await supabase
+        .from('opportunities')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting opportunity:', error);
+      throw error;
+    }
   }
 }
 
 const supabaseService = new SupabaseService();
 
-// Componente OpportunityHealthScore
+// --- COMPONENTE OpportunityHealthScore ---
 const OpportunityHealthScore: React.FC<{ opportunity: Opportunity }> = ({ opportunity }) => {
   const calculateHealthScore = () => {
     if (!opportunity.scales) return 0;
     
     const scores = [
-      opportunity.scales.dor.score,
-      opportunity.scales.poder.score,
-      opportunity.scales.visao.score,
-      opportunity.scales.valor.score,
-      opportunity.scales.controle.score,
-      opportunity.scales.compras.score
+      getScaleScore(opportunity.scales.dor),
+      getScaleScore(opportunity.scales.poder),
+      getScaleScore(opportunity.scales.visao),
+      getScaleScore(opportunity.scales.valor),
+      getScaleScore(opportunity.scales.controle),
+      getScaleScore(opportunity.scales.compras)
     ];
     
     const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
@@ -568,7 +573,6 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const vendorData = await supabaseService.fetchVendors();
       setVendors(vendorData);
       
-      // Si no hay usuario actual, seleccionar el primero o el guardado en localStorage
       if (!currentUser) {
         const savedUser = localStorage.getItem('ventapel_user');
         if (savedUser && vendorData.some(v => v.name === savedUser)) {
@@ -579,9 +583,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     } catch (err) {
       console.error('Error al cargar vendedores:', err);
-      // Si falla, usar lista por defecto
-      const defaultVendors = ['Tomás', 'Jordi', 'Matheus', 'Carlos', 'Paulo'];
-      setVendors(defaultVendors.map(name => ({ name })));
+      setError('Error al cargar vendedores');
     }
   }, [currentUser]);
 
@@ -590,15 +592,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setLoading(true);
       setError(null);
       const data = await supabaseService.fetchOpportunities();
-      
-      const validatedData = data.map(opp => ({
-        ...opp,
-        scales: opp.scales || emptyScales(),
-        value: Number(opp.value) || 0,
-        probability: Number(opp.probability) || 0
-      }));
-      
-      setOpportunities(validatedData);
+      setOpportunities(data);
     } catch (err) {
       console.error('Error al cargar oportunidades:', err);
       setError('Error al cargar oportunidades. Por favor, inténtelo de nuevo.');
@@ -628,7 +622,8 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         support_contact: formData.support_contact?.trim() || undefined,
         probability: stages.find(s => s.id === formData.stage)?.probability || 0,
         last_update: new Date().toISOString().split('T')[0],
-        scales: formData.scales || emptyScales()
+        scales: formData.scales,
+        industry: formData.industry || undefined
       };
 
       await supabaseService.insertOpportunity(newOpportunity);
@@ -661,7 +656,8 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         support_contact: formData.support_contact?.trim() || undefined,
         probability: stages.find(s => s.id === formData.stage)?.probability || 0,
         last_update: new Date().toISOString().split('T')[0],
-        scales: formData.scales || emptyScales()
+        scales: formData.scales,
+        industry: formData.industry || undefined
       };
 
       await supabaseService.updateOpportunity(id, updatedData);
@@ -723,6 +719,22 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     loadVendors();
     loadOpportunities();
+
+    // Suscribirse a cambios en tiempo real
+    const subscription = supabase
+      .channel('opportunities-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'opportunities' },
+        (payload) => {
+          console.log('Cambio detectado:', payload);
+          loadOpportunities();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -799,13 +811,15 @@ const checkStageRequirements = (opportunity: Opportunity, stageId: number): bool
 
   switch (stageId) {
     case 2:
-      return opportunity.scales.dor.score >= 5 && opportunity.scales.poder.score >= 4;
+      return getScaleScore(opportunity.scales.dor) >= 5 && 
+             getScaleScore(opportunity.scales.poder) >= 4;
     case 3:
-      return opportunity.scales.visao.score >= 5;
+      return getScaleScore(opportunity.scales.visao) >= 5;
     case 4:
-      return opportunity.scales.valor.score >= 6;
+      return getScaleScore(opportunity.scales.valor) >= 6;
     case 5:
-      return opportunity.scales.controle.score >= 7 && opportunity.scales.compras.score >= 6;
+      return getScaleScore(opportunity.scales.controle) >= 7 && 
+             getScaleScore(opportunity.scales.compras) >= 6;
     default:
       return true;
   }
@@ -824,6 +838,7 @@ const CRMVentapel: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showNewOpportunity, setShowNewOpportunity] = useState(false);
   const [editingOpportunity, setEditingOpportunity] = useState<Opportunity | null>(null);
+  const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
   const [dashboardVendorFilter, setDashboardVendorFilter] = useState('all');
   const [selectedStageForList, setSelectedStageForList] = useState<number | null>(null);
   const [showStageChecklist, setShowStageChecklist] = useState<{ opportunity: Opportunity, targetStage: number } | null>(null);
@@ -888,7 +903,14 @@ const CRMVentapel: React.FC = () => {
     avgScore: dashboardOpportunities.length > 0 ? 
       dashboardOpportunities.reduce((sum, opp) => {
         if (!opp.scales) return sum;
-        const scaleScores = Object.values(opp.scales).map(s => s.score || 0);
+        const scaleScores = [
+          getScaleScore(opp.scales.dor),
+          getScaleScore(opp.scales.poder),
+          getScaleScore(opp.scales.visao),
+          getScaleScore(opp.scales.valor),
+          getScaleScore(opp.scales.controle),
+          getScaleScore(opp.scales.compras)
+        ];
         const avgOppScore = scaleScores.reduce((a, b) => a + b, 0) / scaleScores.length;
         return sum + avgOppScore;
       }, 0) / dashboardOpportunities.length : 0,
@@ -1055,11 +1077,12 @@ const CRMVentapel: React.FC = () => {
                         <th className="pb-2 font-medium text-gray-700 text-right">Valor</th>
                         <th className="pb-2 font-medium text-gray-700 text-right">Prob.</th>
                         <th className="pb-2 font-medium text-gray-700 text-right">Valor Pond.</th>
+                        <th className="pb-2"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {stage.opportunities.map(opp => (
-                        <tr key={opp.id} className="border-b border-gray-100">
+                        <tr key={opp.id} className="border-b border-gray-100 hover:bg-white cursor-pointer">
                           <td className="py-2">{opp.name}</td>
                           <td className="py-2">{opp.client}</td>
                           <td className="py-2">{opp.vendor}</td>
@@ -1067,6 +1090,18 @@ const CRMVentapel: React.FC = () => {
                           <td className="py-2 text-right">{opp.probability}%</td>
                           <td className="py-2 text-right font-medium">
                             R$ {(opp.value * opp.probability / 100).toLocaleString('pt-BR')}
+                          </td>
+                          <td className="py-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedOpportunity(opp);
+                                setEditingOpportunity(opp);
+                              }}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1101,8 +1136,16 @@ const CRMVentapel: React.FC = () => {
     const stage = stages.find(s => s.id === opportunity.stage);
     const nextStage = stages.find(s => s.id === opportunity.stage + 1);
     const prevStage = stages.find(s => s.id === opportunity.stage - 1);
+    
     const avgScore = opportunity.scales ? 
-      Object.values(opportunity.scales).reduce((sum, scale) => sum + (scale.score || 0), 0) / 6 : 0;
+      [
+        getScaleScore(opportunity.scales.dor),
+        getScaleScore(opportunity.scales.poder),
+        getScaleScore(opportunity.scales.visao),
+        getScaleScore(opportunity.scales.valor),
+        getScaleScore(opportunity.scales.controle),
+        getScaleScore(opportunity.scales.compras)
+      ].reduce((a, b) => a + b, 0) / 6 : 0;
 
     const canAdvance = nextStage && checkStageRequirements(opportunity, opportunity.stage);
     const isInactive7Days = checkInactivity(opportunity.last_update, 7);
@@ -1129,7 +1172,10 @@ const CRMVentapel: React.FC = () => {
                 </span>
               )}
               <button
-                onClick={() => setEditingOpportunity(opportunity)}
+                onClick={() => {
+                  setEditingOpportunity(opportunity);
+                  setSelectedOpportunity(opportunity);
+                }}
                 className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
               >
                 <Edit3 className="w-4 h-4" />
@@ -1145,6 +1191,9 @@ const CRMVentapel: React.FC = () => {
               <p className="text-lg font-semibold text-blue-600">{opportunity.client}</p>
               <p className="text-sm text-gray-600">👤 {opportunity.vendor}</p>
               <p className="text-sm text-purple-600">📦 {opportunity.product}</p>
+              {opportunity.industry && (
+                <p className="text-sm text-gray-600">🏭 {opportunity.industry}</p>
+              )}
               {opportunity.expected_close && (
                 <p className="text-sm text-gray-600">📅 Fechamento: {new Date(opportunity.expected_close).toLocaleDateString('pt-BR')}</p>
               )}
@@ -1228,16 +1277,20 @@ const CRMVentapel: React.FC = () => {
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
               {scales.map(scale => {
                 const Icon = scale.icon;
-                const scaleData = opportunity.scales[scale.id as keyof Scales] || { score: 0, description: '' };
+                const scaleData = opportunity.scales[scale.id as keyof Scales];
+                const scoreValue = getScaleScore(scaleData);
                 return (
                   <div key={scale.id} className={scale.bgColor + ' ' + scale.borderColor + ' border-2 rounded-lg p-3 cursor-pointer hover:shadow-md transition-all'}
-                       onClick={() => setEditingOpportunity(opportunity)}>
+                       onClick={() => {
+                         setEditingOpportunity(opportunity);
+                         setSelectedOpportunity(opportunity);
+                       }}>
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center">
                         <Icon className={'w-4 h-4 mr-2 ' + scale.color} />
                         <span className="text-xs font-bold">{scale.name}</span>
                       </div>
-                      <span className="text-lg font-bold text-gray-800">{scaleData.score}</span>
+                      <span className="text-lg font-bold text-gray-800">{scoreValue}</span>
                     </div>
                     {scaleData.description && (
                       <p className="text-xs text-gray-600 mt-1">{scaleData.description}</p>
@@ -1399,7 +1452,8 @@ const CRMVentapel: React.FC = () => {
       sponsor: opportunity?.sponsor || '',
       influencer: opportunity?.influencer || '',
       support_contact: opportunity?.support_contact || '',
-      scales: opportunity?.scales || emptyScales()
+      scales: opportunity?.scales || emptyScales(),
+      industry: opportunity?.industry || ''
     });
 
     const [activeScale, setActiveScale] = useState<string | null>(null);
@@ -1421,6 +1475,10 @@ const CRMVentapel: React.FC = () => {
           
         if (success) {
           onClose();
+          // Atualizar oportunidade selecionada se foi editada
+          if (opportunity && selectedOpportunity?.id === opportunity.id) {
+            setSelectedOpportunity(null);
+          }
         }
       } finally {
         setSubmitting(false);
@@ -1447,8 +1505,8 @@ const CRMVentapel: React.FC = () => {
     };
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-xl max-w-6xl w-full max-h-screen overflow-y-auto">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+        <div className="bg-white rounded-xl max-w-6xl w-full my-8">
           <div className="p-8">
             <div className="flex justify-between items-center mb-8">
               <div>
@@ -1566,6 +1624,19 @@ const CRMVentapel: React.FC = () => {
                         />
                       </div>
                       <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700">Indústria</label>
+                        <input
+                          type="text"
+                          value={formData.industry}
+                          onChange={(e) => setFormData({...formData, industry: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="Ex: E-commerce, Farmacêutica"
+                          disabled={submitting}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
                         <label className="block text-sm font-medium mb-2 text-gray-700">Fechamento Previsto</label>
                         <input
                           type="date"
@@ -1575,17 +1646,17 @@ const CRMVentapel: React.FC = () => {
                           disabled={submitting}
                         />
                       </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Próxima Ação</label>
-                      <input
-                        type="text"
-                        value={formData.next_action}
-                        onChange={(e) => setFormData({...formData, next_action: e.target.value})}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Ex: Demo técnica agendada para 15/02"
-                        disabled={submitting}
-                      />
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700">Próxima Ação</label>
+                        <input
+                          type="text"
+                          value={formData.next_action}
+                          onChange={(e) => setFormData({...formData, next_action: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="Ex: Demo técnica agendada para 15/02"
+                          disabled={submitting}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1983,18 +2054,25 @@ const CRMVentapel: React.FC = () => {
       {editingOpportunity && (
         <OpportunityForm 
           opportunity={editingOpportunity}
-          onClose={() => setEditingOpportunity(null)} 
+          onClose={() => {
+            setEditingOpportunity(null);
+            setSelectedOpportunity(null);
+          }} 
         />
       )}
 
       <StageChecklistModal />
       
-      {/* Asistente IA flotante */}
+      {/* Asistente IA flotante - CORREGIDO: pasa la oportunidad seleccionada */}
       <AIAssistant 
-        currentOpportunity={editingOpportunity}
+        currentOpportunity={selectedOpportunity || editingOpportunity}
         onOpportunityUpdate={(updated) => {
-          setEditingOpportunity(updated);
-          // Recargar oportunidades si es necesario
+          if (selectedOpportunity?.id === updated.id) {
+            setSelectedOpportunity(updated);
+          }
+          if (editingOpportunity?.id === updated.id) {
+            setEditingOpportunity(updated);
+          }
         }}
         currentUser={currentUser}
       />
