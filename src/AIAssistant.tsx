@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageCircle, X, Send, Loader, TrendingUp, AlertTriangle, CheckCircle, Search, Lightbulb, BarChart3, Target, Sparkles, ChevronDown, ChevronUp, Brain, Zap, Shield, DollarSign, Users, Calendar, FileText, ArrowRight, Clock, Activity, Calculator, TrendingDown } from 'lucide-react';
+import { MessageCircle, X, Send, Loader, Phone, DollarSign, Shield, Zap, Target, AlertTriangle, CheckCircle, Brain, FileText, ArrowRight, Clock, TrendingUp, XCircle, ChevronDown, Users, Sparkles } from 'lucide-react';
 import { VENTAPEL_COMMERCIAL_CONTEXT, PPVVCC_SCORING_GUIDE, ROI_CALCULATION_TEMPLATE, OBJECTION_HANDLING_SCRIPTS, SUCCESS_STORIES_DETAILED } from './contexts/VentapelCommercialContext';
 
 // Interfaces
@@ -37,7 +37,7 @@ interface AIAssistantProps {
   currentOpportunity?: Opportunity | null;
 }
 
-// Funciones auxiliares para llamar a las APIs a través del proxy
+// Funciones auxiliares para llamar a las APIs
 const searchWeb = async (query: string): Promise<any> => {
   try {
     const response = await fetch('/api/assistant', {
@@ -69,82 +69,58 @@ const searchWeb = async (query: string): Promise<any> => {
 };
 
 const generateWithClaude = async (messages: any[], system?: string): Promise<string> => {
-  // System prompt enriquecido con el contexto comercial completo
-  const enrichedSystemPrompt = `
+  // System prompt AGRESIVO para VENDER
+  const salesKillerPrompt = `
 ${VENTAPEL_COMMERCIAL_CONTEXT}
 
 ${PPVVCC_SCORING_GUIDE || ''}
 
 ${ROI_CALCULATION_TEMPLATE || ''}
 
-INFORMACIÓN ADICIONAL DE REFERENCIA:
-${OBJECTION_HANDLING_SCRIPTS ? `
-Scripts de manejo de objeciones disponibles:
-${JSON.stringify(OBJECTION_HANDLING_SCRIPTS, null, 2)}
-` : ''}
+SCRIPTS DE MANEJO DE OBJECIONES:
+${OBJECTION_HANDLING_SCRIPTS ? JSON.stringify(OBJECTION_HANDLING_SCRIPTS, null, 2) : ''}
 
-${SUCCESS_STORIES_DETAILED ? `
-Casos de éxito detallados:
-${JSON.stringify(SUCCESS_STORIES_DETAILED, null, 2)}
-` : ''}
+CASOS DE ÉXITO PARA USAR:
+${SUCCESS_STORIES_DETAILED ? JSON.stringify(SUCCESS_STORIES_DETAILED, null, 2) : ''}
 
-INSTRUCCIONES ESPECÍFICAS PARA EL ASISTENTE:
+🔥 INSTRUCCIONES CRÍTICAS - MODO VENDEDOR KILLER 🔥
 
-1. IDENTIDAD Y ROL:
-   - Sos el asistente de ventas senior de Ventapel Brasil
-   - Tenés acceso completo a toda la información comercial de la empresa
-   - Tu objetivo es ayudar a cerrar negocios rentables y hacer crecer las oportunidades
+TU ÚNICO OBJETIVO: Ayudar al vendedor a CERRAR DEALS YA.
 
-2. ESTILO DE COMUNICACIÓN:
-   - Directo y sin vueltas (estilo Tomás, CEO)
-   - Siempre basado en datos concretos y evidencia
-   - Usá portugués brasileño con clientes brasileños
-   - Español rioplatense para comunicación interna
-   - Profesional pero cercano y consultivo
+REGLAS INQUEBRANTABLES:
+1. Máximo 3-4 bullets por respuesta
+2. SIEMPRE terminar con "⚡ PRÓXIMA ACCIÓN: [algo específico para hacer YA]"
+3. Usar verbos de acción: "Llamá", "Enviá", "Pedí", "Cerrá", "Presioná"
+4. Dar scripts EXACTOS, palabra por palabra
+5. Crear URGENCIA en cada interacción
+6. NO análisis largos, solo ACCIONES
 
-3. AL ANALIZAR OPORTUNIDADES:
-   - SIEMPRE evaluá usando la metodología PPVVCC (0-10 cada dimensión)
-   - Score total <30: Oportunidad en riesgo, requiere acción urgente
-   - Score 30-45: Oportunidad viable, necesita trabajo
-   - Score >45: Oportunidad madura, lista para cierre
-   - Relacioná cada oportunidad con casos de éxito similares
-   - Calculá ROI específico basado en el volumen real o estimado
+FORMATO DE RESPUESTA PARA OBJECIONES:
+🎯 OBJECIÓN DETECTADA: [cual es]
+💬 RESPUESTA EXACTA: "[script palabra por palabra]"
+📊 DATO KILLER: [caso o número que destruye la objeción]
+⚡ PRÓXIMA ACCIÓN: [qué hacer inmediatamente]
 
-4. AL BUSCAR INFORMACIÓN DE EMPRESAS:
-   - Identificá: industria, tamaño, volumen de operación
-   - Buscá iniciativas de sustentabilidad publicadas
-   - Identificá decisores clave en LinkedIn
-   - Estimá volumen de cajas/día basado en su operación
-   - Detectá qué competidor podrían estar usando
-   - Sugerí el approach inicial más efectivo
+FORMATO PARA CIERRE:
+💰 TÉCNICA: [nombre de la técnica]
+🗣️ SCRIPT: "[exactamente qué decir]"
+⏰ CREAR URGENCIA: "[frase específica]"
+⚡ PRÓXIMA ACCIÓN: [cerrar o siguiente paso]
 
-5. AL GENERAR ESTRATEGIAS:
-   - Usá el manual de ventas completo incluido
-   - Adaptá el pitch según la industria específica
-   - Incluí al menos 1 caso de éxito relevante
-   - Proponé secuencia de próximos 3 pasos concretos
-   - Identificá recursos necesarios (demo, piloto, visita)
+LENGUAJE:
+- Directo, sin vueltas (estilo Tomás)
+- Argentino/Brasileño según el cliente
+- Confianza total: "Esto se cierra hoy"
+- Mentalidad ganadora SIEMPRE
 
-6. CÁLCULOS Y MÉTRICAS:
-   - Siempre mostrá números concretos
-   - Usá las fórmulas de ROI incluidas
-   - Compará con métricas de casos similares
-   - Proyectá ahorros a 12, 24 y 36 meses
+ALERTAS PROACTIVAS:
+- Si hay más de 7 días sin contacto: "🔥 ALERTA: Llamar YA o se enfría"
+- Si PPVVCC > 40: "💎 MADURO PARA CIERRE - Pedir la orden HOY"
+- Si DOLOR > 7: "🎯 Cliente con dolor alto - PRESIONAR para demo YA"
 
-7. INFORMACIÓN CONFIDENCIAL:
-   - Nunca compartir márgenes internos con clientes
-   - No mencionar descuentos máximos autorizados
-   - Proteger información de otros clientes
+${system ? `\nCONTEXTO ADICIONAL: ${system}` : ''}
 
-8. PRIORIDADES ESTRATÉGICAS:
-   - Foco en valor, no en precio
-   - Piloto gratis es nuestra herramienta clave
-   - Sustentabilidad es diferenciador principal
-   - Servicio técnico local es ventaja competitiva
-
-${system ? `\nCONTEXTO ADICIONAL DEL USUARIO: ${system}` : ''}
-
-Ahora respondé con todo el conocimiento comercial de Ventapel Brasil, como un experto senior en ventas consultivas B2B.
+Ahora respondé como el mejor closer de Ventapel. Cada palabra debe empujar hacia el CIERRE.
 `;
 
   try {
@@ -159,7 +135,7 @@ Ahora respondé con todo el conocimiento comercial de Ventapel Brasil, como un e
           model: 'claude-3-5-sonnet-20241022',
           max_tokens: 4096,
           messages: messages,
-          system: enrichedSystemPrompt
+          system: salesKillerPrompt
         }
       }),
     });
@@ -177,175 +153,73 @@ Ahora respondé con todo el conocimiento comercial de Ventapel Brasil, como un e
   }
 };
 
-// Componente de Health Score
-export const HealthScoreIndicator: React.FC<{ opportunity: Opportunity }> = ({ opportunity }) => {
-  const calculateHealthScore = () => {
-    if (!opportunity.scales) return 0;
+// Componente de Alertas de Venta
+const SalesAlerts: React.FC<{ opportunities: Opportunity[] }> = ({ opportunities }) => {
+  const alerts = React.useMemo(() => {
+    const urgentAlerts = [];
     
-    const weights = {
-      dor: 0.2,
-      poder: 0.25,
-      visao: 0.15,
-      valor: 0.2,
-      controle: 0.1,
-      compras: 0.1
-    };
+    for (const opp of opportunities) {
+      const totalScore = Object.values(opp.scales).reduce((sum, s) => sum + s.score, 0);
+      
+      // Oportunidades maduras para cerrar
+      if (totalScore > 40) {
+        urgentAlerts.push({
+          type: 'close',
+          icon: DollarSign,
+          color: 'text-green-600 bg-green-100',
+          message: `💎 ${opp.client} está MADURO (score ${totalScore}/60) - CERRAR YA`,
+          action: `Llamar HOY y pedir la orden`
+        });
+      }
+      
+      // Alto dolor sin acción
+      if (opp.scales.dor.score >= 7 && opp.scales.poder.score < 5) {
+        urgentAlerts.push({
+          type: 'poder',
+          icon: Target,
+          color: 'text-red-600 bg-red-100',
+          message: `🔥 ${opp.client} tiene DOLOR alto (${opp.scales.dor.score}) pero no tenés al decisor`,
+          action: `Exigir reunión con el jefe HOY`
+        });
+      }
+      
+      // Oportunidades enfriándose
+      const lastUpdate = new Date(opp.expected_close || new Date());
+      const daysSince = Math.floor((new Date().getTime() - lastUpdate.getTime()) / (1000 * 3600 * 24));
+      if (daysSince > 7) {
+        urgentAlerts.push({
+          type: 'cold',
+          icon: AlertTriangle,
+          color: 'text-yellow-600 bg-yellow-100',
+          message: `⚠️ ${opp.client} - ${daysSince} días sin contacto - SE ENFRÍA`,
+          action: `WhatsApp AHORA: "Tengo novedades importantes"`
+        });
+      }
+    }
     
-    const weightedScore = Object.entries(opportunity.scales).reduce((total, [key, value]) => {
-      return total + (value.score * weights[key as keyof typeof weights]);
-    }, 0);
-    
-    return Math.round(weightedScore);
-  };
-
-  const score = calculateHealthScore();
-  const getHealthStatus = () => {
-    if (score >= 7) return { text: 'Saludable', color: 'text-green-600', bg: 'bg-green-100', icon: CheckCircle };
-    if (score >= 4) return { text: 'Atención', color: 'text-yellow-600', bg: 'bg-yellow-100', icon: AlertTriangle };
-    return { text: 'Crítico', color: 'text-red-600', bg: 'bg-red-100', icon: AlertTriangle };
-  };
-
-  const status = getHealthStatus();
-  const Icon = status.icon;
-
-  return (
-    <div className={`inline-flex items-center px-3 py-1 rounded-full ${status.bg} ${status.color}`}>
-      <Icon className="w-4 h-4 mr-1" />
-      <span className="font-semibold text-sm">{score}/10</span>
-      <span className="ml-2 text-xs">{status.text}</span>
-    </div>
-  );
-};
-
-// Componente de Insights Panel
-export const InsightsPanel: React.FC<{ opportunities: Opportunity[] }> = ({ opportunities }) => {
-  const [expanded, setExpanded] = useState(true);
-
-  const insights = React.useMemo(() => {
-    const totalValue = opportunities.reduce((sum, opp) => sum + opp.value, 0);
-    const avgProbability = opportunities.reduce((sum, opp) => sum + opp.probability, 0) / opportunities.length;
-    
-    const riskOpportunities = opportunities.filter(opp => {
-      const avgScore = Object.values(opp.scales).reduce((sum, scale) => sum + scale.score, 0) / 6;
-      return avgScore < 4;
-    });
-
-    const highValueOpps = opportunities.filter(opp => opp.value > 100000);
-    
-    const stuckOpps = opportunities.filter(opp => {
-      const daysSinceUpdate = Math.floor((new Date().getTime() - new Date(opp.expected_close || new Date()).getTime()) / (1000 * 3600 * 24));
-      return daysSinceUpdate > 30;
-    });
-
-    // Calcular score PPVVCC promedio
-    const avgPPVVCC = opportunities.length > 0 ? 
-      opportunities.reduce((sum, opp) => {
-        const oppScore = Object.values(opp.scales).reduce((s, scale) => s + scale.score, 0) / 6;
-        return sum + oppScore;
-      }, 0) / opportunities.length : 0;
-
-    return {
-      totalValue,
-      avgProbability,
-      avgPPVVCC,
-      riskCount: riskOpportunities.length,
-      highValueCount: highValueOpps.length,
-      stuckCount: stuckOpps.length,
-      recommendations: [
-        riskOpportunities.length > 0 && `⚠️ ${riskOpportunities.length} oportunidades necesitan atención urgente en PPVVCC`,
-        stuckOpps.length > 0 && `🕐 ${stuckOpps.length} oportunidades están estancadas hace más de 30 días`,
-        highValueOpps.length > 0 && `💎 Foco en ${highValueOpps.length} oportunidades de alto valor (>R$100k)`,
-        avgProbability < 50 && '📈 La probabilidad promedio es baja. Revisar calificación de leads',
-        avgPPVVCC < 5 && '🎯 Score PPVVCC promedio bajo. Necesario mejorar calificación'
-      ].filter(Boolean)
-    };
+    return urgentAlerts.slice(0, 3); // Top 3 alertas
   }, [opportunities]);
 
+  if (alerts.length === 0) return null;
+
   return (
-    <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl shadow-lg border border-purple-200 overflow-hidden">
-      <div 
-        className="p-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white cursor-pointer flex items-center justify-between"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center">
-          <Brain className="w-5 h-5 mr-2" />
-          <h3 className="font-bold">AI Insights Ventapel</h3>
-        </div>
-        {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-      </div>
-      
-      {expanded && (
-        <div className="p-4 space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="bg-white p-3 rounded-lg border border-purple-200">
-              <div className="flex items-center text-purple-600 mb-1">
-                <DollarSign className="w-4 h-4 mr-1" />
-                <span className="text-xs font-medium">Pipeline Total</span>
-              </div>
-              <p className="text-lg font-bold text-gray-800">
-                R$ {(insights.totalValue / 1000000).toFixed(1)}M
-              </p>
-            </div>
-            
-            <div className="bg-white p-3 rounded-lg border border-blue-200">
-              <div className="flex items-center text-blue-600 mb-1">
-                <Activity className="w-4 h-4 mr-1" />
-                <span className="text-xs font-medium">Prob. Media</span>
-              </div>
-              <p className="text-lg font-bold text-gray-800">
-                {insights.avgProbability.toFixed(0)}%
-              </p>
-            </div>
-            
-            <div className="bg-white p-3 rounded-lg border border-indigo-200">
-              <div className="flex items-center text-indigo-600 mb-1">
-                <BarChart3 className="w-4 h-4 mr-1" />
-                <span className="text-xs font-medium">PPVVCC Avg</span>
-              </div>
-              <p className="text-lg font-bold text-gray-800">
-                {insights.avgPPVVCC.toFixed(1)}/10
-              </p>
-            </div>
-            
-            <div className="bg-white p-3 rounded-lg border border-red-200">
-              <div className="flex items-center text-red-600 mb-1">
-                <AlertTriangle className="w-4 h-4 mr-1" />
-                <span className="text-xs font-medium">En Riesgo</span>
-              </div>
-              <p className="text-lg font-bold text-gray-800">
-                {insights.riskCount}
-              </p>
-            </div>
-            
-            <div className="bg-white p-3 rounded-lg border border-green-200">
-              <div className="flex items-center text-green-600 mb-1">
-                <Target className="w-4 h-4 mr-1" />
-                <span className="text-xs font-medium">Alto Valor</span>
-              </div>
-              <p className="text-lg font-bold text-gray-800">
-                {insights.highValueCount}
-              </p>
+    <div className="space-y-2 p-3 bg-red-50 border-b border-red-200">
+      <h4 className="font-bold text-sm text-red-800 flex items-center">
+        <Zap className="w-4 h-4 mr-1 animate-pulse" />
+        ACCIONES URGENTES - HACER YA
+      </h4>
+      {alerts.map((alert, idx) => {
+        const Icon = alert.icon;
+        return (
+          <div key={idx} className={`p-2 rounded-lg flex items-start ${alert.color}`}>
+            <Icon className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-xs font-semibold">{alert.message}</p>
+              <p className="text-xs mt-1">→ {alert.action}</p>
             </div>
           </div>
-
-          {insights.recommendations.length > 0 && (
-            <div className="bg-white rounded-lg border border-purple-200 p-4">
-              <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
-                <Lightbulb className="w-4 h-4 mr-2 text-yellow-500" />
-                Recomendaciones AI - Ventapel
-              </h4>
-              <div className="space-y-2">
-                {insights.recommendations.map((rec, idx) => (
-                  <div key={idx} className="flex items-start">
-                    <ArrowRight className="w-4 h-4 mr-2 text-purple-500 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-gray-700">{rec}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+        );
+      })}
     </div>
   );
 };
@@ -356,133 +230,228 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ opportunities, currentOpportu
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showInsights, setShowInsights] = useState(true);
 
-  // Quick actions mejoradas para ventas
+  // Quick Actions KILLER para VENDER
   const quickActions = [
-    { icon: Search, label: 'Investigar empresa', action: 'search' },
-    { icon: BarChart3, label: 'Análisis PPVVCC', action: 'analyze' },
-    { icon: Calculator, label: 'Calcular ROI', action: 'roi' },
-    { icon: Lightbulb, label: 'Estrategia cierre', action: 'strategy' },
-    { icon: FileText, label: 'Generar propuesta', action: 'proposal' },
-    { icon: TrendingDown, label: 'Manejo objeciones', action: 'objections' }
+    { 
+      icon: Phone, 
+      label: '📞 Qué decir AHORA', 
+      action: 'call_script',
+      color: 'hover:bg-green-100 hover:border-green-500'
+    },
+    { 
+      icon: DollarSign, 
+      label: '💰 CERRAR este deal', 
+      action: 'close_now',
+      color: 'hover:bg-yellow-100 hover:border-yellow-500'
+    },
+    { 
+      icon: Shield, 
+      label: '🚫 Vencer objeción', 
+      action: 'objection',
+      color: 'hover:bg-red-100 hover:border-red-500'
+    },
+    { 
+      icon: Zap, 
+      label: '⚡ Crear URGENCIA', 
+      action: 'urgency',
+      color: 'hover:bg-orange-100 hover:border-orange-500'
+    },
+    { 
+      icon: Target, 
+      label: '🎯 Próximo paso', 
+      action: 'next_step',
+      color: 'hover:bg-blue-100 hover:border-blue-500'
+    },
+    { 
+      icon: FileText, 
+      label: '📧 Email que cierra', 
+      action: 'email_template',
+      color: 'hover:bg-purple-100 hover:border-purple-500'
+    }
   ];
 
+  // Comandos rápidos
+  const quickCommands = {
+    '/llamada': 'call_script',
+    '/cerrar': 'close_now',
+    '/objecion': 'objection',
+    '/urgencia': 'urgency',
+    '/siguiente': 'next_step',
+    '/email': 'email_template',
+    '/precio': 'price_objection',
+    '/competencia': 'competition',
+    '/demo': 'demo_script'
+  };
+
   const handleQuickAction = async (action: string) => {
-    if (!currentOpportunity && action !== 'search') {
-      setInputMessage('Por favor, selecciona una oportunidad primero');
+    if (!currentOpportunity && action !== 'general') {
+      setInputMessage('⚠️ Seleccioná una oportunidad primero');
       return;
     }
 
     const prompts: { [key: string]: string } = {
-      search: `Investigá la empresa ${currentOpportunity?.client || 'mencionada'}. Necesito:
-1. Tamaño de la empresa y volumen de operación
-2. Si tienen e-commerce o operaciones logísticas importantes
-3. Iniciativas de sustentabilidad publicadas
-4. Identificar decisores clave (Director Operaciones, Logística, Sustentabilidad, CFO)
-5. Qué solución de embalaje están usando actualmente
-6. Estimar volumen de cajas/día basado en su industria y tamaño
-7. Principal dolor que Ventapel puede resolver
-8. Competidores que podrían estar atendiendo
-9. Noticias recientes relevantes para nuestro approach`,
-      
-      analyze: `Realizá un análisis PPVVCC completo de la oportunidad "${currentOpportunity?.name}" con ${currentOpportunity?.client}:
-
-Scores actuales en el CRM:
-- PODER: ${currentOpportunity?.scales.poder.score}/10 - ${currentOpportunity?.scales.poder.description || 'Sin descripción'}
-- DOLOR: ${currentOpportunity?.scales.dor.score}/10 - ${currentOpportunity?.scales.dor.description || 'Sin descripción'}
-- VISIÓN: ${currentOpportunity?.scales.visao.score}/10 - ${currentOpportunity?.scales.visao.description || 'Sin descripción'}
-- VALOR: ${currentOpportunity?.scales.valor.score}/10 - ${currentOpportunity?.scales.valor.description || 'Sin descripción'}
-- CONTROL: ${currentOpportunity?.scales.controle.score}/10 - ${currentOpportunity?.scales.controle.description || 'Sin descripción'}
-- COMPRAS: ${currentOpportunity?.scales.compras.score}/10 - ${currentOpportunity?.scales.compras.description || 'Sin descripción'}
-
-Necesito:
-1. Evaluación detallada de cada dimensión con justificación basada en la información disponible
-2. Score total actual y semáforo (🔴 <30, 🟡 30-45, 🟢 >45)
-3. Las 3 acciones prioritarias para mejorar los scores más bajos
-4. Probabilidad real de cierre basada en tu análisis (no la del CRM)
-5. Próximos 5 pasos específicos y tácticos
-6. Riesgos principales y cómo mitigarlos
-7. Caso de éxito similar que podamos referenciar`,
-      
-      roi: `Calculá el ROI detallado para ${currentOpportunity?.client} considerando:
-
-Información de la oportunidad:
-- Producto interesado: ${currentOpportunity?.product || 'No especificado'}
-- Valor estimado: R$ ${currentOpportunity?.value.toLocaleString('pt-BR')}
-
-Por favor calculá:
-1. Volumen estimado de cajas/día para su industria
-2. Inversión inicial requerida (equipos + setup + training)
-3. Costo mensual actual estimado vs Ventapel
-4. Ahorro en insumos (30% típico)
-5. Ahorro en mano de obra (50% reducción tiempo)
-6. Reducción de pérdidas por apertura (estimar %)
-7. Período de payback en meses
-8. VPN (Valor Presente Neto) a 3 años
-9. TIR (Tasa Interna de Retorno)
-10. Gráfico mes a mes del ahorro acumulado
-11. Comparación con caso similar exitoso
-12. Beneficios intangibles cuantificados (sustentabilidad, imagen marca, NPS)`,
-      
-      strategy: `Diseñá una estrategia completa de cierre para "${currentOpportunity?.name}" con ${currentOpportunity?.client}:
-
-Contexto actual:
-- Valor: R$ ${currentOpportunity?.value.toLocaleString('pt-BR')}
-- Etapa: ${currentOpportunity?.stage}
-- Producto: ${currentOpportunity?.product || 'No especificado'}
-- Score PPVVCC total: ${Object.values(currentOpportunity?.scales || {}).reduce((sum, s) => sum + s.score, 0)}
-
-Necesito estrategia detallada:
-1. Approach específico para su industria y momento
-2. Caso de éxito más relevante para compartir (con números)
-3. Secuencia de las próximas 3 reuniones (objetivo, participantes, materiales)
-4. Recursos necesarios (demo en planta, piloto, muestras)
-5. Manejo anticipado de las 3 objeciones más probables
-6. Estrategia de pricing (descuentos autorizados, condiciones)
-7. Timeline realista hasta el cierre
-8. Plan B si rechazan propuesta inicial
-9. Cómo involucrar a otros stakeholders
-10. Métricas de éxito para cada etapa`,
-      
-      proposal: `Generá los elementos clave para la propuesta comercial de ${currentOpportunity?.client}:
-
-Necesito:
-1. Resumen ejecutivo (3 párrafos máximo)
-2. Problema identificado y cuantificado
-3. Solución Ventapel propuesta específica
-4. Inversión requerida y opciones de pago
-5. ROI proyectado con gráficos
-6. Caso de éxito relevante (1 página)
-7. Diferenciadores vs competencia
-8. Plan de implementación por fases
-9. Garantías y SLAs ofrecidos
-10. Próximos pasos y call to action
-11. Anexo técnico con especificaciones
-
-Formato: Estructura lista para armar en PowerPoint/PDF`,
-      
-      objections: `Analizá las objeciones potenciales para ${currentOpportunity?.client} y dame scripts de respuesta:
+      call_script: `Dame el script EXACTO para llamar a ${currentOpportunity?.client} AHORA.
 
 Contexto:
-- Industria del cliente
-- Producto interesado: ${currentOpportunity?.product}
+- Etapa: ${currentOpportunity?.stage}
+- Score DOLOR: ${currentOpportunity?.scales.dor.score}
+- Score PODER: ${currentOpportunity?.scales.poder.score}
+- Último contacto: ${currentOpportunity?.next_action}
+
+Necesito:
+1. Primera frase para abrir (máx 2 líneas)
+2. Pregunta poderosa para crear dolor
+3. Cómo pedir la reunión/demo
+4. Si dice "no tengo tiempo": respuesta exacta
+5. Cierre de la llamada
+
+TODO palabra por palabra, listo para leer.`,
+      
+      close_now: `ESTRATEGIA PARA CERRAR ${currentOpportunity?.client} HOY.
+
+Situación:
 - Valor: R$ ${currentOpportunity?.value.toLocaleString('pt-BR')}
+- Score total PPVVCC: ${Object.values(currentOpportunity?.scales || {}).reduce((sum, s) => sum + s.score, 0)}/60
+- Producto: ${currentOpportunity?.product}
 
-Dame scripts específicos para manejar:
-1. "Es muy caro" - con números y comparación TCO
-2. "Ya tenemos proveedor" - diferenciación clara
-3. "No es el momento" - crear urgencia
-4. "Necesito aprobación corporativa" - estrategia para escalar
-5. "No veo el ROI" - casos concretos y garantías
-6. "El cambio es muy complejo" - plan de migración
-7. "Queremos evaluar otras opciones" - por qué Ventapel ahora
-8. Objeciones técnicas específicas de su industria
+Dame:
+1. Técnica de cierre específica a usar
+2. Script EXACTO del cierre (palabra por palabra)
+3. Cómo crear urgencia REAL
+4. Si pide descuento: respuesta exacta
+5. Si dice "lo tengo que pensar": contra-respuesta
+6. Frase para sellar el deal
 
-Para cada objeción incluí:
-- Script de respuesta (máx 3 párrafos)
-- Caso o dato que respalde
-- Material de soporte a compartir`
+MODO KILLER: Este deal se cierra HOY.`,
+      
+      objection: `MANEJO DE OBJECIONES para ${currentOpportunity?.client}.
+
+Top 5 objeciones probables y RESPUESTA EXACTA:
+
+1. "Es muy caro"
+   → Script completo (3 frases máximo)
+   → Caso de éxito con números
+   
+2. "Ya tenemos proveedor"
+   → Script de respuesta
+   → Diferenciador KILLER
+   
+3. "No es el momento"
+   → Crear urgencia (script exacto)
+   → Costo de no actuar
+   
+4. "Necesito pensarlo"
+   → Técnica para cerrar ahora
+   → Pregunta que compromete
+   
+5. "No veo el ROI"
+   → Números específicos
+   → Garantía para ofrecer
+
+Para cada una: QUÉ DECIR EXACTAMENTE.`,
+      
+      urgency: `Crear URGENCIA REAL para ${currentOpportunity?.client}.
+
+Dame 5 formas de crear urgencia HOY:
+1. Urgencia por precio (qué decir exacto)
+2. Urgencia por disponibilidad 
+3. Urgencia por competencia
+4. Urgencia por pérdida actual
+5. Urgencia por oportunidad única
+
+Para cada una:
+- Script exacto (máx 2 frases)
+- Por qué funciona
+- Cuándo usarla
+
+OBJETIVO: Que firme esta semana.`,
+      
+      next_step: `PRÓXIMA ACCIÓN EXACTA para ${currentOpportunity?.client}.
+
+Estado actual:
+- Etapa: ${currentOpportunity?.stage}
+- Scores PPVVCC: ${JSON.stringify(currentOpportunity?.scales)}
+- Último contacto: ${currentOpportunity?.next_action}
+
+Dame:
+1. QUÉ hacer en las próximas 24 horas (específico)
+2. A QUIÉN contactar y cómo encontrarlo
+3. QUÉ decir/escribir (script exacto)
+4. QUÉ documento/demo preparar
+5. CÓMO asegurar la siguiente reunión
+6. Plan B si no responde
+
+SÉ ESPECÍFICO: Nada de "hacer seguimiento", quiero acciones exactas.`,
+      
+      email_template: `Email KILLER para ${currentOpportunity?.client}.
+
+Necesito email listo para copiar/pegar:
+
+OPCIÓN A - Email para conseguir reunión
+- Asunto que garantiza apertura
+- Cuerpo (máx 5 líneas)
+- Call to action claro
+
+OPCIÓN B - Email post-demo para cerrar
+- Asunto urgente
+- Recordar valor principal (1 línea)
+- Crear urgencia
+- Pedir la orden
+
+OPCIÓN C - Email para reactivar (no responde)
+- Asunto provocador
+- Mensaje super corto
+- Pregunta que obliga respuesta
+
+Formato listo para enviar.`,
+
+      price_objection: `OBJECIÓN DE PRECIO para ${currentOpportunity?.client}.
+
+"Es muy caro" / "No tenemos presupuesto"
+
+Dame:
+1. SCRIPT EXACTO de respuesta (método Ventapel)
+2. Cómo convertir precio en inversión
+3. Caso de éxito con ROI específico
+4. Cálculo de pérdida actual (números)
+5. Opciones de pago/financiación disponibles
+6. Pregunta de cierre post-objeción
+
+Todo palabra por palabra, probado y efectivo.`,
+
+      competition: `${currentOpportunity?.client} menciona COMPETIDORES.
+
+Respuestas EXACTAS para:
+1. "Estamos viendo a 3M también"
+2. "El otro proveedor es más barato"
+3. "Ya trabajamos con [competidor]"
+4. "Vamos a comparar propuestas"
+
+Para cada situación:
+- Script de respuesta (máx 3 frases)
+- Diferenciador ÚNICO de Ventapel
+- Pregunta para retomar control
+- Cómo evitar guerra de precios
+
+OBJETIVO: Ganar sin bajar precio.`,
+
+      demo_script: `DEMO PERFECTA para ${currentOpportunity?.client}.
+
+Guión de demo que VENDE:
+1. Apertura (crear expectativa) - 1 min
+2. Dolor principal a atacar - 2 min
+3. Solución Ventapel (solo lo relevante) - 3 min
+4. Caso de éxito similar - 2 min
+5. ROI específico para ellos - 2 min
+6. Cierre con próximos pasos - 1 min
+
+Para cada parte:
+- Qué decir EXACTAMENTE
+- Qué mostrar/demostrar
+- Pregunta de confirmación
+
+Total: 11 minutos que cierran deals.`
     };
 
     if (prompts[action]) {
@@ -492,7 +461,15 @@ Para cada objeción incluí:
   };
 
   const handleSendMessage = async (messageText?: string) => {
-    const text = messageText || inputMessage;
+    let text = messageText || inputMessage;
+    
+    // Chequear comandos rápidos
+    const command = text.trim().toLowerCase();
+    if (quickCommands[command]) {
+      await handleQuickAction(quickCommands[command]);
+      return;
+    }
+
     if (!text.trim()) return;
 
     const userMessage: Message = {
@@ -509,58 +486,58 @@ Para cada objeción incluí:
     try {
       let assistantResponse = '';
 
-      // Detectar si necesita búsqueda web
+      // Detectar necesidad de búsqueda
       if (text.toLowerCase().includes('busca') || 
           text.toLowerCase().includes('investiga') || 
-          text.toLowerCase().includes('información') || 
-          text.toLowerCase().includes('empresa')) {
+          text.toLowerCase().includes('información')) {
         
         const searchQuery = text.replace(/busca|investiga|información|sobre|empresa|la|el|de/gi, '').trim();
         
         try {
           const searchResults = await searchWeb(searchQuery + ' Brasil empresa');
           
-          const searchContext = searchResults.organic?.slice(0, 5).map((result: any) => 
+          const searchContext = searchResults.organic?.slice(0, 3).map((result: any) => 
             `${result.title}: ${result.snippet}`
           ).join('\n\n') || 'No se encontraron resultados';
 
           const claudeMessages = [
             { 
               role: 'user', 
-              content: `Contexto de búsqueda web sobre "${searchQuery}":\n\n${searchContext}\n\nBasándote en esta información y tu conocimiento de Ventapel, ${text}` 
+              content: `Info encontrada sobre "${searchQuery}":\n\n${searchContext}\n\nDame ACCIONES ESPECÍFICAS para venderles. ${text}` 
             }
           ];
 
           assistantResponse = await generateWithClaude(claudeMessages);
         } catch (error) {
-          assistantResponse = 'Error al buscar información. Por favor, intenta de nuevo.';
+          assistantResponse = '❌ Error en búsqueda. Igual te doy acciones para vender.';
         }
       } else {
-        // Análisis con contexto completo de Ventapel
+        // Respuesta normal con contexto
         const opportunityContext = currentOpportunity ? `
-CONTEXTO DE LA OPORTUNIDAD ACTUAL:
-- Nombre: ${currentOpportunity.name}
+OPORTUNIDAD ACTUAL - ${currentOpportunity.name}:
 - Cliente: ${currentOpportunity.client}
 - Valor: R$ ${currentOpportunity.value.toLocaleString('pt-BR')}
 - Etapa: ${currentOpportunity.stage}
-- Producto interesado: ${currentOpportunity.product || 'No especificado'}
-- Próxima acción: ${currentOpportunity.next_action || 'No definida'}
-- Cierre esperado: ${currentOpportunity.expected_close || 'No definido'}
+- Producto: ${currentOpportunity.product || 'No definido'}
 
-SCORES PPVVCC ACTUALES:
-- DOR: ${currentOpportunity.scales.dor.score}/10 - ${currentOpportunity.scales.dor.description}
-- PODER: ${currentOpportunity.scales.poder.score}/10 - ${currentOpportunity.scales.poder.description}
-- VISÃO: ${currentOpportunity.scales.visao.score}/10 - ${currentOpportunity.scales.visao.description}
-- VALOR: ${currentOpportunity.scales.valor.score}/10 - ${currentOpportunity.scales.valor.description}
-- CONTROLE: ${currentOpportunity.scales.controle.score}/10 - ${currentOpportunity.scales.controle.description}
-- COMPRAS: ${currentOpportunity.scales.compras.score}/10 - ${currentOpportunity.scales.compras.description}
+SCORES PPVVCC:
+- DOR: ${currentOpportunity.scales.dor.score}/10
+- PODER: ${currentOpportunity.scales.poder.score}/10  
+- VISÃO: ${currentOpportunity.scales.visao.score}/10
+- VALOR: ${currentOpportunity.scales.valor.score}/10
+- CONTROLE: ${currentOpportunity.scales.controle.score}/10
+- COMPRAS: ${currentOpportunity.scales.compras.score}/10
 - TOTAL: ${Object.values(currentOpportunity.scales).reduce((sum, s) => sum + s.score, 0)}/60
-        ` : 'No hay oportunidad seleccionada.';
+
+${Object.values(currentOpportunity.scales).reduce((sum, s) => sum + s.score, 0) > 40 ? 
+  '🔥 ALERTA: OPORTUNIDAD MADURA - PRESIONAR PARA CIERRE' : 
+  '⚠️ NECESITA TRABAJO - SUBIR SCORES BAJOS URGENTE'}
+        ` : '';
 
         const claudeMessages = [
           { 
             role: 'user', 
-            content: `${opportunityContext}\n\nSolicitud: ${text}` 
+            content: `${opportunityContext}\n\n${text}` 
           }
         ];
 
@@ -580,7 +557,7 @@ SCORES PPVVCC ACTUALES:
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Lo siento, hubo un error al procesar tu solicitud. Por favor, intenta de nuevo.',
+        content: '❌ Error. Igual hacé esto: Llamá al cliente AHORA y pedí la reunión. No esperes.',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -594,39 +571,37 @@ SCORES PPVVCC ACTUALES:
       {/* Botón flotante */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all z-50 flex items-center group"
+        className="fixed bottom-6 right-6 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all z-50 flex items-center group animate-pulse hover:animate-none"
       >
-        <MessageCircle className="w-6 h-6" />
-        <span className="ml-2 max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 whitespace-nowrap">
-          Ventapel AI Assistant
+        <Zap className="w-6 h-6" />
+        <span className="ml-2 max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 whitespace-nowrap font-bold">
+          VENDER AHORA
         </span>
-        <Sparkles className="w-4 h-4 ml-2 animate-pulse" />
+        <DollarSign className="w-4 h-4 ml-2" />
       </button>
 
       {/* Panel del asistente */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-[450px] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 flex flex-col" style={{ height: '650px' }}>
+        <div className="fixed bottom-24 right-6 w-[450px] bg-white rounded-xl shadow-2xl border-2 border-red-500 z-50 flex flex-col" style={{ height: '650px' }}>
           {/* Header */}
-          <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 rounded-t-xl flex justify-between items-center">
+          <div className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-4 rounded-t-xl flex justify-between items-center">
             <div className="flex items-center">
-              <Brain className="w-5 h-5 mr-2" />
-              <h3 className="font-bold">Ventapel AI Sales Assistant</h3>
-              <Zap className="w-4 h-4 ml-2 text-yellow-300" />
+              <DollarSign className="w-6 h-6 mr-2 animate-pulse" />
+              <h3 className="font-bold text-lg">VENTAPEL SALES KILLER</h3>
+              <Zap className="w-5 h-5 ml-2 text-yellow-300" />
             </div>
             <button onClick={() => setIsOpen(false)} className="hover:bg-white/20 p-1 rounded">
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Insights Panel */}
-          {showInsights && opportunities.length > 0 && (
-            <div className="border-b p-3 bg-gradient-to-r from-purple-50 to-blue-50">
-              <InsightsPanel opportunities={opportunities} />
-            </div>
+          {/* Sales Alerts */}
+          {opportunities.length > 0 && (
+            <SalesAlerts opportunities={opportunities} />
           )}
 
-          {/* Quick Actions */}
-          <div className="p-3 border-b bg-gray-50">
+          {/* Quick Actions GRID */}
+          <div className="p-3 border-b bg-gradient-to-r from-gray-50 to-red-50">
             <div className="grid grid-cols-3 gap-2">
               {quickActions.map((action, idx) => {
                 const Icon = action.icon;
@@ -634,38 +609,43 @@ SCORES PPVVCC ACTUALES:
                   <button
                     key={idx}
                     onClick={() => handleQuickAction(action.action)}
-                    className="flex flex-col items-center p-2 bg-white border border-gray-200 rounded-lg hover:bg-purple-50 hover:border-purple-300 transition-colors"
+                    className={`flex flex-col items-center p-2 bg-white border-2 border-gray-300 rounded-lg transition-all ${action.color} hover:scale-105`}
                   >
-                    <Icon className="w-4 h-4 text-purple-600 mb-1" />
-                    <span className="text-xs text-gray-700">{action.label}</span>
+                    <Icon className="w-5 h-5 text-red-600 mb-1" />
+                    <span className="text-xs font-bold text-gray-700">{action.label}</span>
                   </button>
                 );
               })}
             </div>
+            
+            {/* Comandos rápidos info */}
+            <div className="mt-2 text-xs text-gray-600 text-center">
+              Comandos: /llamada /cerrar /objecion /precio /demo
+            </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
             {messages.length === 0 && (
-              <div className="text-center text-gray-500 mt-8">
-                <img 
-                  src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='50' y='50' font-size='50' text-anchor='middle' dominant-baseline='middle'%3E📦%3C/text%3E%3C/svg%3E"
-                  alt="Ventapel"
-                  className="w-16 h-16 mx-auto mb-3 opacity-50"
-                />
-                <p className="text-sm font-semibold">¡Hola! Soy tu asistente Ventapel AI</p>
-                <p className="text-xs mt-2">Tengo acceso completo a:</p>
-                <ul className="text-xs mt-2 space-y-1 text-left max-w-[300px] mx-auto">
-                  <li>• Manual de ventas y productos Ventapel</li>
-                  <li>• Casos de éxito y testimoniales</li>
-                  <li>• Calculadoras de ROI y pricing</li>
-                  <li>• Scripts de manejo de objeciones</li>
-                  <li>• Análisis PPVVCC avanzado</li>
-                  <li>• Búsqueda de información de empresas</li>
-                  <li>• Estrategias por industria</li>
-                </ul>
-                <p className="text-xs mt-3 text-purple-600 font-medium">
-                  Seleccioná una oportunidad o hacé una pregunta
+              <div className="text-center text-gray-700 mt-8">
+                <div className="text-4xl mb-3">💰🔥🎯</div>
+                <p className="text-sm font-bold">ASISTENTE KILLER ACTIVADO</p>
+                <p className="text-xs mt-2 text-red-600 font-semibold">Objetivo: CERRAR DEALS</p>
+                
+                <div className="mt-4 p-3 bg-white rounded-lg border-2 border-red-200">
+                  <p className="text-xs font-bold text-gray-700 mb-2">LO QUE HAGO:</p>
+                  <ul className="text-xs space-y-1 text-left">
+                    <li>✅ Scripts exactos para llamadas</li>
+                    <li>✅ Técnicas de cierre que funcionan</li>
+                    <li>✅ Respuestas a TODAS las objeciones</li>
+                    <li>✅ Emails que consiguen reuniones</li>
+                    <li>✅ Crear urgencia real</li>
+                    <li>✅ Próximos pasos específicos</li>
+                  </ul>
+                </div>
+                
+                <p className="text-xs mt-3 text-red-600 font-bold animate-pulse">
+                  Seleccioná una oportunidad y VAMOS A VENDER
                 </p>
               </div>
             )}
@@ -674,12 +654,12 @@ SCORES PPVVCC ACTUALES:
               <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] p-3 rounded-lg ${
                   message.role === 'user' 
-                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white' 
-                    : 'bg-gray-100 text-gray-800 border border-gray-200'
+                    ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white font-medium' 
+                    : 'bg-white text-gray-800 border-2 border-red-200 shadow-md'
                 }`}>
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   <p className="text-xs mt-1 opacity-70">
-                    {message.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    {message.timestamp.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               </div>
@@ -687,29 +667,32 @@ SCORES PPVVCC ACTUALES:
             
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-gray-100 p-3 rounded-lg border border-gray-200">
-                  <Loader className="w-5 h-5 animate-spin text-purple-600" />
+                <div className="bg-white p-3 rounded-lg border-2 border-red-200 shadow-md">
+                  <div className="flex items-center">
+                    <Loader className="w-5 h-5 animate-spin text-red-600 mr-2" />
+                    <span className="text-xs text-gray-600">Preparando estrategia killer...</span>
+                  </div>
                 </div>
               </div>
             )}
           </div>
 
           {/* Input */}
-          <div className="p-4 border-t bg-white rounded-b-xl">
+          <div className="p-4 border-t-2 border-red-200 bg-white rounded-b-xl">
             <div className="flex space-x-2">
               <input
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSendMessage()}
-                placeholder="Preguntá sobre productos, ROI, estrategias..."
-                className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                placeholder="¿Cómo cierro este deal? ¿Qué le digo?"
+                className="flex-1 p-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm font-medium"
                 disabled={isLoading}
               />
               <button
                 onClick={() => handleSendMessage()}
                 disabled={isLoading || !inputMessage.trim()}
-                className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed animate-pulse hover:animate-none"
               >
                 <Send className="w-5 h-5" />
               </button>
