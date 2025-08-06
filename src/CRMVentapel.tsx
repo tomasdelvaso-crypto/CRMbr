@@ -64,10 +64,14 @@ interface StageRequirement {
   checklist?: Record<string, string>;
 }
 
-// --- CONFIGURAÇÃO E CONSTANTES ---
-const VENDEDORES = ['Jordi', 'Renata', 'Carlos', 'Paulo', 'Tomás'] as const;
-type Vendor = typeof VENDEDORES[number];
+interface VendorInfo {
+  name: string;
+  email?: string;
+  role?: string;
+  is_admin?: boolean;
+}
 
+// --- CONFIGURAÇÃO E CONSTANTES ---
 const supabaseConfig = {
   url: import.meta.env.VITE_SUPABASE_URL || 'https://wtrbvgqxgcfjacqcndmb.supabase.co',
   key: import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cmJ2Z3F4Z2NmamFjcWNuZG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4MTg4NjcsImV4cCI6MjA2OTM5NDg2N30.8PB0OjF2vvCtCCDnYCeemMSyvR51E2SAHe7slS1UyQU'
@@ -130,6 +134,46 @@ class SupabaseService {
       
       const data = await response.json();
       return Array.isArray(data) ? data : [];
+    });
+  }
+
+  async fetchVendors(): Promise<VendorInfo[]> {
+    return fetchWithRetry(async () => {
+      // Primeiro tenta buscar de uma tabela vendors se existir
+      try {
+        const url = `${supabaseConfig.url}/rest/v1/vendors?select=*&is_active=eq.true`;
+        const response = await fetch(url, { headers: this.headers });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data) && data.length > 0) {
+            return data;
+          }
+        }
+      } catch (err) {
+        console.log('Tabela vendors não encontrada, buscando de opportunities...');
+      }
+
+      // Se não houver tabela vendors, busca vendedores únicos das oportunidades
+      const url = `${supabaseConfig.url}/rest/v1/opportunities?select=vendor`;
+      const response = await fetch(url, { headers: this.headers });
+      
+      if (!response.ok) {
+        throw new Error(`Error fetching vendors: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      const uniqueVendors = [...new Set(data.map((o: any) => o.vendor).filter(Boolean))];
+      
+      // Retorna com informações básicas inferidas dos nomes
+      return uniqueVendors.map(name => ({
+        name,
+        role: name === 'Tomás' ? 'CEO/Head of Sales' : 
+              name === 'Jordi' ? 'Sales Manager' :
+              name === 'Matheus' ? 'Account Executive' : 
+              'Vendedor',
+        is_admin: name === 'Tomás'
+      }));
     });
   }
 
@@ -489,8 +533,12 @@ interface OpportunitiesContextType {
   opportunities: Opportunity[];
   loading: boolean;
   error: string | null;
+  vendors: VendorInfo[];
+  currentUser: string | null;
+  setCurrentUser: (user: string | null) => void;
   setError: (error: string | null) => void;
   loadOpportunities: () => Promise<void>;
+  loadVendors: () => Promise<void>;
   createOpportunity: (data: OpportunityFormData) => Promise<boolean>;
   updateOpportunity: (id: number, data: OpportunityFormData) => Promise<boolean>;
   deleteOpportunity: (id: number) => Promise<void>;
@@ -510,8 +558,32 @@ const useOpportunitiesContext = () => {
 // --- PROVIDER COMPONENT ---
 const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [vendors, setVendors] = useState<VendorInfo[]>([]);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const loadVendors = useCallback(async () => {
+    try {
+      const vendorData = await supabaseService.fetchVendors();
+      setVendors(vendorData);
+      
+      // Si no hay usuario actual, seleccionar el primero o el guardado en localStorage
+      if (!currentUser) {
+        const savedUser = localStorage.getItem('ventapel_user');
+        if (savedUser && vendorData.some(v => v.name === savedUser)) {
+          setCurrentUser(savedUser);
+        } else if (vendorData.length > 0) {
+          setCurrentUser(vendorData[0].name);
+        }
+      }
+    } catch (err) {
+      console.error('Error al cargar vendedores:', err);
+      // Si falla, usar lista por defecto
+      const defaultVendors = ['Tomás', 'Jordi', 'Matheus', 'Carlos', 'Paulo'];
+      setVendors(defaultVendors.map(name => ({ name })));
+    }
+  }, [currentUser]);
 
   const loadOpportunities = useCallback(async () => {
     try {
@@ -543,7 +615,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const newOpportunity = {
         name: formData.name.trim(),
         client: formData.client.trim(),
-        vendor: formData.vendor as Vendor,
+        vendor: formData.vendor,
         value: parseFloat(formData.value) || 0,
         stage: formData.stage,
         priority: formData.priority,
@@ -576,7 +648,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const updatedData = {
         name: formData.name.trim(),
         client: formData.client.trim(),
-        vendor: formData.vendor as Vendor,
+        vendor: formData.vendor,
         value: parseFloat(formData.value) || 0,
         stage: formData.stage,
         priority: formData.priority,
@@ -649,20 +721,31 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [loadOpportunities]);
 
   useEffect(() => {
+    loadVendors();
     loadOpportunities();
-  }, [loadOpportunities]);
+  }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('ventapel_user', currentUser);
+    }
+  }, [currentUser]);
 
   const value = useMemo(() => ({
     opportunities,
     loading,
     error,
+    vendors,
+    currentUser,
+    setCurrentUser,
     setError,
     loadOpportunities,
+    loadVendors,
     createOpportunity,
     updateOpportunity,
     deleteOpportunity,
     moveStage
-  }), [opportunities, loading, error, loadOpportunities, createOpportunity, updateOpportunity, deleteOpportunity, moveStage]);
+  }), [opportunities, loading, error, vendors, currentUser, loadOpportunities, loadVendors, createOpportunity, updateOpportunity, deleteOpportunity, moveStage]);
 
   return (
     <OpportunitiesContext.Provider value={value}>
@@ -745,11 +828,36 @@ const CRMVentapel: React.FC = () => {
   const [selectedStageForList, setSelectedStageForList] = useState<number | null>(null);
   const [showStageChecklist, setShowStageChecklist] = useState<{ opportunity: Opportunity, targetStage: number } | null>(null);
 
-  const { opportunities, loading, error, setError, createOpportunity, updateOpportunity, deleteOpportunity, moveStage } = useOpportunitiesContext();
+  const { 
+    opportunities, 
+    loading, 
+    error, 
+    vendors,
+    currentUser,
+    setCurrentUser,
+    setError, 
+    createOpportunity, 
+    updateOpportunity, 
+    deleteOpportunity, 
+    moveStage 
+  } = useOpportunitiesContext();
+  
   const filters = useFilters();
 
+  // Obtener información del vendor actual
+  const currentVendorInfo = useMemo(() => {
+    return vendors.find(v => v.name === currentUser) || null;
+  }, [vendors, currentUser]);
+
+  // Filtrar oportunidades según el usuario actual
+  const userOpportunities = useMemo(() => {
+    if (!currentUser) return opportunities;
+    if (currentVendorInfo?.is_admin) return opportunities;
+    return opportunities.filter(opp => opp.vendor === currentUser);
+  }, [opportunities, currentUser, currentVendorInfo]);
+
   const filteredOpportunities = useMemo(() => {
-    return opportunities.filter(opp => {
+    return userOpportunities.filter(opp => {
       const matchesSearch = opp.name.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
                            opp.client.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
                            (opp.product && opp.product.toLowerCase().includes(filters.searchTerm.toLowerCase()));
@@ -765,12 +873,13 @@ const CRMVentapel: React.FC = () => {
       
       return matchesSearch && matchesStage && matchesVendor && matchesInactivity;
     });
-  }, [opportunities, filters.searchTerm, filters.filterStage, filters.filterVendor, filters.filterInactivity]);
+  }, [userOpportunities, filters.searchTerm, filters.filterStage, filters.filterVendor, filters.filterInactivity]);
 
   const dashboardOpportunities = useMemo(() => {
-    if (dashboardVendorFilter === 'all') return opportunities;
-    return opportunities.filter(opp => opp.vendor === dashboardVendorFilter);
-  }, [opportunities, dashboardVendorFilter]);
+    const baseOpps = currentVendorInfo?.is_admin ? opportunities : userOpportunities;
+    if (dashboardVendorFilter === 'all') return baseOpps;
+    return baseOpps.filter(opp => opp.vendor === dashboardVendorFilter);
+  }, [opportunities, userOpportunities, dashboardVendorFilter, currentVendorInfo]);
 
   const metrics = useMemo(() => ({
     totalValue: dashboardOpportunities.reduce((sum, opp) => sum + (opp.value || 0), 0),
@@ -814,6 +923,11 @@ const CRMVentapel: React.FC = () => {
             <h2 className="text-2xl font-bold mb-2">🎯 CRM Ventapel Brasil</h2>
             <p className="text-blue-100">Sistema de Vendas Consultivas - Metodologia PPVVCC</p>
             <p className="text-blue-100 text-sm">🔗 Conectado ao Supabase</p>
+            {currentUser && (
+              <p className="text-yellow-300 text-sm mt-1">
+                👤 {currentUser} {currentVendorInfo?.role && `(${currentVendorInfo.role})`}
+              </p>
+            )}
           </div>
           <div className="text-right">
             <div className="text-3xl font-bold">R$ {metrics.totalValue.toLocaleString('pt-BR')}</div>
@@ -889,11 +1003,12 @@ const CRMVentapel: React.FC = () => {
               value={dashboardVendorFilter}
               onChange={(e) => setDashboardVendorFilter(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              disabled={!currentVendorInfo?.is_admin && currentUser}
             >
               <option value="all">👥 Todos vendedores</option>
-              {VENDEDORES.map(vendor => (
-                <option key={vendor} value={vendor}>
-                  {vendor}
+              {vendors.map(vendor => (
+                <option key={vendor.name} value={vendor.name}>
+                  {vendor.name} {vendor.role && `(${vendor.role})`}
                 </option>
               ))}
             </select>
@@ -1206,11 +1321,12 @@ const CRMVentapel: React.FC = () => {
               value={filters.filterVendor}
               onChange={(e) => filters.setFilterVendor(e.target.value)}
               className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              disabled={!currentVendorInfo?.is_admin}
             >
               <option value="all">👥 Todos vendedores</option>
-              {VENDEDORES.map(vendor => (
-                <option key={vendor} value={vendor}>
-                  {vendor}
+              {vendors.map(vendor => (
+                <option key={vendor.name} value={vendor.name}>
+                  {vendor.name} {vendor.role && `(${vendor.role})`}
                 </option>
               ))}
             </select>
@@ -1272,7 +1388,7 @@ const CRMVentapel: React.FC = () => {
     const [formData, setFormData] = useState<OpportunityFormData>({
       name: opportunity?.name || '',
       client: opportunity?.client || '',
-      vendor: opportunity?.vendor || VENDEDORES[0],
+      vendor: opportunity?.vendor || currentUser || vendors[0]?.name || '',
       value: opportunity?.value?.toString() || '',
       stage: opportunity?.stage || 1,
       priority: opportunity?.priority || 'média',
@@ -1386,11 +1502,11 @@ const CRMVentapel: React.FC = () => {
                           value={formData.vendor}
                           onChange={(e) => setFormData({...formData, vendor: e.target.value})}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          disabled={submitting}
+                          disabled={submitting || (!currentVendorInfo?.is_admin && !!currentUser)}
                         >
-                          {VENDEDORES.map(vendor => (
-                            <option key={vendor} value={vendor}>
-                              {vendor}
+                          {vendors.map(vendor => (
+                            <option key={vendor.name} value={vendor.name}>
+                              {vendor.name} {vendor.role && `(${vendor.role})`}
                             </option>
                           ))}
                         </select>
@@ -1803,11 +1919,25 @@ const CRMVentapel: React.FC = () => {
                 <p className="text-sm text-gray-600">Metodologia PPVVCC - Gestão Completa de Oportunidades</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-sm font-medium text-blue-600">🌐 ventapel.com.br</p>
-              <div className="flex items-center text-xs text-green-600">
-                <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
-                Online
+            <div className="flex items-center space-x-4">
+              <select
+                value={currentUser || ''}
+                onChange={(e) => setCurrentUser(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Selecionar vendedor...</option>
+                {vendors.map(vendor => (
+                  <option key={vendor.name} value={vendor.name}>
+                    {vendor.name} {vendor.role && `(${vendor.role})`}
+                  </option>
+                ))}
+              </select>
+              <div className="text-right">
+                <p className="text-sm font-medium text-blue-600">🌐 ventapel.com.br</p>
+                <div className="flex items-center text-xs text-green-600">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
+                  {currentUser ? `${currentUser} online` : 'Online'}
+                </div>
               </div>
             </div>
           </div>
@@ -1833,7 +1963,7 @@ const CRMVentapel: React.FC = () => {
                   : 'border-transparent text-gray-500 hover:text-gray-700')}
             >
               <Target className="w-4 h-4 mr-2" />
-              🎯 Oportunidades
+              🎯 {currentVendorInfo?.is_admin ? 'Todas Oportunidades' : 'Minhas Oportunidades'}
             </button>
           </div>
         </div>
@@ -1861,8 +1991,12 @@ const CRMVentapel: React.FC = () => {
       
       {/* Asistente IA flotante */}
       <AIAssistant 
-        opportunities={opportunities} 
         currentOpportunity={editingOpportunity}
+        onOpportunityUpdate={(updated) => {
+          setEditingOpportunity(updated);
+          // Recargar oportunidades si es necesario
+        }}
+        currentUser={currentUser}
       />
     </div>
   );
