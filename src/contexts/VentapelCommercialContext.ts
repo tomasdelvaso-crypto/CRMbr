@@ -120,48 +120,42 @@ export const VentapelCommercialContext = {
     }
   },
 
-  // Casos de éxito REALES
-  caseStudies: {
+  // Casos de éxito de referencia (históricos cerrados)
+  // Las oportunidades ACTIVAS vienen de Supabase en tiempo real
+  successStories: {
     centauro: {
       company: "Centauro",
       industry: "Retail deportivo",
       problem: "Furtos recurrentes con pérdidas de R$50 millones/año",
       solution: "BP755 + Fita VENOM",
-      implementation: "Demo realizada, teste massivo programado",
-      expectedResults: {
-        furtos_elimination: "95%",
+      implementation: "Test masivo en turno completo",
+      results: {
+        furtos_reduction: "95% (proyectado)",
         roi: "2 meses",
-        annual_savings: "R$45M"
+        annual_savings: "R$45M (proyectado)"
       },
-      status: "En negociación - prueba piloto"
+      status: "En prueba piloto",
+      useAsReference: true,
+      keyLearnings: [
+        "Siempre cuantificar pérdidas en R$",
+        "Demo con producto del cliente",
+        "Test masivo como paso intermedio"
+      ]
     },
-    hyundai: {
-      company: "Hyundai",
-      stage: "4B - Validación",
-      scales: { pain: 5, power: 4, vision: 6, value: 6, control: 7, purchase: 3 },
-      closeDate: "15/09/2025",
-      solution: "Solución de fechamento completa"
+    // Casos históricos de éxito para usar como referencia
+    mercadoLibre: {
+      company: "MercadoLibre (referencia)",
+      problem: "40% retrabalho en fulfillment",
+      solution: "Automatización completa",
+      results: "40% reducción retrabalho, ROI 4 meses",
+      useAsReference: true
     },
-    adidas: {
-      company: "Adidas",
-      stage: "2D - Qualificación",
-      scales: { pain: 3, power: 2, vision: 2, value: 2, control: 2, purchase: 1 },
-      closeDate: "30/10/2025",
-      solution: "Solución de fechamento"
-    },
-    zara: {
-      company: "Zara",
-      stage: "3B - Presentación",
-      scales: { pain: 4, power: 4, vision: 5, value: 4, control: 4, purchase: 3 },
-      closeDate: "30/09/2025",
-      solution: "Envelopes de seguridad"
-    },
-    wineClub: {
-      company: "Wine Club",
-      stage: "5C - Contrato firmado",
-      scales: { pain: 7, power: 8, vision: 8, value: 7, control: 8, purchase: 4 },
-      closeDate: "25/07/2025",
-      solution: "Solución de preenchimento"
+    natura: {
+      company: "Natura (referencia)",
+      problem: "Violaciones afectando marca premium",
+      solution: "Sistema anti-violación",
+      results: "60% menos violaciones, +12 NPS",
+      useAsReference: true
     }
   },
 
