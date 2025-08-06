@@ -60,11 +60,11 @@ APLICACIONES:
 - Retail
 
 PRECIOS 2025 (CONFIDENCIAL):
-- Máquina BP222: R$ [Consultar pricing actual]
-- Máquina BP333: R$ [Consultar pricing actual]
-- Máquina BP555: R$ [Consultar pricing actual]
-- Fitas: R$ [por rollo, varía según especificación]
-- Contrato de servicio: R$ [mensual]
+- Máquina BP222: BRL [Consultar pricing actual]
+- Máquina BP333: BRL [Consultar pricing actual]
+- Máquina BP555: BRL [Consultar pricing actual]
+- Fitas: BRL [por rollo, varía según especificación]
+- Contrato de servicio: BRL [mensual]
 
 2.2 SOLUCIÓN DE RELLENO - PAPEL
 --------------------------------
@@ -110,7 +110,7 @@ Resultados obtenidos:
 Testimonial: "Ventapel transformó nuestra operación de empaque. No solo redujimos costos, 
 eliminamos el problema de cajas violadas que era nuestra principal fuente de reclamaciones."
 
-Facturación anual: R$ [CONFIDENCIAL]
+Facturación anual: BRL [CONFIDENCIAL]
 Máquinas instaladas: [Cantidad]
 Volumen mensual fitas: [Cantidad rollos]
 
@@ -122,7 +122,7 @@ Solución: WAT con trazabilidad
 Resultados:
 - Eliminación 100% robos internos
 - Reducción 90% mermas
-- Ahorro anual: R$ 2.3M
+- Ahorro anual: BRL 2.3M
 - ROI: 2 meses
 
 3.3 [CLIENTE TEXTIL]
@@ -392,8 +392,8 @@ ROI (meses) = (Inversión Total / Ahorro Mensual)
 
 EJEMPLO REAL:
 Cliente mediano (1000 cajas/día):
-- Inversión: R$ 180.000
-- Ahorro mensual: R$ 45.000
+- Inversión: BRL 180.000
+- Ahorro mensual: BRL 45.000
 - ROI: 4 meses
 
 8.2 MATRIZ DE VALOR POR INDUSTRIA
@@ -561,7 +561,7 @@ VELOCIDAD:
 
 CALIDAD:
 - PPVVCC score promedio: >3
-- Deal size promedio: R$ 150K+
+- Deal size promedio: BRL 150K+
 - LTV/CAC: >3x
 
 11.2 KPIs POST-VENTA
@@ -631,7 +631,7 @@ PAIN (Dolor) - ¿Qué tan grande es el problema?
 1 = Vendedor cree que hay problema → INVESTIGAR MÁS  
 2 = Contacto admite que existe problema → PROFUNDIZAR
 3 = Contacto explica causas y síntomas → CALIFICADO ✓
-4 = Contacto cuantifica impacto ($, tiempo, recursos) → AVANZAR
+4 = Contacto cuantifica impacto (dinero, tiempo, recursos) → AVANZAR
 5 = Visión documentada del problema resuelto → HOT
 
 POWER (Poder) - ¿Estamos hablando con quien decide?
@@ -692,20 +692,20 @@ const datosCliente = {
   diasLaborables: 250,
   
   // Costos actuales
-  costoFitaActualPorCaja: 2.50, // R$
+  costoFitaActualPorCaja: 2.50, // BRL
   tiempoEmpaqueActualMinutos: 1.5,
-  costoHoraOperador: 25, // R$
+  costoHoraOperador: 25, // BRL
   
   // Problemas actuales
   porcentajeCajasVioladas: 15, // %
-  costoPromedioPorCajaViolada: 50, // R$ (reposición + logística inversa)
+  costoPromedioPorCajaViolada: 50, // BRL (reposición + logística inversa)
   reclamacionesPorMes: 20,
-  costoGestionReclamacion: 100, // R$ por reclamación
+  costoGestionReclamacion: 100, // BRL por reclamación
   
   // Inversión Ventapel
-  inversionMaquinas: 180000, // R$
-  costoMensualInsumos: 8000, // R$ fitas
-  costoMantenimientoAnual: 12000 // R$
+  inversionMaquinas: 180000, // BRL
+  costoMensualInsumos: 8000, // BRL fitas
+  costoMantenimientoAnual: 12000 // BRL
 };
 
 // Cálculo de ahorros
@@ -751,178 +751,72 @@ function calcularROI(datos) {
     ahorroMensual: beneficioNetoAnual / 12
   };
 }
-
-// Ejemplo de uso:
-const resultado = calcularROI(datosCliente);
-console.log(\`ROI: \${resultado.roiMeses} meses\`);
-console.log(\`Ahorro mensual: R$ \${resultado.ahorroMensual}\`);
 `;
 
 export const OBJECTION_HANDLING_SCRIPTS = {
-  precio: `"Entiendo perfectamente su preocupación con la inversión inicial. Me permite mostrarle algo?
-  
-  [Mostrar calculadora ROI]
-  
-  Mire, Amazon Brasil tenía la misma preocupación. Invirtieron R$ 180.000 y lo recuperaron en 4 meses.
-  
-  La pregunta no es cuánto cuesta nuestra solución, sino cuánto le está costando NO tenerla.
-  
-  ¿Cuánto pierde mensualmente por cajas violadas? ¿Y por retrabajos? ¿Y en tiempo de sus operadores?
-  
-  [Hacer las cuentas juntos]
-  
-  ¿Ve? No es un gasto, es una inversión con retorno garantizado. 
-  
-  ¿Qué le parece si hacemos una prueba piloto en una línea para que vea los resultados?"`,
-  
-  competencia: `"Excelente que mencione a [competidor]. Los conocemos bien.
-  
-  La diferencia clave está en [mencionar diferenciador específico]:
-  - Si menciona fita plástica: 'Ellos no pueden garantizar inviolabilidad. Nosotros sí.'
-  - Si menciona otra WAT: 'Nosotros tenemos stock local garantizado y servicio en <24h'
-  - Si menciona solución barata: 'Ellos venden producto. Nosotros vendemos resultado.'
-  
-  Pero no me crea a mí. [Cliente similar] también evaluó [competidor] y eligió Ventapel porque [razón específica].
-  
-  ¿Le gustaría hablar con ellos directamente?
-  
-  Además, no pedimos exclusividad. Pruebe ambas soluciones en paralelo por 30 días y compare resultados reales."`,
-  
-  tiempo: `"Comprendo que no sea prioridad HOY. Pero permítame preguntarle:
-  
-  ¿Cada cuánto revisan el costo total de cajas violadas? 
-  
-  Porque nuestros datos muestran que empresas como la suya pierden entre 3-5% de facturación por este problema.
-  
-  En su caso, eso serían aproximadamente R$ [calcular] por mes.
-  
-  Cada mes que pasa sin resolver esto, es dinero que no recupera.
-  
-  ¿No valdría la pena al menos hacer un diagnóstico gratuito para saber exactamente cuánto están perdiendo?
-  
-  Le toma 1 hora y no tiene ningún compromiso."`,
-  
-  matriz: `"Por supuesto que necesita aprobación de matriz. Es normal en empresas multinacionales.
-  
-  ¿Qué información específica necesitan para evaluar?
-  
-  Le propongo esto:
-  1. Le preparo un business case completo con datos de su operación
-  2. Incluyo el caso de [cliente similar multinacional] aprobado por su matriz
-  3. Si quiere, hacemos una presentación conjunta por videoconferencia
-  4. También podemos hacer una prueba piloto local sin aprobación corporativa
-  
-  [Empresa similar] logró la aprobación en 2 semanas mostrando el ROI.
-  
-  ¿Cuál sería el mejor approach para su caso?"`,
-  
-  cambio_operacional: `"Es absolutamente comprensible esa preocupación. Cualquier cambio operacional genera resistencia.
-  
-  Por eso nuestro proceso incluye:
-  
-  1. FASE PILOTO: Empezamos con una sola línea, sin tocar el resto
-  2. CAPACITACIÓN: Entrenamos a todo el equipo, las veces que sea necesario
-  3. ACOMPAÑAMIENTO: Un técnico nuestro trabaja con ustedes 60 días
-  4. DOCUMENTACIÓN: Procedimientos paso a paso en portugués
-  5. GARANTÍA: Si no funciona, retiramos todo sin costo
-  
-  [Cliente] tenía 50 operadores y el mismo miedo. Hoy es su proceso estándar.
-  
-  ¿Le gustaría hablar con su Gerente de Operaciones sobre cómo fue la transición?"`,
-  
-  no_tenemos_problema: `"Perfecto, me alegra que no tengan ese problema. Es poco común en la industria.
-  
-  Solo por curiosidad, ¿cómo miden la tasa de cajas violadas?
-  
-  [Escuchar respuesta]
-  
-  Interesante. ¿Y nunca tienen retrabajos en el cierre? ¿Ni reclamaciones de clientes?
-  
-  [Si insiste que no hay problema]
-  
-  Excelente. Entonces están en el 5% de empresas que realmente no necesitan nuestra solución.
-  
-  ¿Conoce algún colega en otra empresa que sí pueda tener estos desafíos?
-  
-  [Si admite algún problema menor]
-  
-  Ah, entonces sí hay espacio de mejora. Incluso un 5% de mejora en su volumen representa R$ [calcular].
-  
-  ¿Vale la pena al menos explorar cuánto podrían ahorrar?"`,
-  
-  ya_intentamos_antes: `"Entiendo. ¿Qué intentaron específicamente y qué falló?
-  
-  [Escuchar atentamente]
-  
-  Tiene razón, [solución anterior] tiene ese problema. Por eso desarrollamos [solución específica que resuelve ese problema].
-  
-  La diferencia clave es [explicar diferencia técnica].
-  
-  Pero entiendo su escepticismo. Por eso:
-  
-  1. No pedimos contrato largo, mes a mes
-  2. Garantizamos resultados o devolvemos su dinero
-  3. Empezamos con prueba piloto sin compromiso
-  4. Le damos referencias de empresas que también habían fracasado antes
-  
-  [Cliente] también había tenido mala experiencia con [solución anterior]. Llevan 2 años con nosotros.
-  
-  ¿Qué necesitaría ver para darle una oportunidad a una prueba?"`,
-  
-  no_hay_presupuesto: `"Entiendo perfectamente. Los presupuestos están ajustados en todas partes.
-  
-  Justamente por eso nuestra solución es tan valiosa: no es un gasto, es ahorro.
-  
-  Mire, podemos estructurarlo así:
-  
-  1. MODELO AHORRO COMPARTIDO: Usted paga con parte del ahorro generado
-  2. PAGO POR RESULTADO: Solo paga cuando vea los ahorros
-  3. RENTING: Sin inversión inicial, pago mensual
-  4. INICIO PRÓXIMO PERÍODO: Reservamos con pequeña señal
-  
-  Además, el ahorro del primer mes suele cubrir la inversión inicial.
-  
-  ¿Cuál de estas opciones podría funcionar para ustedes?
-  
-  Y pregunta: ¿Cuánto presupuesto SÍ tienen para resolver problemas que les cuestan [monto] al año?"`,
-  
-  necesito_mas_informacion: `"Por supuesto. ¿Qué información específica necesita?
-  
-  [Escuchar y anotar]
-  
-  Perfecto. Le voy a enviar:
-  1. [Información solicitada]
-  2. Caso de éxito de [empresa similar]
-  3. Calculadora ROI para su industria
-  4. Especificaciones técnicas
-  
-  Pero la mejor información viene de verlo funcionando.
-  
-  ¿Podemos agendar una demo en sus instalaciones? Traigo la máquina, hacemos pruebas con SUS cajas, y ven los resultados en vivo.
-  
-  Es gratis, sin compromiso, y en 1 hora tienen toda la información que necesitan.
-  
-  ¿Qué día de la próxima semana les viene mejor?"`,
-  
-  no_es_mi_decision: `"Perfecto, entiendo que no es su decisión directa. 
-  
-  Pero usted es clave en este proceso porque conoce la operación mejor que nadie.
-  
-  ¿Quién toma la decisión final sobre estos temas?
-  
-  [Identificar decisor]
-  
-  Excelente. ¿Cómo prefiere que trabajemos?
-  
-  Opción A: Preparamos juntos la información para presentarle
-  Opción B: Organizamos una reunión conjunta
-  Opción C: Usted me introduce y yo manejo la presentación
-  
-  Mi experiencia es que cuando el equipo operativo y el decisor están alineados, todo fluye mejor.
-  
-  ¿Qué le preocupa de llevar esto a [decisor]? 
-  
-  Yo lo apoyo con toda la información que necesite para que se vea como el héroe que encontró la solución."`
+  precio: `Entiendo su preocupación con la inversión inicial. 
+Permítame mostrarle cómo Amazon recuperó la inversión en 4 meses. 
+El costo real no es lo que paga por la solución, sino lo que pierde sin ella.
+¿Cuánto le está costando HOY el problema de cajas violadas?
+No es un gasto, es una inversión con retorno garantizado.`,
+  
+  competencia: `Excelente que mencione a [competidor]. Los conocemos bien.
+La diferencia clave está en nuestra garantía de inviolabilidad y stock local.
+[Cliente similar] también evaluó [competidor] y eligió Ventapel.
+No pedimos exclusividad. Pruebe ambas soluciones en paralelo por 30 días.`,
+  
+  tiempo: `Comprendo que no sea prioridad HOY. 
+¿Cada cuánto revisan el costo total de cajas violadas? 
+Nuestros datos muestran que empresas como la suya pierden 3-5% de facturación.
+Cada mes que pasa sin resolver esto, es dinero que no recupera.
+¿No valdría la pena al menos hacer un diagnóstico gratuito?`,
+  
+  matriz: `Por supuesto que necesita aprobación de matriz.
+Le preparo un business case completo con datos de su operación.
+Incluyo el caso de [cliente similar multinacional] aprobado por su matriz.
+Si quiere, hacemos una presentación conjunta por videoconferencia.
+[Empresa similar] logró la aprobación en 2 semanas mostrando el ROI.`,
+  
+  cambio_operacional: `Es comprensible esa preocupación. Por eso incluimos:
+1. FASE PILOTO: Empezamos con una sola línea
+2. CAPACITACIÓN: Entrenamos a todo el equipo
+3. ACOMPAÑAMIENTO: Un técnico nuestro 60 días
+4. GARANTÍA: Si no funciona, retiramos todo sin costo
+[Cliente] tenía el mismo miedo. Hoy es su proceso estándar.`,
+  
+  no_tenemos_problema: `Me alegra que no tengan ese problema. Es poco común.
+Solo por curiosidad, ¿cómo miden la tasa de cajas violadas?
+¿Y nunca tienen retrabajos en el cierre?
+Incluso un 5% de mejora en su volumen representa BRL [calcular].
+¿Vale la pena al menos explorar cuánto podrían ahorrar?`,
+  
+  ya_intentamos_antes: `Entiendo. ¿Qué intentaron específicamente y qué falló?
+[Solución anterior] tiene ese problema. Por eso desarrollamos [diferencia].
+No pedimos contrato largo, mes a mes.
+Garantizamos resultados o devolvemos su dinero.
+[Cliente] también había fracasado antes. Llevan 2 años con nosotros.`,
+  
+  no_hay_presupuesto: `Los presupuestos están ajustados en todas partes.
+Justamente por eso nuestra solución es tan valiosa: no es un gasto, es ahorro.
+Podemos estructurarlo así:
+- MODELO AHORRO COMPARTIDO: Paga con parte del ahorro generado
+- RENTING: Sin inversión inicial, pago mensual
+El ahorro del primer mes suele cubrir la inversión inicial.`,
+  
+  necesito_mas_informacion: `Por supuesto. ¿Qué información específica necesita?
+Le envío: Información solicitada + Caso de éxito + Calculadora ROI.
+Pero la mejor información viene de verlo funcionando.
+¿Podemos agendar una demo en sus instalaciones?
+Es gratis, sin compromiso, y en 1 hora tienen toda la información.`,
+  
+  no_es_mi_decision: `Entiendo que no es su decisión directa.
+Pero usted conoce la operación mejor que nadie.
+¿Quién toma la decisión final sobre estos temas?
+¿Cómo prefiere que trabajemos?
+A: Preparamos juntos la información
+B: Organizamos una reunión conjunta
+C: Usted me introduce y yo manejo la presentación
+Yo lo apoyo con toda la información para que se vea como el héroe.`
 };
 
 export const SUCCESS_STORIES_DETAILED = [
@@ -939,11 +833,11 @@ export const SUCCESS_STORIES_DETAILED = [
       reduccion_cajas_violadas: "85%",
       mejora_productividad: "40%",
       roi_meses: 4,
-      ahorro_anual_reales: "R$ 2.4M",
+      ahorro_anual_reales: "BRL 2.4M",
       mejora_nps: "+12 puntos",
       reduccion_reclamos: "73%"
     },
-    testimonial: "Ventapel transformó nuestra operación de empaque. No solo redujimos costos, eliminamos el problema de cajas violadas que era nuestra principal fuente de reclamaciones. El ROI de 4 meses superó todas las expectativas.",
+    testimonial: "Ventapel transformó nuestra operación de empaque. No solo redujimos costos, eliminamos el problema de cajas violadas que era nuestra principal fuente de reclamaciones.",
     factores_exito: [
       "Fase piloto en categoría problemática",
       "Medición exhaustiva de KPIs antes/después",
@@ -951,43 +845,6 @@ export const SUCCESS_STORIES_DETAILED = [
       "Escalamiento gradual"
     ],
     expansion: "Contrato renovado 3 años, expansión a 2 CDs adicionales"
-  },
-  {
-    cliente: "[CONFIDENCIAL - Automotriz Tier 1]",
-    industria: "Autopartes",
-    contacto_inicial: "Seguridad Patrimonial",
-    decisor_final: "CFO",
-    desafio: "Robo sistemático de piezas alto valor (R$ 500K/mes), imposibilidad de rastrear fugas, paradas de línea en clientes",
-    solucion: "WAT con serialización única, integración con WMS, cámaras en puntos de empaque",
-    tiempo_implementacion: "30 días",
-    resultados: {
-      eliminacion_robos_internos: "100%",
-      reduccion_robos_externos: "90%",
-      ahorro_anual_mermas: "R$ 6M",
-      roi_meses: 2,
-      mejora_trazabilidad: "100%",
-      cero_paradas_cliente: "Sí"
-    },
-    testimonial: "[No public por confidencialidad]",
-    factores_exito: [
-      "Involucramiento de seguridad desde día 1",
-      "Análisis forense de fugas previas",
-      "Implementación fin de semana",
-      "Comunicación clara de consecuencias"
-    ]
-  },
-  {
-    cliente: "Textil Renner (ejemplo simulado)",
-    industria: "Moda/Retail",
-    desafio: "Mala presentación en e-commerce, 15% devoluciones, imagen poco sustentable",
-    solucion: "WAT + papel reciclado para relleno, diseño custom eco-friendly",
-    resultados: {
-      reduccion_devoluciones: "40%",
-      mejora_sustentabilidad: "100% packaging reciclable",
-      ahorro_empaque: "45%",
-      roi_meses: 6
-    },
-    testimonial: "El unboxing experience mejoró notablemente. Clientes comparten fotos del empaque sustentable en redes."
   }
 ];
 
@@ -997,20 +854,11 @@ export const INDUSTRY_SPECIFIC_APPROACHES = {
       "Cajas violadas = reviews negativos",
       "Costo de reempaque constante", 
       "Velocidad de empaque insuficiente",
-      "Logística inversa cara",
-      "Daño a la marca"
+      "Logística inversa cara"
     ],
     key_metrics: ["NPS", "Costo por envío", "Tiempo de empaque", "% cajas violadas"],
     decision_makers: ["Director Operaciones", "Gerente Fulfillment", "Head de Calidad"],
-    approach_strategy: `
-      1. Entrar por CALIDAD y NPS, no por costo
-      2. Mostrar impacto directo en reviews de clientes
-      3. Prueba piloto en categoría más problemática
-      4. Medir TODO: antes, durante, después
-      5. Escalar gradualmente por CD
-    `,
     roi_drivers: ["Reducción reclamaciones", "Productividad", "Menos devoluciones"],
-    competitive_advantages: ["Velocidad", "Inviolabilidad", "Escalabilidad"],
     case_study_focus: "Amazon Brasil - 85% reducción cajas violadas"
   },
   
@@ -1019,341 +867,32 @@ export const INDUSTRY_SPECIFIC_APPROACHES = {
       "Robo de piezas alto valor",
       "Paradas de línea por faltantes",
       "Requisitos de trazabilidad",
-      "Certificaciones específicas",
-      "Multas por incumplimiento"
+      "Certificaciones específicas"
     ],
     key_metrics: ["Valor mermas", "OEE", "PPM defectos", "Costo paradas de línea"],
     decision_makers: ["Supply Chain Director", "CFO", "Seguridad Patrimonial"],
-    approach_strategy: `
-      1. Liderar con SEGURIDAD y TRAZABILIDAD
-      2. Involucrar seguridad patrimonial temprano
-      3. Empezar con piezas de mayor valor/riesgo
-      4. Documentar cadena de custodia
-      5. Certificar el proceso completo
-    `,
     roi_drivers: ["Eliminación robos", "Cero paradas", "Reducción seguros"],
-    competitive_advantages: ["Trazabilidad total", "Inviolable", "Integración sistemas"],
     case_study_focus: "Tier 1 - 100% eliminación robos internos"
-  },
-  
-  alimentos: {
-    pain_points: [
-      "Contaminación cruzada",
-      "Requisitos sanitarios estrictos",
-      "Vida útil del producto",
-      "Sustentabilidad exigida",
-      "Recalls costosos"
-    ],
-    key_metrics: ["Costo recalls", "Vida útil", "% producto dañado", "Certificaciones"],
-    decision_makers: ["Gerente Calidad", "Gerente Planta", "Sustentabilidad"],
-    approach_strategy: `
-      1. Liderar con COMPLIANCE y CERTIFICACIONES
-      2. Mostrar certificación FDA
-      3. Sustentabilidad como diferenciador
-      4. Prueba con producto más sensible
-      5. Involucrar calidad desde inicio
-    `,
-    roi_drivers: ["Prevención recalls", "Extensión vida útil", "Imagen marca"],
-    competitive_advantages: ["FDA approved", "100% reciclable", "Barrera humedad"],
-    case_study_focus: "Empresa alimenticia - Cero contaminación en 18 meses"
-  },
-  
-  farmaceutico: {
-    pain_points: [
-      "Rastreabilidad obligatoria",
-      "Falsificación",
-      "Cadena de frío",
-      "Regulaciones ANVISA",
-      "Serialización"
-    ],
-    key_metrics: ["Compliance rate", "Costo falsificación", "Tiempo rastreo"],
-    decision_makers: ["Director Calidad", "Regulatory Affairs", "Supply Chain"],
-    approach_strategy: `
-      1. COMPLIANCE es no negociable
-      2. Mostrar cumplimiento ANVISA
-      3. Serialización individual
-      4. Documentación exhaustiva
-      5. Validación con Regulatory
-    `,
-    roi_drivers: ["Evitar multas", "Prevenir falsificación", "Agilidad recalls"],
-    competitive_advantages: ["Serialización", "Tamper evident", "Documentación"],
-    case_study_focus: "Pharma - 100% trazabilidad, cero multas ANVISA"
-  },
-  
-  textil: {
-    pain_points: [
-      "Presentación del producto",
-      "Devoluciones por daño",
-      "Presión por sustentabilidad",
-      "Costo de empaque alto",
-      "Experiencia unboxing"
-    ],
-    key_metrics: ["% devoluciones", "Costo empaque/prenda", "NPS", "Share en RRSS"],
-    decision_makers: ["E-commerce Manager", "Brand Manager", "Operaciones"],
-    approach_strategy: `
-      1. Foco en EXPERIENCIA DEL CLIENTE
-      2. Mejorar unboxing experience
-      3. Sustentabilidad = branding
-      4. Reducción devoluciones
-      5. Contenido para RRSS
-    `,
-    roi_drivers: ["Menos devoluciones", "Mayor LTV cliente", "Branding"],
-    competitive_advantages: ["Presentación premium", "100% eco", "Customizable"],
-    case_study_focus: "Marca fashion - 40% menos devoluciones"
   }
 };
 
-export const SALES_ENABLEMENT_TOOLS = {
-  discovery_questions: {
-    general: [
-      "¿Cómo miden actualmente el desempeño del proceso de empaque?",
-      "¿Cuál es el mayor desafío operacional que enfrentan hoy?",
-      "¿Han calculado el costo total de cajas violadas/dañadas?",
-      "¿Qué feedback reciben de clientes sobre el empaque?",
-      "¿Cómo está la presión por sustentabilidad en su industria?"
-    ],
-    pain_exploration: [
-      "Cuando dice [problema], ¿puede darme un ejemplo específico?",
-      "¿Cuánto les está costando este problema mensualmente?",
-      "¿Qué han intentado hacer para resolverlo?",
-      "¿Qué pasa si no se resuelve en los próximos 6 meses?",
-      "¿Cómo impacta esto en sus KPIs personales?"
-    ],
-    decision_process: [
-      "¿Cómo toman decisiones de inversión en su empresa?",
-      "¿Quién más estaría involucrado en evaluar esto?",
-      "¿Qué criterios usan para evaluar proveedores?",
-      "¿Cuál es el proceso típico desde evaluación hasta compra?",
-      "¿Qué podría acelerar o frenar una decisión?"
-    ]
-  },
-  
-  value_props_by_role: {
-    ceo: "ROI rápido, ventaja competitiva, sustentabilidad",
-    cfo: "Reducción costos 40-60%, ROI <6 meses, CAPEX controlado",
-    operaciones: "Productividad +40%, menos retrabajos, cero paradas",
-    calidad: "Cero defectos, trazabilidad total, certificaciones",
-    logistica: "85% menos daños, menor costo transporte, rapidez",
-    compras: "Proveedor confiable, precio competitivo, stock local",
-    sustentabilidad: "100% reciclable, reducción huella carbono, certificaciones"
-  },
-  
-  email_templates: {
-    cold_approach: `
-      Asunto: [Empresa competidora] redujo 67% costos de empaque
-      
-      Hola [Nombre],
-      
-      Vi que [empresa] está creciendo en e-commerce. 
-      
-      [Competidor similar] tenía el mismo desafío con cajas violadas 
-      y lo resolvió en 4 meses con nuestra tecnología WAT.
-      
-      Resultados:
-      • 85% menos cajas violadas
-      • 40% más productividad
-      • ROI en 4 meses
-      
-      ¿Vale la pena una conversación de 15 minutos?
-      
-      [Link calendario]
-    `,
-    
-    follow_up_post_meeting: `
-      Asunto: Próximos pasos - Solución cajas violadas [Empresa]
-      
-      [Nombre],
-      
-      Gracias por el tiempo ayer. Resumo lo acordado:
-      
-      ✓ Su desafío: [problema específico discutido]
-      ✓ Impacto: R$ [monto] mensual en [métrica]
-      ✓ Nuestra solución: [solución específica]
-      ✓ ROI estimado: [X] meses
-      
-      Próximos pasos:
-      1. [Acción 1 con fecha]
-      2. [Acción 2 con fecha]
-      3. [Acción 3 con fecha]
-      
-      Adjunto:
-      - Caso de éxito [empresa similar]
-      - Calculadora ROI personalizada
-      - Especificaciones técnicas
-      
-      ¿Confirmamos reunión con [decisor] el [fecha]?
-    `
-  },
-  
-  demo_script: `
-    DEMO VENTAPEL - GUIÓN (20 minutos)
-    
-    1. SETUP (2 min)
-    - Verificar que todos vean pantalla/máquina
-    - Confirmar tiempo disponible
-    - Pedir permiso para grabar
-    
-    2. PROBLEMA (3 min)
-    - "Antes de empezar, ¿cuál es su mayor dolor con empaque hoy?"
-    - Mostrar foto de caja mal cerrada
-    - "¿Les pasa esto?" [esperar reacción]
-    - Datos de la industria sobre el problema
-    
-    3. SOLUCIÓN (10 min)
-    - DEMO EN VIVO con SUS cajas
-    - Mostrar velocidad (cronometrar)
-    - Mostrar resistencia (intentar abrir)
-    - Mostrar ahorro de material
-    - Dejar que ELLOS prueben
-    
-    4. RESULTADOS (3 min)
-    - Caso cliente similar con números
-    - ROI calculado para SU operación
-    - Foto antes/después
-    
-    5. CIERRE (2 min)
-    - "¿Qué les pareció?"
-    - "¿Ven esto funcionando aquí?"
-    - "¿Cuáles serían los próximos pasos?"
-    - Proponer piloto inmediato
-  `,
-  
-  negotiation_tactics: {
-    anchoring: "Empezar con paquete completo, luego ajustar",
-    urgency: "Descuento por firma este mes, precio aumenta en Q2",
-    social_proof: "3 competidores suyos ya implementaron",
-    risk_reversal: "Garantía devolución 90 días si no hay ROI",
-    expand_pie: "Incluir más líneas para mejor precio unitario",
-    trade_offs: "Mejor precio por caso de éxito público",
-    payment_terms: "Flexibilidad en pagos por contrato 2+ años"
-  }
-};
-
-export const COMPETITIVE_INTELLIGENCE = {
-  // NOTA: Información pública y ética sobre competencia
-  
-  fita_plastica_tradicional: {
-    debilidades: [
-      "No garantiza inviolabilidad",
-      "3x más consumo",
-      "No reciclable",
-      "Falla en superficies recicladas",
-      "Requiere múltiples pasadas"
-    ],
-    cuando_competimos_ganamos: "Siempre que el cliente valore seguridad sobre precio",
-    como_vencer: "Demo en vivo mostrando diferencia en resistencia"
-  },
-  
-  otros_wat: {
-    debilidades: [
-      "No tienen stock local",
-      "Servicio técnico lento",
-      "Máquinas no adaptadas a mercado BR",
-      "Sin casos de éxito locales"
-    ],
-    cuando_competimos_ganamos: "Cuando servicio y soporte son críticos",
-    como_vencer: "Garantizar stock 6 meses y servicio <24h"
-  },
-  
-  soluciones_bajo_costo: {
-    debilidades: [
-      "Sin soporte técnico",
-      "Sin garantía real",
-      "Calidad inconsistente",
-      "No escalan"
-    ],
-    cuando_perdemos: "Cliente solo ve precio inicial",
-    como_vencer: "TCO (Total Cost of Ownership) + casos de fracaso"
-  }
-};
-
-export const TRAINING_MATERIALS = {
-  onboarding_checklist: [
-    "Estudiar los 6 casos de éxito en detalle",
-    "Memorizar metodología PPVVCC",
-    "Practicar las 10 objeciones principales",
-    "Hacer role-play de demo 5 veces",
-    "Acompañar 3 visitas con vendedor senior",
-    "Certificarse en operación de máquinas",
-    "Estudiar industria asignada a fondo"
-  ],
-  
-  daily_routine: {
-    "8:00-9:00": "Prospección y calls (mínimo 10)",
-    "9:00-10:00": "Follow-ups y emails",
-    "10:00-12:00": "Reuniones con clientes",
-    "12:00-13:00": "Almuerzo",
-    "13:00-15:00": "Visitas o demos",
-    "15:00-16:00": "Preparación propuestas",
-    "16:00-17:00": "CRM y reporte",
-    "17:00-18:00": "Planificación día siguiente"
-  },
-  
-  kpis_semanales: {
-    calls: 50,
-    reuniones: 8,
-    demos: 3,
-    propuestas: 2,
-    pipeline_nuevo: "R$ 500K",
-    avance_ppvvcc: "70% oportunidades avanzan stage"
-  }
-};
-
-export const CRM_GUIDELINES = {
-  data_entry: {
-    obligatorio: [
-      "Empresa y contacto completo",
-      "Score PPVVCC actualizado",
-      "Próximo paso con fecha",
-      "Notas de cada interacción",
-      "Competencia si se menciona",
-      "Razón de pérdida si aplica"
-    ],
-    
-    formato_notas: `
-      [Fecha] - [Tipo contacto]
-      Participantes: [nombres y cargos]
-      Objetivo: [qué queríamos lograr]
-      Resultado: [qué logramos]
-      Insights: [qué aprendimos]
-      Próximo paso: [acción específica y fecha]
-      PPVVCC: P[X] P[X] V[X] V[X] C[X] C[X]
-    `
-  },
-  
-  pipeline_hygiene: {
-    revisar_diario: ["Tareas vencidas", "Follow-ups pendientes"],
-    revisar_semanal: ["Oportunidades sin movimiento", "Scores PPVVCC"],
-    revisar_mensual: ["Pipeline total", "Forecast accuracy", "Win/Loss"]
-  }
-};
-
-// NOTAS DE IMPLEMENTACIÓN PARA EL CRM AI ASSISTANT
 export const AI_ASSISTANT_INSTRUCTIONS = `
 Cuando respondas como el AI Assistant del CRM de Ventapel:
 
 1. SIEMPRE usa la metodología PPVVCC para calificar oportunidades
 2. RECOMIENDA próximos pasos basados en el stage actual
-3. ALERTA si una oportunidad está estancada >2 semanas
+3. ALERTA si una oportunidad está estancada más de 2 semanas
 4. SUGIERE preguntas SPIN específicas según la industria
 5. PROPORCIONA scripts de objeciones cuando se necesiten
 6. CALCULA ROI automáticamente con los datos disponibles
 7. RECUERDA casos de éxito relevantes para cada situación
 8. MANTÉN el foco en resolver PROBLEMAS, no vender productos
-9. USA el tono directo y sin vueltas (sos el CEO, no necesitás halagos)
+9. USA el tono directo y sin vueltas
 10. PRIORIZA eficiencia sobre ecología en el messaging
-
-Para consultas específicas:
-- Pricing: Referir a tabla de precios (marca como confidencial)
-- Casos de éxito: Usar los documentados, no inventar
-- Competencia: Usar inteligencia competitiva documentada
-- Proceso: Seguir las 6 etapas definidas
-- Métricas: Usar los KPIs establecidos
 
 Recordar siempre: "No vendemos productos, vendemos soluciones a quilombos."
 `;
 
-// Marca de fin del contexto
 export const CONTEXT_VERSION = "2025.01.23";
 export const LAST_UPDATE = "Enero 2025";
 export const CONFIDENTIALITY_LEVEL = "INTERNAL_USE_ONLY";
