@@ -151,36 +151,6 @@ class SupabaseService {
     });
   }
 
-  // Reemplazá la función calculateHealthScore completa con esta versión:
-
-const calculateHealthScore = () => {
-  if (!opportunity.scales) return 0;
-  
-  const scores = [
-    opportunity.scales.dor.score,
-    opportunity.scales.poder.score,
-    opportunity.scales.visao.score,
-    opportunity.scales.valor.score,
-    opportunity.scales.controle.score,
-    opportunity.scales.compras.score
-  ];
-  
-  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-  return Math.round(avg);
-};
-
-const score = calculateHealthScore();
-const getColor = () => {
-  if (score >= 7) return 'text-green-600';
-  if (score >= 4) return 'text-yellow-600';
-  return 'text-red-600';
-};
-
-return (
-  <span className={`font-bold ${getColor()}`}>
-    ♥ {score}/10
-  </span>
-);
   async updateOpportunity(id: number, data: Partial<Opportunity>): Promise<Opportunity> {
     return fetchWithRetry(async () => {
       const url = `${supabaseConfig.url}/rest/v1/opportunities?id=eq.${id}`;
@@ -220,6 +190,38 @@ return (
 }
 
 const supabaseService = new SupabaseService();
+
+// Componente OpportunityHealthScore
+const OpportunityHealthScore: React.FC<{ opportunity: Opportunity }> = ({ opportunity }) => {
+  const calculateHealthScore = () => {
+    if (!opportunity.scales) return 0;
+    
+    const scores = [
+      opportunity.scales.dor.score,
+      opportunity.scales.poder.score,
+      opportunity.scales.visao.score,
+      opportunity.scales.valor.score,
+      opportunity.scales.controle.score,
+      opportunity.scales.compras.score
+    ];
+    
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    return Math.round(avg);
+  };
+  
+  const score = calculateHealthScore();
+  const getColor = () => {
+    if (score >= 7) return 'text-green-600';
+    if (score >= 4) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+  
+  return (
+    <span className={`font-bold ${getColor()}`}>
+      ♥ {score}/10
+    </span>
+  );
+};
 
 // --- DEFINICIONES DE ETAPAS Y ESCALAS ---
 const stages: StageRequirement[] = [
@@ -804,9 +806,6 @@ const CRMVentapel: React.FC = () => {
   const Dashboard = () => (
     <div className="space-y-8">
       {error && <ErrorAlert error={error} onClose={() => setError(null)} />}
-
-      {/* Integración del Asistente IA */}
-      <AIAssistant opportunities={opportunities} />
 
       <div className="bg-gradient-to-r from-blue-600 to-green-600 text-white p-6 rounded-xl shadow-lg">
         <div className="flex items-center justify-between">
@@ -1858,12 +1857,6 @@ const CRMVentapel: React.FC = () => {
       )}
 
       <StageChecklistModal />
-      
-      {/* Asistente IA flotante en todas las vistas */}
-      <AIAssistant 
-        opportunities={opportunities} 
-        currentOpportunity={editingOpportunity}
-      />
     </div>
   );
 };
