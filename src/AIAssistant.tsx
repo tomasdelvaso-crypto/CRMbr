@@ -1,11 +1,5 @@
-// Al inicio del archivo, después de los imports
-const SERPER_API_KEY = process.env.REACT_APP_SERPER_API_KEY || '';
-const CLAUDE_API_KEY = process.env.REACT_APP_CLAUDE_API_KEY || '';
-
-// Verificar que las keys existan
-if (!SERPER_API_KEY || !CLAUDE_API_KEY) {
-  console.warn('⚠️ API keys no configuradas. Por favor, crea un archivo .env.local con REACT_APP_SERPER_API_KEY y REACT_APP_CLAUDE_API_KEY');
-}
+import React, { useState, useCallback, useEffect } from 'react';
+import { MessageSquare, X, Send, Bot, TrendingUp, AlertTriangle, CheckCircle, Target, Lightbulb, Sparkles, ChevronRight, Brain, Activity, Globe, Building2, Search, FileText, Users, Briefcase, TrendingDown, Shield, Zap, Info } from 'lucide-react';
 
 // Tipos
 interface Opportunity {
@@ -124,38 +118,39 @@ Responda em JSON com formato:
 
   const callClaudeAPI = async (prompt: string): Promise<string> => {
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
+      const response = await fetch('/api/assistant', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          "x-api-key": CLAUDE_API_KEY,
-          "anthropic-version": "2023-06-01"
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: "claude-3-sonnet-20241022",
-          max_tokens: 2000,
-          messages: [
-            { 
-              role: "user", 
-              content: `Você é um assistente de vendas especializado na metodologia PPVVCC para a Ventapel Brasil.
-              
-              Contexto da Ventapel:
-              - Vendemos soluções de embalagem e fechamento
-              - Produtos: fitas adesivas, máquinas seladoras, stretch film, void fill
-              - Atendemos e-commerce, indústria e logística
-              - Foco em otimização de processos de embalagem
-              - Redução de custos e aumento de eficiência
-              
-              Sempre responda em português do Brasil de forma direta e acionável.
-              ${prompt}`
-            }
-          ]
+          action: 'claude',
+          data: {
+            model: 'claude-3-sonnet-20241022',
+            max_tokens: 2000,
+            messages: [
+              { 
+                role: 'user', 
+                content: `Você é um assistente de vendas especializado na metodologia PPVVCC para a Ventapel Brasil.
+                
+                Contexto da Ventapel:
+                - Vendemos soluções de embalagem e fechamento
+                - Produtos: fitas adesivas, máquinas seladoras, stretch film, void fill
+                - Atendemos e-commerce, indústria e logística
+                - Foco em otimização de processos de embalagem
+                - Redução de custos e aumento de eficiência
+                
+                Sempre responda em português do Brasil de forma direta e acionável.
+                ${prompt}`
+              }
+            ]
+          }
         })
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Erro Claude API:', response.status, errorText);
+        const errorData = await response.json();
+        console.error('Erro Claude API:', errorData);
         throw new Error(`Claude API error: ${response.status}`);
       }
 
@@ -163,29 +158,31 @@ Responda em JSON com formato:
       return data.content[0].text;
     } catch (error) {
       console.error('Erro na API:', error);
-      return 'Desculpe, não consegui processar sua solicitação no momento. Verifique a conexão com a API.';
+      return 'Desculpe, não consegui processar sua solicitação no momento. Verifique a configuração das APIs.';
     }
   };
 
-  // Función para búsqueda web real con Serper
+  // Função para búsqueda web real com Serper
   const searchWebWithSerper = async (query: string): Promise<any[]> => {
     try {
-      const response = await fetch('https://google.serper.dev/search', {
+      const response = await fetch('/api/assistant', {
         method: 'POST',
         headers: {
-          'X-API-KEY': SERPER_API_KEY,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          q: query,
-          num: 10,
-          gl: 'br', // Brasil
-          hl: 'pt' // Português
+        body: JSON.stringify({
+          action: 'search',
+          data: {
+            q: query,
+            num: 10,
+            gl: 'br',
+            hl: 'pt'
+          }
         })
       });
       
       if (!response.ok) {
-        console.error('Error en Serper API:', response.status);
+        console.error('Error en búsqueda:', response.status);
         return [];
       }
       
@@ -791,7 +788,7 @@ Se relevante, considere o contexto de vendas de soluções de embalagem e fecham
   );
 };
 
-// Componente de Health Score para cada oportunidade
+// Componente de Health Score para cada oportunidad
 export const OpportunityHealthScore: React.FC<{ opportunity: Opportunity }> = ({ opportunity }) => {
   const calculateHealthScore = () => {
     const scales = opportunity.scales;
@@ -832,4 +829,5 @@ export const OpportunityHealthScore: React.FC<{ opportunity: Opportunity }> = ({
   );
 };
 
+// Export default del componente principal
 export default AIAssistant;
