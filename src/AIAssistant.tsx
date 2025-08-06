@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MessageCircle, X, AlertTriangle, TrendingUp, Phone, Target, RefreshCw } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
-const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
+const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -11,10 +11,18 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
   const [alerts, setAlerts] = useState([]);
   const [allOpportunities, setAllOpportunities] = useState([]);
   const [pipelineHealth, setPipelineHealth] = useState(null);
+  const [userPerformance, setUserPerformance] = useState(null);
+  const [availableVendors, setAvailableVendors] = useState([]);
+  const [vendorProfiles, setVendorProfiles] = useState({});
 
-  // Cargar todas las oportunidades del pipeline al iniciar
+  // Cargar todas las oportunidades y vendedores al iniciar
   useEffect(() => {
     loadPipelineData();
+    loadVendors();
+    if (currentUser) {
+      calculateUserPerformance();
+    }
+    
     // Suscribirse a cambios en tiempo real
     const subscription = supabase
       .channel('opportunities-changes')
@@ -27,7 +35,125 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [currentUser]);
+
+  // Cargar vendedores desde la base de datos
+  const loadVendors = async () => {
+    try {
+      // Opción 1: Si tienes tabla de usuarios/vendors
+      const { data: vendorsData, error: vendorsError } = await supabase
+        .from('vendors')
+        .select('*')
+        .eq('is_active', true);
+      
+      if (vendorsData && vendorsData.length > 0) {
+        setAvailableVendors(vendorsData);
+        // Crear mapa de perfiles
+        const profiles = {};
+        vendorsData.forEach(v => {
+          profiles[v.name] = {
+            role: v.role || 'Vendedor',
+            style: v.style || 'General',
+            strengths: v.strengths || [],
+            email: v.email,
+            is_admin: v.is_admin || false
+          };
+        });
+        setVendorProfiles(profiles);
+      } else {
+        // Opción 2: Si no hay tabla vendors, obtener únicos de opportunities
+        const { data: oppsData, error: oppsError } = await supabase
+          .from('opportunities')
+          .select('vendor')
+          .not('vendor', 'is', null);
+        
+        if (oppsData) {
+          // Obtener vendedores únicos
+          const uniqueVendors = [...new Set(oppsData.map(o => o.vendor))].filter(Boolean);
+          setAvailableVendors(uniqueVendors.map(name => ({ name, role: 'Vendedor' })));
+          
+          // Crear perfiles básicos basados en nombres conocidos
+          const profiles = {};
+          uniqueVendors.forEach(name => {
+            profiles[name] = {
+              role: name === 'Tomás' ? 'CEO/Head of Sales' : 
+                    name === 'Jordi' ? 'Sales Manager' :
+                    name === 'Matheus' ? 'Account Executive' : 'Vendedor',
+              style: name === 'Tomás' ? 'Estratégico, deals grandes' :
+                     name === 'Jordi' ? 'Técnico, metódico' :
+                     name === 'Matheus' ? 'Relacional, retail' : 'General',
+              is_admin: name === 'Tomás'
+            };
+          });
+          setVendorProfiles(profiles);
+        }
+      }
+      
+      // Opción 3: Si usas Supabase Auth
+      const { data: { users } } = await supabase.auth.admin.listUsers();
+      if (users && users.length > 0) {
+        // Usar usuarios de auth como vendedores
+        const authVendors = users.map(u => ({
+          name: u.user_metadata?.name || u.email?.split('@')[0],
+          email: u.email,
+          role: u.user_metadata?.role || 'Vendedor'
+        }));
+        setAvailableVendors(authVendors);
+      }
+    } catch (err) {
+      console.error('Error loading vendors:', err);
+    }
+  };
+
+  // Obtener perfil del vendedor actual
+  const getCurrentVendorProfile = () => {
+    if (!currentUser) return null;
+    
+    return vendorProfiles[currentUser] || {
+      name: currentUser,
+      role: 'Vendedor',
+      style: 'General',
+      is_admin: false
+    };
+  };
+
+  // Calcular performance del vendedor actual
+  const calculateUserPerformance = async () => {
+    if (!currentUser) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('opportunities')
+        .select('*')
+        .eq('vendor', currentUser);
+        
+      if (data) {
+        const totalValue = data.reduce((sum, opp) => sum + opp.value, 0);
+        const avgScales = data.length > 0 ? 
+          data.reduce((sum, opp) => {
+            const scales = Object.values(opp.scales || {}).reduce((a, b) => a + b, 0) / 6;
+            return sum + scales;
+          }, 0) / data.length : 0;
+        
+        const thisMonth = data.filter(opp => {
+          const closeDate = new Date(opp.expectedCloseDate);
+          const now = new Date();
+          return closeDate.getMonth() === now.getMonth() && 
+                 closeDate.getFullYear() === now.getFullYear();
+        });
+        
+        setUserPerformance({
+          totalOpps: data.length,
+          totalValue,
+          avgHealth: avgScales.toFixed(1),
+          thisMonthTarget: thisMonth.reduce((sum, opp) => sum + opp.value, 0),
+          closedThisMonth: data.filter(opp => opp.stage === 'closed').length
+        });
+      }
+    } catch (err) {
+      console.error('Error calculating user performance:', err);
+    }
+  };
 
   // Cargar datos del pipeline completo
   const loadPipelineData = async () => {
@@ -402,14 +528,22 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate }) => {
         )}
       </button>
 
-      {/* Chat del asistente */}
+                {/* Chat del asistente */}
       {isOpen && (
         <div className="fixed bottom-24 right-6 w-96 h-[600px] bg-white rounded-lg shadow-2xl z-50 flex flex-col">
-          <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 rounded-t-lg flex justify-between items-center">
-            <h3 className="font-semibold">Asistente Ventapel AI</h3>
-            <button onClick={() => setIsOpen(false)}>
-              <X size={20} />
-            </button>
+          <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 rounded-t-lg">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-semibold">Asistente Ventapel AI</h3>
+              <button onClick={() => setIsOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            {currentUser && (
+              <div className="text-xs opacity-90">
+                Hola {currentUser} • {userPerformance?.totalOpps || 0} oportunidades • 
+                R${userPerformance?.totalValue?.toLocaleString() || 0} en gestión
+              </div>
+            )}
           </div>
 
           {/* Quick Actions */}
