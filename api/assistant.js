@@ -1,15 +1,30 @@
 // api/assistant.js
 export default async function handler(req, res) {
+  // Habilitar CORS
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const { messages, context, opportunityData, pipelineData } = req.body;
 
-  // System prompt con metodología PPVVCC
+  // System prompt con metodología PPVVCC mejorado
   const systemPrompt = `
 Eres el asesor experto en ventas consultivas de Ventapel Brasil.
 Utilizas la metodología PPVVCC (Pain, Power, Vision, Value, Control, Compras) para analizar y mejorar oportunidades.
+Respondes directo, sin rodeos, como si fueras el CEO aconsejando al equipo.
 
 CONTEXTO VENTAPEL:
 - Vendemos soluciones de empaquetado que reducen violación de cajas, retrabalho y costos logísticos
@@ -46,33 +61,13 @@ INDUSTRIAS Y SUS DOLORES TÍPICOS:
 - 3PL: Retrabalho y multas de clientes
 - Manufactura: Ergonomía y productividad
 
-CÁLCULO DE ROI VENTAPEL:
-- Costo retrabalho: Envíos/mes × % violación × R$15 por retrabalho
-- Ahorro mano de obra: 2 segundos/caja × envíos × costo hora
-- Reducción devoluciones: % actual × 40% mejora × costo devolución
-- Payback típico: 3-6 meses
-
-PERSONALIDADES DE DECISORES:
-- Gerente Logística: Foco en KPIs y SLAs
-- Gerente Operaciones: Productividad y costos
-- Gerente Calidad: Satisfacción cliente y compliance
-- Director General: ROI y ventaja competitiva
-- Sustentabilidad: Reducción plástico y huella carbono
-
 ${pipelineData ? `
 ANÁLISIS DEL PIPELINE COMPLETO:
 Total oportunidades activas: ${pipelineData.allOpportunities?.length || 0}
-Valor total en pipeline: R${pipelineData.pipelineHealth?.totalValue?.toLocaleString() || 0}
+Valor total en pipeline: R$${pipelineData.pipelineHealth?.totalValue?.toLocaleString() || 0}
 Salud promedio del pipeline: ${pipelineData.pipelineHealth?.averageHealth || 0}/10
-
-OPORTUNIDADES CRÍTICAS QUE REQUIEREN ATENCIÓN:
-${pipelineData.allOpportunities?.filter(opp => {
-  const avg = Object.values(opp.scales || {}).reduce((a,b) => a+b, 0) / 6;
-  return avg < 4 || !opp.lastContact || 
-    (new Date() - new Date(opp.lastContact)) > 5 * 24 * 60 * 60 * 1000;
-}).map(opp => `- ${opp.name}: ${opp.value} (Promedio PPVVCC: ${
-  (Object.values(opp.scales || {}).reduce((a,b) => a+b, 0) / 6).toFixed(1)
-})`).join('\n') || 'Ninguna en estado crítico'}
+Oportunidades en riesgo: ${pipelineData.pipelineHealth?.atRisk || 0}
+Valor en riesgo: R$${pipelineData.pipelineHealth?.riskValue?.toLocaleString() || 0}
 ` : ''}
 
 ${opportunityData ? `
@@ -81,14 +76,20 @@ Cliente: ${opportunityData.client}
 Valor: R$${opportunityData.value}
 Industria: ${opportunityData.industry || 'No especificada'}
 Etapa actual: ${opportunityData.stage}
-Escalas PPVVCC actuales:
-- DOR: ${opportunityData.scales.pain}/10 ${opportunityData.scales.pain < 5 ? '⚠️ CRÍTICO' : ''}
-- PODER: ${opportunityData.scales.power}/10 ${opportunityData.scales.power < 4 ? '⚠️ CRÍTICO' : ''}
-- VISÃO: ${opportunityData.scales.vision}/10
-- VALOR: ${opportunityData.scales.value}/10
-- CONTROLE: ${opportunityData.scales.control}/10
-- COMPRAS: ${opportunityData.scales.purchase}/10
-Promedio: ${(Object.values(opportunityData.scales).reduce((a,b) => a+b, 0) / 6).toFixed(1)}/10
+Vendedor: ${opportunityData.vendor}
+
+ESCALAS PPVVCC ACTUALES:
+- DOR: ${opportunityData.scales?.pain || 0}/10 ${opportunityData.scales?.pain < 5 ? '⚠️ CRÍTICO' : ''}
+- PODER: ${opportunityData.scales?.power || 0}/10 ${opportunityData.scales?.power < 4 ? '⚠️ CRÍTICO' : ''}
+- VISÃO: ${opportunityData.scales?.vision || 0}/10
+- VALOR: ${opportunityData.scales?.value || 0}/10
+- CONTROLE: ${opportunityData.scales?.control || 0}/10
+- COMPRAS: ${opportunityData.scales?.purchase || 0}/10
+
+Promedio: ${opportunityData.scales ? 
+  ((opportunityData.scales.pain + opportunityData.scales.power + opportunityData.scales.vision + 
+    opportunityData.scales.value + opportunityData.scales.control + opportunityData.scales.purchase) / 6).toFixed(1) 
+  : 0}/10
 
 ANÁLISIS INMEDIATO:
 ${analyzeOpportunity(opportunityData)}
@@ -101,13 +102,18 @@ ESTILO DE RESPUESTA:
 - Señala riesgos sin diplomatismo
 - Enfoque en cerrar ventas, no en ser amable
 - Responde en español rioplatense
+- Si no tenés datos específicos, pedí la información que necesitás
 
-Ahora responde la consulta del usuario de manera directa y accionable.
+PREGUNTA DEL USUARIO: ${context}
 `;
 
   function analyzeOpportunity(opp) {
+    if (!opp || !opp.scales) return 'Sin datos de escalas para analizar';
+    
     const scales = opp.scales;
-    const avg = Object.values(scales).reduce((a,b) => a+b, 0) / 6;
+    const avg = (scales.pain + scales.power + scales.vision + 
+                 scales.value + scales.control + scales.purchase) / 6;
+    
     let analysis = [];
 
     // Análisis de bloqueos críticos
@@ -137,26 +143,36 @@ Ahora responde la consulta del usuario de manera directa y accionable.
       analysis.push('\n✅ PRÓXIMO PASO: Propuesta formal y plan de implementación 30 días.');
     }
 
-    // Probabilidad de cierre
+    // Probabilidad de cierre real
     let prob = 0;
     if (avg >= 7) prob = 70;
     else if (avg >= 5) prob = 40;
     else if (avg >= 3) prob = 20;
     else prob = 5;
     
-    analysis.push(`\n📊 Probabilidad de cierre: ${prob}%`);
+    analysis.push(`\n📊 Probabilidad real de cierre: ${prob}%`);
+    
+    // Días sin contacto
+    if (opp.last_update) {
+      const daysSince = Math.floor((Date.now() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24));
+      if (daysSince > 5) {
+        analysis.push(`\n🚨 ALERTA: ${daysSince} días sin contacto. Deal enfriándose!`);
+      }
+    }
 
     return analysis.join('\n');
   }
 
   try {
-    // Si es una búsqueda web
-    if (context && context.includes('investigar') || context.includes('buscar')) {
-      const searchQuery = extractSearchQuery(context);
-      if (searchQuery) {
-        const searchResults = await searchWeb(searchQuery);
-        // Procesar resultados de búsqueda
-      }
+    // Verificar si tenemos API key de Claude
+    const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
+    
+    if (!apiKey) {
+      console.error('No se encontró API key de Claude');
+      // Respuesta de fallback sin API
+      return res.status(200).json({ 
+        response: generateFallbackResponse(opportunityData, context)
+      });
     }
 
     // Llamada a Claude API
@@ -164,61 +180,116 @@ Ahora responde la consulta del usuario de manera directa y accionable.
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.CLAUDE_API_KEY,
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-3-opus-20240229',
-        max_tokens: 1000,
+        model: 'claude-3-5-sonnet-20241022', // Modelo más nuevo y eficiente
+        max_tokens: 2000,
         temperature: 0.7,
         system: systemPrompt,
-        messages: [
-          ...messages,
-          { role: 'user', content: context || messages[messages.length - 1].content }
+        messages: messages && messages.length > 0 ? messages : [
+          { role: 'user', content: context || 'Analiza esta oportunidad' }
         ]
       })
     });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error de Claude API:', response.status, errorText);
+      throw new Error(`Claude API error: ${response.status}`);
+    }
+
     const data = await response.json();
     
     res.status(200).json({ 
-      response: data.content[0].text,
+      response: data.content?.[0]?.text || 'No se pudo procesar la respuesta de Claude.',
       analysis: opportunityData ? analyzeOpportunity(opportunityData) : null
     });
 
   } catch (error) {
     console.error('Error calling Claude API:', error);
     
-    // Respuesta de fallback con análisis básico
-    if (opportunityData) {
-      const basicAnalysis = analyzeOpportunity(opportunityData);
-      res.status(200).json({ 
-        response: `Análisis rápido de ${opportunityData.client}:\n\n${basicAnalysis}\n\nRecomendación: Enfocate en la escala más baja y usá SPIN para evolucionar.`,
-        analysis: basicAnalysis
-      });
-    } else {
-      res.status(500).json({ 
-        error: 'Error processing request',
-        response: 'No pude procesar tu consulta. Intentá ser más específico sobre la oportunidad.' 
-      });
-    }
+    // Respuesta de fallback mejorada
+    res.status(200).json({ 
+      response: generateFallbackResponse(opportunityData, context)
+    });
   }
 }
 
-// Función para búsqueda web si es necesario
-async function searchWeb(query) {
-  try {
-    const response = await fetch(`https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${process.env.SERPER_API_KEY}`);
-    const data = await response.json();
-    return data.organic_results || [];
-  } catch (error) {
-    console.error('Search error:', error);
-    return [];
+// Función de fallback mejorada cuando no hay API o falla
+function generateFallbackResponse(opportunityData, context) {
+  if (!opportunityData) {
+    return `No puedo analizar sin datos de la oportunidad. 
+    
+Necesito que me proporciones:
+- Cliente y valor del deal
+- Escalas PPVVCC actuales
+- Etapa del pipeline
+- Último contacto
+
+Mientras tanto, recordá las reglas de oro:
+1. Sin dolor admitido = No hay venta
+2. Sin acceso al poder = Deal estancado
+3. Sin ROI claro = Objeción de precio garantizada`;
   }
+
+  const scales = opportunityData.scales || {};
+  const avg = scales ? 
+    (scales.pain + scales.power + scales.vision + scales.value + scales.control + scales.purchase) / 6 : 0;
+
+  let response = `Análisis rápido de ${opportunityData.client}:\n\n`;
+
+  // Diagnóstico principal
+  if (avg < 4) {
+    response += `🔴 DEAL EN RIESGO CRÍTICO (${avg.toFixed(1)}/10)\n`;
+    response += `Este deal tiene alta probabilidad de perderse.\n\n`;
+  } else if (avg < 7) {
+    response += `🟡 DEAL TIBIO (${avg.toFixed(1)}/10)\n`;
+    response += `Necesita trabajo urgente para no perder momentum.\n\n`;
+  } else {
+    response += `🟢 DEAL CALIENTE (${avg.toFixed(1)}/10)\n`;
+    response += `Excelente posición. Presioná para cerrar.\n\n`;
+  }
+
+  // Problema principal
+  if (scales.pain < 5) {
+    response += `⛔ PROBLEMA CRÍTICO: Cliente no admite el dolor (${scales.pain}/10)\n`;
+    response += `ACCIÓN: No avances hasta que admita y cuantifique el problema.\n`;
+    response += `SCRIPT: "¿Cuánto les está costando el retrabalho por cajas dañadas cada mes?"\n\n`;
+  } else if (scales.power < 4) {
+    response += `⛔ PROBLEMA CRÍTICO: Sin acceso al decisor (${scales.power}/10)\n`;
+    response += `ACCIÓN: Conseguí reunión con el gerente esta semana o el deal morirá.\n`;
+    response += `SCRIPT: "Para diseñar la mejor solución, necesito 20 minutos con quien aprueba esta inversión."\n\n`;
+  } else if (scales.value < 5) {
+    response += `⚠️ PROBLEMA: ROI no validado (${scales.value}/10)\n`;
+    response += `ACCIÓN: Presentá números concretos de ahorro.\n`;
+    response += `CÁLCULO: ${opportunityData.value} / 5 = R$${(opportunityData.value/5).toLocaleString()} ahorro mensual necesario\n\n`;
+  }
+
+  // Próximos pasos
+  response += `PRÓXIMOS 3 PASOS:\n`;
+  response += `1. ${scales.pain < 5 ? 'Cuantificar dolor con el cliente' : 'Validar dolor con decisor'}\n`;
+  response += `2. ${scales.power < 4 ? 'Acceder al poder real' : 'Confirmar proceso de compra'}\n`;
+  response += `3. ${scales.value < 5 ? 'Presentar ROI específico' : 'Proponer plan de implementación'}\n\n`;
+
+  // Pregunta específica
+  if (context.toLowerCase().includes('spin')) {
+    response += `\nPREGUNTAS SPIN PARA ${opportunityData.client}:\n`;
+    response += `S: "¿Cómo manejan hoy el empaquetado en su centro de distribución?"\n`;
+    response += `P: "¿Qué porcentaje de sus envíos llegan dañados al cliente?"\n`;
+    response += `I: "¿Cuánto tiempo dedican a re-embalar productos dañados?"\n`;
+    response += `N: "¿Qué valor tendría reducir las devoluciones en un 40%?"\n`;
+  }
+
+  return response;
 }
 
-function extractSearchQuery(context) {
-  // Extraer términos de búsqueda del contexto
-  const match = context.match(/investigar|buscar|información sobre\s+(.+)/i);
-  return match ? match[1] : null;
-}
+// Para Vercel
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
