@@ -28,7 +28,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
   // Cargar datos del pipeline completo
   const loadPipelineData = async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      console.warn('Supabase no disponible');
+      return;
+    }
     
     try {
       const { data, error } = await supabase
@@ -262,7 +265,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
   // Buscar oportunidad específica cuando el vendedor pregunta
   const searchOpportunity = async (clientName) => {
-    if (!supabase) return null;
+    if (!supabase) {
+      console.warn('Supabase no disponible para búsqueda');
+      return null;
+    }
     
     try {
       // Buscar por nombre del cliente (case insensitive)
@@ -570,6 +576,11 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
           searchContext: searchContext,
           language: 'português brasileiro',
           focusOn: 'venda consultiva PPVVCC, solução de fechamento, detectar problemas',
+          instructions: {
+            dataAccuracy: 'CRÍTICO: Ao buscar informações sobre empresas, use APENAS dados verificados e reais. NUNCA invente ou estime dados. Se não encontrar informação verificada, diga claramente "Não encontrei dados verificados sobre isso". Sempre cite a fonte quando mencionar dados específicos.',
+            salesApproach: 'Seja direto e agressivo no diagnóstico PPVVCC. Detecte inconsistências e comunique sem rodeios.',
+            webSearchRules: 'Quando buscar informações sobre empresas competidoras ou clientes potenciais, APENAS use: dados oficiais da empresa, relatórios públicos, press releases verificados, informações de sites oficiais. NUNCA especule ou invente números.'
+          },
           pipelineData: {
             currentOpportunity: opportunityContext,
             allOpportunities: allOpportunities,
