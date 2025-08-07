@@ -90,11 +90,13 @@ const emptyScales = (): Scales => ({
   compras: { score: 0, description: '' }
 });
 
-// Función helper para obtener el valor de una escala
-const getScaleScore = (scale: Scale | number | undefined): number => {
-  if (!scale) return 0;
+// Función helper para obtener el valor de una escala - CORREGIDA
+const getScaleScore = (scale: Scale | number | undefined | null): number => {
+  if (scale === null || scale === undefined) return 0;
   if (typeof scale === 'number') return scale;
-  if (typeof scale === 'object' && 'score' in scale) return scale.score;
+  if (typeof scale === 'object' && 'score' in scale) {
+    return typeof scale.score === 'number' ? scale.score : 0;
+  }
   return 0;
 };
 
@@ -169,23 +171,31 @@ class SupabaseService {
   }
 
   private normalizeScales(scales: any): Scales {
-    if (!scales) return emptyScales();
-
-    // Si ya tiene el formato correcto
-    if (scales.dor && typeof scales.dor === 'object' && 'score' in scales.dor) {
-      return scales;
+    // Si scales es null, undefined o no es un objeto, retornar estructura vacía
+    if (!scales || typeof scales !== 'object') {
+      return emptyScales();
     }
 
-    // Si tiene formato antiguo con valores numéricos directos
-    if (typeof scales.dor === 'number' || typeof scales.pain === 'number') {
-      return {
-        dor: { score: scales.dor || scales.pain || 0, description: '' },
-        poder: { score: scales.poder || scales.power || 0, description: '' },
-        visao: { score: scales.visao || scales.vision || 0, description: '' },
-        valor: { score: scales.valor || scales.value || 0, description: '' },
-        controle: { score: scales.controle || scales.control || 0, description: '' },
-        compras: { score: scales.compras || scales.purchase || 0, description: '' }
-      };
+    // Intentar normalizar desde diferentes formatos
+    try {
+      // Si ya tiene el formato correcto
+      if (scales.dor && typeof scales.dor === 'object' && 'score' in scales.dor) {
+        return scales;
+      }
+
+      // Si tiene formato antiguo con valores numéricos directos
+      if (typeof scales.dor === 'number' || typeof scales.pain === 'number') {
+        return {
+          dor: { score: scales.dor || scales.pain || 0, description: '' },
+          poder: { score: scales.poder || scales.power || 0, description: '' },
+          visao: { score: scales.visao || scales.vision || 0, description: '' },
+          valor: { score: scales.valor || scales.value || 0, description: '' },
+          controle: { score: scales.controle || scales.control || 0, description: '' },
+          compras: { score: scales.compras || scales.purchase || 0, description: '' }
+        };
+      }
+    } catch (e) {
+      console.error('Error normalizando scales:', e);
     }
 
     return emptyScales();
@@ -606,69 +616,95 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       setError(null);
       
+      // Validación básica
+      if (!formData.name?.trim() || !formData.client?.trim() || !formData.value) {
+        setError('Por favor, complete los campos obligatorios: Nombre, Cliente y Valor');
+        return false;
+      }
+      
+      // CRÍTICO: Asegurar que scales NUNCA sea null o undefined
+      let safeScales = formData.scales;
+      if (!safeScales || typeof safeScales !== 'object') {
+        console.warn('⚠️ Scales inválidas, usando valores por defecto');
+        safeScales = emptyScales();
+      }
+      
+      // Construir el objeto para insertar
       const newOpportunity = {
         name: formData.name.trim(),
         client: formData.client.trim(),
-        vendor: formData.vendor,
-        value: parseFloat(formData.value) || 0,
-        stage: formData.stage,
-        priority: formData.priority,
-        expected_close: formData.expected_close || undefined,
-        next_action: formData.next_action?.trim() || undefined,
-        product: formData.product?.trim() || undefined,
-        power_sponsor: formData.power_sponsor?.trim() || undefined,
-        sponsor: formData.sponsor?.trim() || undefined,
-        influencer: formData.influencer?.trim() || undefined,
-        support_contact: formData.support_contact?.trim() || undefined,
-        probability: stages.find(s => s.id === formData.stage)?.probability || 0,
+        vendor: formData.vendor || currentUser || 'Tomás',
+        value: parseFloat(formData.value.toString()) || 0,
+        stage: parseInt(formData.stage?.toString() || '1'),
+        priority: formData.priority || 'média',
+        probability: stages.find(s => s.id === (parseInt(formData.stage?.toString() || '1')))?.probability || 0,
         last_update: new Date().toISOString().split('T')[0],
-        scales: formData.scales,
-        industry: formData.industry || undefined
+        scales: safeScales, // Usar las scales seguras
+        // Campos opcionales - usar null si están vacíos
+        expected_close: formData.expected_close || null,
+        next_action: formData.next_action?.trim() || null,
+        product: formData.product?.trim() || null,
+        power_sponsor: formData.power_sponsor?.trim() || null,
+        sponsor: formData.sponsor?.trim() || null,
+        influencer: formData.influencer?.trim() || null,
+        support_contact: formData.support_contact?.trim() || null,
+        industry: formData.industry?.trim() || null
       };
 
+      console.log('📝 Intentando crear oportunidad:', newOpportunity);
       await supabaseService.insertOpportunity(newOpportunity);
       await loadOpportunities();
       return true;
+      
     } catch (err) {
-      console.error('Error al crear oportunidad:', err);
-      setError('Error al crear oportunidad. Verifique los datos e inténtelo de nuevo.');
+      console.error('❌ Error al crear oportunidad:', err);
+      setError(`Error al crear oportunidad: ${err.message || 'Verifique los datos'}`);
       return false;
     }
-  }, [loadOpportunities]);
+  }, [loadOpportunities, currentUser]);
 
   const updateOpportunity = useCallback(async (id: number, formData: OpportunityFormData): Promise<boolean> => {
     try {
       setError(null);
       
+      // CRÍTICO: Asegurar que scales NUNCA sea null
+      let safeScales = formData.scales;
+      if (!safeScales || typeof safeScales !== 'object') {
+        console.warn('⚠️ Scales inválidas en update, usando valores por defecto');
+        safeScales = emptyScales();
+      }
+      
       const updatedData = {
         name: formData.name.trim(),
         client: formData.client.trim(),
-        vendor: formData.vendor,
-        value: parseFloat(formData.value) || 0,
-        stage: formData.stage,
-        priority: formData.priority,
-        expected_close: formData.expected_close || undefined,
-        next_action: formData.next_action?.trim() || undefined,
-        product: formData.product?.trim() || undefined,
-        power_sponsor: formData.power_sponsor?.trim() || undefined,
-        sponsor: formData.sponsor?.trim() || undefined,
-        influencer: formData.influencer?.trim() || undefined,
-        support_contact: formData.support_contact?.trim() || undefined,
-        probability: stages.find(s => s.id === formData.stage)?.probability || 0,
+        vendor: formData.vendor || currentUser || 'Tomás',
+        value: parseFloat(formData.value.toString()) || 0,
+        stage: parseInt(formData.stage?.toString() || '1'),
+        priority: formData.priority || 'média',
+        probability: stages.find(s => s.id === (parseInt(formData.stage?.toString() || '1')))?.probability || 0,
         last_update: new Date().toISOString().split('T')[0],
-        scales: formData.scales,
-        industry: formData.industry || undefined
+        scales: safeScales, // Usar scales seguras
+        expected_close: formData.expected_close || null,
+        next_action: formData.next_action?.trim() || null,
+        product: formData.product?.trim() || null,
+        power_sponsor: formData.power_sponsor?.trim() || null,
+        sponsor: formData.sponsor?.trim() || null,
+        influencer: formData.influencer?.trim() || null,
+        support_contact: formData.support_contact?.trim() || null,
+        industry: formData.industry?.trim() || null
       };
 
+      console.log('📝 Actualizando oportunidad:', updatedData);
       await supabaseService.updateOpportunity(id, updatedData);
       await loadOpportunities();
       return true;
+      
     } catch (err) {
-      console.error('Error al actualizar oportunidad:', err);
-      setError('Error al actualizar oportunidad. Por favor, inténtelo de nuevo.');
+      console.error('❌ Error al actualizar oportunidad:', err);
+      setError(`Error al actualizar: ${err.message || 'Verifique los datos'}`);
       return false;
     }
-  }, [loadOpportunities]);
+  }, [loadOpportunities, currentUser]);
 
   const deleteOpportunity = useCallback(async (id: number): Promise<void> => {
     if (!confirm('¿Está seguro de que desea eliminar esta oportunidad?')) {
@@ -805,21 +841,25 @@ const LoadingSpinner: React.FC = () => (
   </div>
 );
 
-// --- FUNCIONES AUXILIARES ---
+// --- FUNCIONES AUXILIARES CORREGIDAS ---
 const checkStageRequirements = (opportunity: Opportunity, stageId: number): boolean => {
+  // Si no hay scales, no cumple requisitos
   if (!opportunity.scales) return false;
+
+  // Asegurar que scales es un objeto válido
+  const scales = opportunity.scales || emptyScales();
 
   switch (stageId) {
     case 2:
-      return getScaleScore(opportunity.scales.dor) >= 5 && 
-             getScaleScore(opportunity.scales.poder) >= 4;
+      return getScaleScore(scales.dor) >= 5 && 
+             getScaleScore(scales.poder) >= 4;
     case 3:
-      return getScaleScore(opportunity.scales.visao) >= 5;
+      return getScaleScore(scales.visao) >= 5;
     case 4:
-      return getScaleScore(opportunity.scales.valor) >= 6;
+      return getScaleScore(scales.valor) >= 6;
     case 5:
-      return getScaleScore(opportunity.scales.controle) >= 7 && 
-             getScaleScore(opportunity.scales.compras) >= 6;
+      return getScaleScore(scales.controle) >= 7 && 
+             getScaleScore(scales.compras) >= 6;
     default:
       return true;
   }
@@ -1438,6 +1478,7 @@ const CRMVentapel: React.FC = () => {
   }
 
   const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose }) => {
+    // IMPORTANTE: Siempre inicializar con un objeto válido de scales
     const [formData, setFormData] = useState<OpportunityFormData>({
       name: opportunity?.name || '',
       client: opportunity?.client || '',
@@ -1452,7 +1493,7 @@ const CRMVentapel: React.FC = () => {
       sponsor: opportunity?.sponsor || '',
       influencer: opportunity?.influencer || '',
       support_contact: opportunity?.support_contact || '',
-      scales: opportunity?.scales || emptyScales(),
+      scales: opportunity?.scales || emptyScales(), // SIEMPRE un objeto válido
       industry: opportunity?.industry || ''
     });
 
@@ -1461,21 +1502,39 @@ const CRMVentapel: React.FC = () => {
     const [showScaleSelector, setShowScaleSelector] = useState<string | null>(null);
 
     const handleSubmit = async () => {
-      if (!formData.name || !formData.client || !formData.vendor || !formData.value) {
-        alert('Por favor, preencha todos os campos obrigatórios');
+      // Validaciones mejoradas
+      if (!formData.name?.trim()) {
+        alert('❌ Por favor, ingrese el nombre de la oportunidad');
+        return;
+      }
+      
+      if (!formData.client?.trim()) {
+        alert('❌ Por favor, ingrese el nombre del cliente');
+        return;
+      }
+      
+      const valueNum = parseFloat(formData.value?.toString() || '0');
+      if (isNaN(valueNum) || valueNum <= 0) {
+        alert('❌ Por favor, ingrese un valor válido mayor a 0');
         return;
       }
 
       setSubmitting(true);
       
       try {
+        // Asegurar que scales existe antes de enviar
+        const dataToSend = {
+          ...formData,
+          scales: formData.scales || emptyScales()
+        };
+        
         const success = opportunity 
-          ? await updateOpportunity(opportunity.id, formData)
-          : await createOpportunity(formData);
+          ? await updateOpportunity(opportunity.id, dataToSend)
+          : await createOpportunity(dataToSend);
           
         if (success) {
           onClose();
-          // Atualizar oportunidade selecionada se foi editada
+          // Limpiar selección si se editó
           if (opportunity && selectedOpportunity?.id === opportunity.id) {
             setSelectedOpportunity(null);
           }
@@ -1486,13 +1545,19 @@ const CRMVentapel: React.FC = () => {
     };
 
     const updateScale = (scaleId: string, field: 'score' | 'description', value: string | number) => {
+      // Validar score entre 0 y 10
+      if (field === 'score') {
+        const numValue = typeof value === 'string' ? parseInt(value) : value;
+        if (numValue < 0 || numValue > 10) return;
+      }
+      
       setFormData(prev => ({
         ...prev,
         scales: {
           ...prev.scales,
           [scaleId]: {
             ...prev.scales[scaleId as keyof Scales],
-            [field]: value
+            [field]: field === 'score' ? (typeof value === 'string' ? parseInt(value) || 0 : value) : value
           }
         }
       }));
@@ -2063,7 +2128,7 @@ const CRMVentapel: React.FC = () => {
 
       <StageChecklistModal />
       
-      {/* Asistente IA flotante - CORREGIDO: cerrar div y sintaxis */}
+      {/* Asistente IA flotante */}
       <AIAssistant
         currentOpportunity={selectedOpportunity || editingOpportunity}
         onOpportunityUpdate={(updated) => {
