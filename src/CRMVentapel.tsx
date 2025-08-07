@@ -2064,19 +2064,19 @@ const CRMVentapel: React.FC = () => {
       <StageChecklistModal />
       
       {/* Asistente IA flotante - CORREGIDO: pasa la oportunidad seleccionada */}
-      <AIAssistant 
-        currentOpportunity={selectedOpportunity || editingOpportunity}
-        onOpportunityUpdate={(updated) => {
-          if (selectedOpportunity?.id === updated.id) {
-            setSelectedOpportunity(updated);
-          }
-          if (editingOpportunity?.id === updated.id) {
-            setEditingOpportunity(updated);
-          }
-        }}
-        currentUser={currentUser}
-      />
-    </div>
+<AIAssistant
+  currentOpportunity={selectedOpportunity || editingOpportunity}
+  onOpportunityUpdate={(updated) => {
+    if (selectedOpportunity?.id === updated.id) {
+      setSelectedOpportunity(updated);
+    }
+    if (editingOpportunity?.id === updated.id) {
+      setEditingOpportunity(updated);
+    }
+  }}
+  currentUser={currentUser}
+  supabase={supabase}  // <-- ESTA ES LA LÍNEA QUE FALTA
+/>
   );
 };
 
