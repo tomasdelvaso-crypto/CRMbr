@@ -418,33 +418,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       });
     }
     
-    // Prioridad 4: Acción para avanzar según etapa
-    if (currentOpportunity.stage >= 3 && controlValue >= 5) {
-      actions.push({
-        icon: '📧',
-        label: 'Email fechamento',
-        prompt: `Gerar email DE FECHAMENTO para ${currentOpportunity.client}.
-        Estamos na etapa ${currentOpportunity.stage}. PPVVCC médio: ${analysis?.avgScale}/10.
-        Objetivo: conseguir o SIM esta semana.
-        Tom: assumir a venda, criar urgência sem pressionar.
-        Incluir: próximos passos claros, datas, caso de sucesso similar.`
-      });
-    } else {
-      actions.push({
-        icon: '📞',
-        label: 'Script ligação',
-        prompt: `Script de ligação VENDEDORA para ${currentOpportunity.client}.
-        Escalas: DOR=${painValue}, PODER=${powerValue}, VALOR=${valueValue}.
-        Objetivo principal: ${analysis?.nextAction?.action || 'avançar no funil'}.
-        Estrutura:
-        1. Abertura que prende atenção (15 seg)
-        2. Perguntas SPIN específicas
-        3. Manejo objeção "é caro"
-        4. Fechar com próximo passo concreto`
-      });
-    }
-    
-    // Casos de éxito relevantes
+    // Prioridad 4: Casos de éxito
     actions.push({
       icon: '🏆',
       label: 'Casos de éxito',
