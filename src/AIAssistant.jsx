@@ -13,8 +13,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
   // Cargar datos del pipeline al iniciar
   useEffect(() => {
-    loadPipelineData();
-  }, [currentUser]);
+    if (supabase) {
+      loadPipelineData();
+    }
+  }, [currentUser, supabase]);
 
   // Analizar oportunidad cuando cambia
   useEffect(() => {
@@ -26,6 +28,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
   // Cargar datos del pipeline completo
   const loadPipelineData = async () => {
+    if (!supabase) return;
+    
     try {
       const { data, error } = await supabase
         .from('opportunities')
@@ -256,6 +260,43 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     setAlerts(newAlerts);
   };
 
+  // Buscar oportunidad específica cuando el vendedor pregunta
+  const searchOpportunity = async (clientName) => {
+    if (!supabase) return null;
+    
+    try {
+      // Buscar por nombre del cliente (case insensitive)
+      const { data, error } = await supabase
+        .from('opportunities')
+        .select('*')
+        .ilike('client', `%${clientName}%`);
+      
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('Error buscando oportunidad:', err);
+      return null;
+    }
+  };
+
+  // Detectar si el mensaje pregunta por una oportunidad específica
+  const detectOpportunityQuery = (message) => {
+    const patterns = [
+      /(?:como está|status|situação|análise|diagnóstico|info|información|dados|escalas|ppvvcc)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\?|$)/i,
+      /(?:mostrar|ver|buscar|encontrar|analizar|checar)\s+(?:oportunidad|oportunidade|deal|negócio)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\?|$)/i,
+      /(?:qual|como|qué)\s+(?:está|anda|vai)\s+(.+?)(?:\?|$)/i,
+      /^(.+?)\s+(?:está|anda|como vai|status|situação)/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+    return null;
+  };
+
   // Quick Actions dinámicas - MÁXIMO 4 BOTONES
   const getQuickActions = () => {
     // Si no hay oportunidad actual, mostrar acciones de búsqueda
@@ -397,43 +438,24 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       });
     }
     
+    // Casos de éxito relevantes
+    actions.push({
+      icon: '🏆',
+      label: 'Casos de éxito',
+      prompt: `Dame 3 casos de éxito relevantes para ${currentOpportunity.client} en industria ${currentOpportunity.industry || 'similar'}. 
+        Incluye: empresa, problema inicial, solución implementada, resultados cuantificados, ROI logrado.
+        Casos disponibles: 
+        - L'ORÉAL: 100% furtos eliminados, +50% eficiência, ROI 3 meses con RSA
+        - NIKE: Furtos zero, +30% eficiência, ROI 2 meses con BP755
+        - MercadoLibre: 40% reducción retrabalho
+        - Natura: 60% menos violaciones
+        - Magazine Luiza: 35% reducción devoluciones
+        - Centauro: 95% reducción furtos, ahorro R$50M/año
+        Usa los más relevantes para su industria y tamaño.`
+    });
+    
     // Retornar máximo 4 acciones
     return actions.slice(0, 4);
-  };
-
-  // Buscar oportunidad específica cuando el vendedor pregunta
-  const searchOpportunity = async (clientName) => {
-    try {
-      // Buscar por nombre del cliente (case insensitive)
-      const { data, error } = await supabase
-        .from('opportunities')
-        .select('*')
-        .ilike('client', `%${clientName}%`);
-      
-      if (error) throw error;
-      return data;
-    } catch (err) {
-      console.error('Error buscando oportunidad:', err);
-      return null;
-    }
-  };
-
-  // Detectar si el mensaje pregunta por una oportunidad específica
-  const detectOpportunityQuery = (message) => {
-    const patterns = [
-      /(?:como está|status|situação|análise|diagnóstico|info|información|dados|escalas|ppvvcc)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\?|$)/i,
-      /(?:mostrar|ver|buscar|encontrar|analizar|checar)\s+(?:oportunidad|oportunidade|deal|negócio)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\?|$)/i,
-      /(?:qual|como|qué)\s+(?:está|anda|vai)\s+(.+?)(?:\?|$)/i,
-      /^(.+?)\s+(?:está|anda|como vai|status|situação)/i
-    ];
-    
-    for (const pattern of patterns) {
-      const match = message.match(pattern);
-      if (match && match[1]) {
-        return match[1].trim();
-      }
-    }
-    return null;
   };
 
   // Enviar mensaje al asistente
@@ -451,7 +473,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       let searchedOpportunity = null;
       let searchResults = [];
       
-      if (possibleClient) {
+      if (possibleClient && supabase) {
         searchResults = await searchOpportunity(possibleClient);
         if (searchResults && searchResults.length > 0) {
           searchedOpportunity = searchResults[0]; // Tomar la primera coincidencia
