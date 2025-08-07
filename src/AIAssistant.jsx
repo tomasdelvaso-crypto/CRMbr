@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { MessageCircle, X, AlertTriangle, TrendingUp, Phone, Target, RefreshCw } from 'lucide-react';
-import { supabase } from './supabaseClient';
+import { MessageCircle, X, AlertTriangle, Target, RefreshCw, TrendingUp } from 'lucide-react';
 
-const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) => {
+const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, supabase }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -11,14 +10,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
   const [alerts, setAlerts] = useState([]);
   const [allOpportunities, setAllOpportunities] = useState([]);
   const [pipelineHealth, setPipelineHealth] = useState(null);
-  const [userPerformance, setUserPerformance] = useState(null);
 
-  // Cargar todas las oportunidades al iniciar
+  // Cargar datos del pipeline al iniciar
   useEffect(() => {
     loadPipelineData();
-    if (currentUser) {
-      calculateUserPerformance();
-    }
   }, [currentUser]);
 
   // Analizar oportunidad cuando cambia
@@ -28,65 +23,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
       checkOpportunityHealth(currentOpportunity);
     }
   }, [currentOpportunity]);
-
-  // Calcular performance del vendedor actual
-  const calculateUserPerformance = async () => {
-    if (!currentUser) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('opportunities')
-        .select('*')
-        .eq('vendor', currentUser);
-        
-      if (data && !error) {
-        const totalValue = data.reduce((sum, opp) => sum + (opp.value || 0), 0);
-        
-        // Calcular promedio de escalas correctamente
-        const avgScales = data.length > 0 ? 
-          data.reduce((sum, opp) => {
-            if (!opp.scales) return sum;
-            
-            // Manejar tanto formato antiguo como nuevo
-            let scaleSum = 0;
-            let scaleCount = 0;
-            
-            Object.values(opp.scales).forEach(scale => {
-              // Si es objeto con .score
-              if (typeof scale === 'object' && scale.score !== undefined) {
-                scaleSum += scale.score;
-                scaleCount++;
-              }
-              // Si es número directo (formato antiguo)
-              else if (typeof scale === 'number') {
-                scaleSum += scale;
-                scaleCount++;
-              }
-            });
-            
-            const avgForOpp = scaleCount > 0 ? scaleSum / scaleCount : 0;
-            return sum + avgForOpp;
-          }, 0) / data.length : 0;
-        
-        const thisMonth = data.filter(opp => {
-          const closeDate = new Date(opp.expected_close || opp.last_update);
-          const now = new Date();
-          return closeDate.getMonth() === now.getMonth() && 
-                 closeDate.getFullYear() === now.getFullYear();
-        });
-        
-        setUserPerformance({
-          totalOpps: data.length,
-          totalValue,
-          avgHealth: avgScales.toFixed(1),
-          thisMonthTarget: thisMonth.reduce((sum, opp) => sum + (opp.value || 0), 0),
-          closedThisMonth: data.filter(opp => opp.stage === 6).length
-        });
-      }
-    } catch (err) {
-      console.error('Error calculating user performance:', err);
-    }
-  };
 
   // Cargar datos del pipeline completo
   const loadPipelineData = async () => {
@@ -109,51 +45,16 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
   const analyzePipelineHealth = (opportunities) => {
     const totalValue = opportunities.reduce((sum, opp) => sum + (opp.value || 0), 0);
     
-    const avgScales = opportunities.map(opp => {
-      if (!opp.scales) return 0;
-      
-      let scaleSum = 0;
-      let scaleCount = 0;
-      
-      Object.values(opp.scales).forEach(scale => {
-        if (typeof scale === 'object' && scale.score !== undefined) {
-          scaleSum += scale.score;
-          scaleCount++;
-        } else if (typeof scale === 'number') {
-          scaleSum += scale;
-          scaleCount++;
-        }
-      });
-      
-      return scaleCount > 0 ? scaleSum / scaleCount : 0;
-    });
-    
     const riskOpps = opportunities.filter(opp => {
-      if (!opp.scales) return false;
-      
-      let avg = 0;
-      let count = 0;
-      Object.values(opp.scales).forEach(scale => {
-        if (typeof scale === 'object' && scale.score !== undefined) {
-          avg += scale.score;
-          count++;
-        } else if (typeof scale === 'number') {
-          avg += scale;
-          count++;
-        }
-      });
-      
-      avg = count > 0 ? avg / count : 0;
-      return avg < 4 && opp.value > 50000;
+      const avgScale = calculateHealthScore(opp.scales || {});
+      return avgScale < 4 && opp.value > 50000;
     });
 
     setPipelineHealth({
       total: opportunities.length,
       totalValue,
       atRisk: riskOpps.length,
-      riskValue: riskOpps.reduce((sum, opp) => sum + (opp.value || 0), 0),
-      averageHealth: avgScales.length > 0 ? 
-        (avgScales.reduce((a, b) => a + b, 0) / avgScales.length).toFixed(1) : '0'
+      riskValue: riskOpps.reduce((sum, opp) => sum + (opp.value || 0), 0)
     });
   };
 
@@ -169,107 +70,142 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
     return 0;
   };
 
-  // Función para analizar la oportunidad actual
+  // Calcular health score promedio
+  const calculateHealthScore = (scales) => {
+    if (!scales) return 0;
+    
+    const values = [
+      getScaleValue(scales.dor || scales.pain),
+      getScaleValue(scales.poder || scales.power),
+      getScaleValue(scales.visao || scales.vision),
+      getScaleValue(scales.valor || scales.value),
+      getScaleValue(scales.controle || scales.control),
+      getScaleValue(scales.compras || scales.purchase)
+    ];
+    
+    const sum = values.reduce((acc, val) => acc + val, 0);
+    return values.length > 0 ? sum / values.length : 0;
+  };
+
+  // Función para analizar la oportunidad actual con diagnóstico agresivo
   const analyzeOpportunity = (opp) => {
     if (!opp || !opp.scales) return;
 
-    const scales = opp.scales;
-    
-    // Calcular promedio manejando ambos formatos
-    let totalScore = 0;
-    let count = 0;
-    
     const scaleValues = {
-      pain: getScaleValue(scales.dor || scales.pain),
-      power: getScaleValue(scales.poder || scales.power),
-      vision: getScaleValue(scales.visao || scales.vision),
-      value: getScaleValue(scales.valor || scales.value),
-      control: getScaleValue(scales.controle || scales.control),
-      purchase: getScaleValue(scales.compras || scales.purchase)
+      pain: getScaleValue(opp.scales.dor || opp.scales.pain),
+      power: getScaleValue(opp.scales.poder || opp.scales.power),
+      vision: getScaleValue(opp.scales.visao || opp.scales.vision),
+      value: getScaleValue(opp.scales.valor || opp.scales.value),
+      control: getScaleValue(opp.scales.controle || opp.scales.control),
+      purchase: getScaleValue(opp.scales.compras || opp.scales.purchase)
     };
     
-    Object.values(scaleValues).forEach(val => {
-      totalScore += val;
-      count++;
-    });
+    const avgScale = calculateHealthScore(opp.scales);
     
-    const avgScale = count > 0 ? totalScore / count : 0;
+    // Detectar INCONSISTENCIAS críticas
+    const inconsistencies = [];
     
-    // Identificar escalas críticas
-    const criticalScales = [];
-    if (scaleValues.pain < 5) {
-      criticalScales.push({ 
-        name: 'DOR', 
-        value: scaleValues.pain, 
-        issue: 'Cliente no admite el problema' 
+    // Inconsistencia 1: Etapa avanzada con escalas bajas
+    if (opp.stage >= 3 && scaleValues.pain < 5) {
+      inconsistencies.push({
+        type: 'critical',
+        message: '🔴 INCONSISTÊNCIA GRAVE: Apresentando sem DOR confirmada! Cliente não vai comprar.',
+        action: 'Voltar para qualificação URGENTE'
       });
     }
-    if (scaleValues.power < 4) {
-      criticalScales.push({ 
-        name: 'PODER', 
-        value: scaleValues.power, 
-        issue: 'Sin acceso al decisor' 
+    
+    // Inconsistencia 2: Valor alto sin acceso al poder
+    if (opp.value > 100000 && scaleValues.power < 4) {
+      inconsistencies.push({
+        type: 'critical',
+        message: '⛔ PROBLEMA: R$' + opp.value.toLocaleString() + ' sem falar com decisor. Vai perder.',
+        action: 'Conseguir acesso ao POWER hoje'
       });
     }
-    if (scaleValues.vision < 4) {
-      criticalScales.push({ 
-        name: 'VISÃO', 
-        value: scaleValues.vision, 
-        issue: 'Cliente no ve la solución' 
+    
+    // Inconsistencia 3: Negociando sin valor validado
+    if (opp.stage >= 4 && scaleValues.value < 6) {
+      inconsistencies.push({
+        type: 'warning',
+        message: '⚠️ RISCO: Negociando sem VALOR claro. Cliente vai pedir desconto enorme.',
+        action: 'Calcular ROI específico AGORA'
       });
     }
-    if (scaleValues.value < 4) {
-      criticalScales.push({ 
-        name: 'VALOR', 
-        value: scaleValues.value, 
-        issue: 'No percibe el ROI' 
+    
+    // Inconsistencia 4: Sin visión de solución completa
+    if (opp.stage >= 2 && scaleValues.vision < 4) {
+      inconsistencies.push({
+        type: 'warning',
+        message: '🚨 Cliente ainda acha que é "só trocar a fita". Não entende nossa solução.',
+        action: 'Demo urgente com caso de sucesso'
       });
     }
 
-    // Calcular probabilidad de cierre
+    // Calcular probabilidad real basada en PPVVCC
     let probability = 0;
-    if (avgScale >= 7) probability = 70;
-    else if (avgScale >= 5) probability = 40;
-    else if (avgScale >= 3) probability = 20;
-    else probability = 5;
+    if (scaleValues.pain >= 7 && scaleValues.power >= 6 && scaleValues.value >= 6) {
+      probability = 75;
+    } else if (scaleValues.pain >= 5 && scaleValues.power >= 4 && scaleValues.value >= 4) {
+      probability = 40;
+    } else if (scaleValues.pain >= 3) {
+      probability = 15;
+    } else {
+      probability = 5;
+    }
 
     setAnalysis({
       avgScale: avgScale.toFixed(1),
       probability,
-      criticalScales,
-      nextAction: generateNextAction(opp, scaleValues)
+      scaleValues,
+      inconsistencies,
+      nextAction: generateNextAction(opp, scaleValues, inconsistencies)
     });
   };
 
   // Generar próxima acción recomendada
-  const generateNextAction = (opp, scaleValues) => {
+  const generateNextAction = (opp, scaleValues, inconsistencies) => {
+    // Si hay inconsistencias críticas, abordarlas primero
+    if (inconsistencies.length > 0 && inconsistencies[0].type === 'critical') {
+      return {
+        action: inconsistencies[0].action,
+        script: `AÇÃO IMEDIATA: ${inconsistencies[0].message}`
+      };
+    }
+    
+    // Acciones basadas en escalas más bajas
     if (scaleValues.pain < 5) {
       return {
-        action: "Identificar y documentar el dolor",
-        script: "Necesitás que admita el problema. Preguntá: '¿Cuántas horas por mes dedican a re-embalar productos dañados?'"
+        action: "🎯 Fazer cliente ADMITIR o problema",
+        script: "Pergunta matadora: 'Quantas horas por mês vocês perdem com retrabalho de caixas violadas? E quanto isso custa em R$?'"
       };
     }
     if (scaleValues.power < 4) {
       return {
-        action: "Acceder al tomador de decisión",
-        script: "Pedí acceso directo: 'Para diseñar la mejor solución, ¿podríamos incluir al gerente de logística en la próxima reunión?'"
+        action: "👔 Acessar o DECISOR hoje",
+        script: "Script direto: 'Para desenhar a melhor solução, preciso entender a visão do gerente de logística. Podemos incluí-lo na próxima call?'"
       };
     }
     if (scaleValues.vision < 5) {
       return {
-        action: "Construir visión de solución",
-        script: "Mostrá el valor completo: 'Les muestro cómo reducimos 40% el retrabalho en MercadoLibre con nuestra solución integrada'"
+        action: "🎬 Demo com caso MercadoLibre",
+        script: "Mostrar: 'Veja como o MercadoLibre reduziu 40% do retrabalho com nossa solução completa BP555e + VENOM'"
       };
     }
     if (scaleValues.value < 5) {
       return {
-        action: "Demostrar ROI concreto",
-        script: "Cuantificá el retorno: 'Con su volumen de 10,000 envíos/mes, ahorrarían R$15,000 mensuales solo en retrabalho'"
+        action: "💰 Calcular ROI específico",
+        script: "Demonstrar: 'Com 10.000 envios/mês, vocês economizam R$25.000 mensais. ROI em 4 meses.'"
+      };
+    }
+    if (scaleValues.control < 5) {
+      return {
+        action: "📅 Definir próximos passos com DATAS",
+        script: "Fechar: 'Vamos agendar o teste para terça-feira? Preciso só 2 horas do seu time.'"
       };
     }
     return {
-      action: "Avanzar al cierre",
-      script: "Cerrá con confianza: '¿Qué necesitamos para comenzar la implementación en 30 días?'"
+      action: "✅ FECHAR o negócio",
+      script: "Closing: 'Podemos começar a implementação em 30 dias. Qual processo interno preciso seguir?'"
     };
   };
 
@@ -280,192 +216,224 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
     // Verificar último contacto
     if (opp.last_update) {
       const daysSince = Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24));
-      if (daysSince > 5) {
+      if (daysSince > 7) {
         newAlerts.push({
           type: 'urgent',
-          message: `🔴 ${daysSince} días sin contacto - LLAMAR HOY`,
-          action: 'generateReengagement'
+          message: `🔴 ${daysSince} dias sem contato - VAI PERDER! Ligar HOJE.`,
+          action: 'reactivate'
+        });
+      } else if (daysSince > 3) {
+        newAlerts.push({
+          type: 'warning',
+          message: `⚠️ ${daysSince} dias sem follow-up. Cliente esfriando.`,
+          action: 'followup'
         });
       }
     }
 
-    // Verificar escalas vs valor
-    let avgScale = 0;
-    let count = 0;
-    
-    if (opp.scales) {
-      Object.values(opp.scales).forEach(scale => {
-        const value = getScaleValue(scale);
-        avgScale += value;
-        count++;
-      });
-      avgScale = count > 0 ? avgScale / count : 0;
-    }
-    
+    // Verificar deals grandes en riesgo
+    const avgScale = calculateHealthScore(opp.scales || {});
     if (avgScale < 4 && opp.value > 100000) {
       newAlerts.push({
-        type: 'warning',
-        message: `⚠️ R$${opp.value.toLocaleString()} en riesgo - Escalas bajas (${avgScale.toFixed(1)}/10)`,
-        action: 'generateRecoveryPlan'
+        type: 'critical',
+        message: `💣 R$${opp.value.toLocaleString()} em RISCO ALTO! Score: ${avgScale.toFixed(1)}/10`,
+        action: 'rescue'
       });
     }
 
-    // Verificar etapa vs escalas
-    const painValue = opp.scales ? getScaleValue(opp.scales.dor || opp.scales.pain) : 0;
-    if (opp.stage === 3 && painValue < 7) {
-      newAlerts.push({
-        type: 'danger',
-        message: '⛔ NO presentes todavía - El dolor no está confirmado',
-        action: 'backToQualification'
-      });
+    // Verificar ciclo de venta largo
+    if (opp.created_at) {
+      const daysInPipeline = Math.floor((new Date() - new Date(opp.created_at)) / (1000 * 60 * 60 * 24));
+      if (daysInPipeline > 60 && opp.stage < 4) {
+        newAlerts.push({
+          type: 'warning',
+          message: `🐌 ${daysInPipeline} dias no pipeline. Criar urgência ou desqualificar.`,
+          action: 'urgency'
+        });
+      }
     }
 
     setAlerts(newAlerts);
   };
 
-  // Quick Actions dinámicas basadas en la oportunidad
+  // Quick Actions dinámicas - MÁXIMO 4 BOTONES
   const getQuickActions = () => {
-    if (!currentOpportunity || !currentOpportunity.scales) return [];
+    // Si no hay oportunidad actual, mostrar acciones de búsqueda
+    if (!currentOpportunity) {
+      return [
+        {
+          icon: '🔍',
+          label: 'Ver pipeline completo',
+          prompt: 'Muéstrame un resumen del pipeline completo con las oportunidades más importantes y en riesgo'
+        },
+        {
+          icon: '📊',
+          label: 'Oportunidades en riesgo',
+          prompt: 'Cuáles son las oportunidades en mayor riesgo? Dame un análisis detallado'
+        },
+        {
+          icon: '🎯',
+          label: 'Mejores oportunidades',
+          prompt: 'Cuáles son las 5 mejores oportunidades para cerrar este mes?'
+        },
+        {
+          icon: '📈',
+          label: 'Mi performance',
+          prompt: `Analiza mi performance como vendedor: total de oportunidades, valor en gestión, health score promedio`
+        }
+      ];
+    }
+    
+    if (!currentOpportunity.scales) return [];
     
     const actions = [];
     const scales = currentOpportunity.scales;
     
     const painValue = getScaleValue(scales.dor || scales.pain);
     const powerValue = getScaleValue(scales.poder || scales.power);
+    const visionValue = getScaleValue(scales.visao || scales.vision);
     const valueValue = getScaleValue(scales.valor || scales.value);
-
-    if (painValue < 5) {
-      actions.push({
-        icon: '🎯',
-        label: 'Generar preguntas SPIN',
-        prompt: `Dame 5 preguntas SPIN específicas para que ${currentOpportunity.client} admita problemas de violación y retrabalho en su operación logística`
-      });
-    }
-
-    if (powerValue < 4) {
-      actions.push({
-        icon: '👔',
-        label: 'Script para acceder al decisor',
-        prompt: `Dame un script exacto para pedirle a mi contacto actual que me presente al gerente de operaciones de ${currentOpportunity.client}`
-      });
-    }
-
-    if (valueValue < 5) {
-      actions.push({
-        icon: '💰',
-        label: 'Calcular ROI específico',
-        prompt: `Calcula el ROI para ${currentOpportunity.client} con inversión de R$${currentOpportunity.value}. Industria: ${currentOpportunity.industry || 'logística'}`
-      });
-    }
-
-    if (alerts.length > 0) {
+    const controlValue = getScaleValue(scales.controle || scales.control);
+    
+    // Prioridad 1: Si hay alertas críticas
+    if (alerts.length > 0 && alerts[0].type === 'urgent') {
       actions.push({
         icon: '🚨',
-        label: 'Plan de recuperación',
-        prompt: `${currentOpportunity.client} está frío. Dame un plan de 3 pasos para reactivar esta oportunidad de R$${currentOpportunity.value}`
+        label: 'Reativar URGENTE',
+        prompt: `${currentOpportunity.client} está FRIO há dias. Preciso reativar HOJE este deal de R$${currentOpportunity.value}. 
+        Me dê:
+        1. Email de reativação que gere resposta imediata
+        2. Script de ligação de 30 segundos
+        3. WhatsApp message casual mas efetivo
+        Contexto: DOR=${painValue}, PODER=${powerValue}, última ação: ${currentOpportunity.next_action || 'não definida'}`
       });
     }
-
-    actions.push({
-      icon: '📊',
-      label: 'Análisis PPVVCC completo',
-      prompt: `Analiza las escalas actuales de ${currentOpportunity.client} y dame acciones específicas para subir cada una 2 puntos`
-    });
-
-    // === NUEVOS QUICK ACTIONS PARA EMAIL Y VENTAS ===
     
-    // Calcular días sin contacto
-    const daysSince = currentOpportunity.last_update ? 
-      Math.floor((new Date() - new Date(currentOpportunity.last_update)) / (1000 * 60 * 60 * 24)) : 0;
-
-    // Email contextualizado (siempre visible)
-    actions.push({
-      icon: '📧',
-      label: daysSince > 7 ? 'Email reactivación' : 'Generar email',
-      prompt: `Genera un email profesional para ${currentOpportunity.client}. 
-        Contexto: DOR=${painValue}/10, PODER=${powerValue}/10, VALOR=${valueValue}/10.
-        ${daysSince > 7 ? `URGENTE: ${daysSince} días sin contacto, necesito reactivar este deal frío.` : ''} 
-        ${painValue < 5 ? 'Objetivo principal: que admita el problema de violación de cajas.' : 
-          powerValue < 4 ? 'Objetivo principal: conseguir acceso al tomador de decisión.' : 
-          valueValue < 5 ? 'Objetivo principal: validar ROI y valor de la solución.' :
-          'Objetivo principal: avanzar al cierre con propuesta formal.'}
-        Industria: ${currentOpportunity.industry || 'logística'}.
-        Valor del deal: R$${currentOpportunity.value}.
-        Contactos: Power Sponsor: ${currentOpportunity.power_sponsor || 'no identificado'}, 
-        Sponsor: ${currentOpportunity.sponsor || 'no identificado'}.`
-    });
-
-    // Script de llamada (siempre visible)
-    actions.push({
-      icon: '📞',
-      label: 'Script de llamada',
-      prompt: `Dame un script completo de llamada telefónica para ${currentOpportunity.client}. 
-        Industria: ${currentOpportunity.industry || 'logística'}. 
-        Escalas actuales: DOR=${painValue}/10, PODER=${powerValue}/10, VALOR=${valueValue}/10.
-        Contacto actual: ${currentOpportunity.power_sponsor || currentOpportunity.sponsor || 'no identificado'}.
-        Incluye: apertura de 15 segundos, preguntas SPIN específicas, manejo de objeciones comunes, y cierre con próximo paso.`
-    });
-
-    // Demo (solo si dolor admitido y algo de poder)
-    if (painValue >= 5 && powerValue >= 3) {
+    // Prioridad 2: Diagnóstico de inconsistencias
+    if (analysis && analysis.inconsistencies && analysis.inconsistencies.length > 0) {
+      actions.push({
+        icon: '⚠️',
+        label: 'Corrigir problema',
+        prompt: `PROBLEMA DETECTADO em ${currentOpportunity.client}: ${analysis.inconsistencies[0].message}
+        Como corrijo isso IMEDIATAMENTE? Preciso de ações específicas para hoje.
+        Valor do deal: R$${currentOpportunity.value}`
+      });
+    }
+    
+    // Prioridad 3: Basado en la escala más baja
+    const lowestScale = Math.min(painValue, powerValue, visionValue, valueValue);
+    
+    if (lowestScale === painValue && painValue < 5) {
+      actions.push({
+        icon: '🎯',
+        label: 'Gerar DOR',
+        prompt: `${currentOpportunity.client} NÃO admite o problema (DOR=${painValue}/10).
+        Preciso de 5 perguntas SPIN MATADORAS específicas para ${currentOpportunity.industry || 'logística'}.
+        Foco: violação de caixas, retrabalho, custos ocultos.
+        Quero perguntas que DOAM, que façam o cliente sentir o problema.`
+      });
+    } else if (lowestScale === powerValue && powerValue < 5) {
+      actions.push({
+        icon: '👔',
+        label: 'Acessar decisor',
+        prompt: `Preciso URGENTE acessar o decisor em ${currentOpportunity.client}.
+        Poder atual: ${powerValue}/10. Contato atual: ${currentOpportunity.sponsor || 'não identificado'}.
+        Me dê 3 formas diferentes de conseguir acesso ao gerente de logística/operações.
+        Incluir: email, LinkedIn approach, e pedido direto.`
+      });
+    } else if (lowestScale === visionValue && visionValue < 5) {
       actions.push({
         icon: '🎬',
-        label: 'Preparar demo',
-        prompt: `Prepara una agenda detallada de demo de 30 minutos para ${currentOpportunity.client}. 
-          Valor del deal: R$${currentOpportunity.value}. 
-          Industria: ${currentOpportunity.industry || 'logística'}.
-          Dolor principal admitido (score ${painValue}/10).
-          Incluye: 3 momentos WOW específicos, casos de éxito de ${currentOpportunity.industry || 'su industria'}, 
-          cálculo de ROI personalizado, y dejar algo pendiente para próxima reunión.`
+        label: 'Demo Ventapel',
+        prompt: `Preparar DEMO MATADORA para ${currentOpportunity.client}.
+        Visão atual: ${visionValue}/10 - cliente acha que é "só trocar fita".
+        Estrutura: 
+        1. Caso MercadoLibre (40% redução retrabalho)
+        2. Demo BP555e + fita VENOM ao vivo
+        3. ROI calculado na hora
+        4. Fechar com teste piloto
+        Indústria: ${currentOpportunity.industry || 'logística'}`
       });
-    }
-
-    // Manejo de objeciones (si valor no está validado)
-    if (valueValue < 7) {
+    } else if (lowestScale === valueValue && valueValue < 6) {
       actions.push({
-        icon: '💡',
-        label: 'Manejar objeción precio',
-        prompt: `${currentOpportunity.client} probablemente objetará el precio de R$${currentOpportunity.value}. 
-          Dame 3 formas diferentes de responder a "es muy caro" sin confrontar. 
-          Usa casos de éxito de ${currentOpportunity.industry || 'la industria'}, 
-          ROI específico, y reframe a inversión vs costo.`
+        icon: '💰',
+        label: 'Calcular ROI',
+        prompt: `Calcular ROI ESPECÍFICO para ${currentOpportunity.client}.
+        Investimento: R$${currentOpportunity.value}
+        Indústria: ${currentOpportunity.industry || 'logística'}
+        Incluir:
+        - Redução 40% retrabalho (quantificar em R$)
+        - Economia mão de obra
+        - Redução devoluções
+        - Ganho ergonomia/produtividade
+        - Payback em meses
+        Fazer conta REAL com números do cliente.`
       });
     }
-
-    // Estrategia para deals grandes
-    if (currentOpportunity.value > 100000) {
+    
+    // Prioridad 4: Acción para avanzar según etapa
+    if (currentOpportunity.stage >= 3 && controlValue >= 5) {
       actions.push({
-        icon: '🎖️',
-        label: 'Estrategia de cuenta',
-        prompt: `Diseña una estrategia completa para cerrar ${currentOpportunity.client} (R$${currentOpportunity.value}). 
-          Situación actual: DOR=${painValue}, PODER=${powerValue}, VALOR=${valueValue}.
-          Incluye: mapa de todos los stakeholders, timeline de 30-60-90 días, 
-          principales riesgos y mitigación, competencia probable, y próximos 5 pasos concretos.`
+        icon: '📧',
+        label: 'Email fechamento',
+        prompt: `Gerar email DE FECHAMENTO para ${currentOpportunity.client}.
+        Estamos na etapa ${currentOpportunity.stage}. PPVVCC médio: ${analysis?.avgScale}/10.
+        Objetivo: conseguir o SIM esta semana.
+        Tom: assumir a venda, criar urgência sem pressionar.
+        Incluir: próximos passos claros, datas, caso de sucesso similar.`
+      });
+    } else {
+      actions.push({
+        icon: '📞',
+        label: 'Script ligação',
+        prompt: `Script de ligação VENDEDORA para ${currentOpportunity.client}.
+        Escalas: DOR=${painValue}, PODER=${powerValue}, VALOR=${valueValue}.
+        Objetivo principal: ${analysis?.nextAction?.action || 'avançar no funil'}.
+        Estrutura:
+        1. Abertura que prende atenção (15 seg)
+        2. Perguntas SPIN específicas
+        3. Manejo objeção "é caro"
+        4. Fechar com próximo passo concreto`
       });
     }
+    
+    // Retornar máximo 4 acciones
+    return actions.slice(0, 4);
+  };
 
-    // Análisis de competencia (siempre útil)
-    actions.push({
-      icon: '⚔️',
-      label: 'Vs Competencia',
-      prompt: `${currentOpportunity.client} está evaluando alternativas (3M, Scotch, o soluciones genéricas). 
-        Dame argumentos diferenciadores clave de Ventapel vs cada competidor, 
-        sin hablar mal de la competencia. 
-        Foco en nuestra solución integral (máquina + cinta + soporte) y garantía de 40% reducción.
-        Industria: ${currentOpportunity.industry || 'logística'}.`
-    });
+  // Buscar oportunidad específica cuando el vendedor pregunta
+  const searchOpportunity = async (clientName) => {
+    try {
+      // Buscar por nombre del cliente (case insensitive)
+      const { data, error } = await supabase
+        .from('opportunities')
+        .select('*')
+        .ilike('client', `%${clientName}%`);
+      
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('Error buscando oportunidad:', err);
+      return null;
+    }
+  };
 
-    // Casos de éxito relevantes
-    actions.push({
-      icon: '🏆',
-      label: 'Casos de éxito',
-      prompt: `Dame 3 casos de éxito relevantes para ${currentOpportunity.client} en industria ${currentOpportunity.industry || 'similar'}. 
-        Incluye: empresa, problema inicial, solución implementada, resultados cuantificados, ROI logrado.
-        Casos disponibles: MercadoLibre (40% reducción retrabalho), Natura (60% menos violaciones), 
-        Magazine Luiza (35% reducción devoluciones), Dafiti (eliminó retrabalho manual).`
-    });
-
-    return actions;
+  // Detectar si el mensaje pregunta por una oportunidad específica
+  const detectOpportunityQuery = (message) => {
+    const patterns = [
+      /(?:como está|status|situação|análise|diagnóstico|info|información|dados|escalas|ppvvcc)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\?|$)/i,
+      /(?:mostrar|ver|buscar|encontrar|analizar|checar)\s+(?:oportunidad|oportunidade|deal|negócio)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\?|$)/i,
+      /(?:qual|como|qué)\s+(?:está|anda|vai)\s+(.+?)(?:\?|$)/i,
+      /^(.+?)\s+(?:está|anda|como vai|status|situação)/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+    return null;
   };
 
   // Enviar mensaje al asistente
@@ -478,18 +446,96 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
     setIsLoading(true);
 
     try {
-      // Preparar contexto con formato correcto de escalas
-      const opportunityContext = currentOpportunity ? {
-        ...currentOpportunity,
-        scales: {
-          pain: getScaleValue(currentOpportunity.scales?.dor || currentOpportunity.scales?.pain),
-          power: getScaleValue(currentOpportunity.scales?.poder || currentOpportunity.scales?.power),
-          vision: getScaleValue(currentOpportunity.scales?.visao || currentOpportunity.scales?.vision),
-          value: getScaleValue(currentOpportunity.scales?.valor || currentOpportunity.scales?.value),
-          control: getScaleValue(currentOpportunity.scales?.controle || currentOpportunity.scales?.control),
-          purchase: getScaleValue(currentOpportunity.scales?.compras || currentOpportunity.scales?.purchase)
+      // Detectar si está preguntando por una oportunidad específica
+      const possibleClient = detectOpportunityQuery(messageText);
+      let searchedOpportunity = null;
+      let searchResults = [];
+      
+      if (possibleClient) {
+        searchResults = await searchOpportunity(possibleClient);
+        if (searchResults && searchResults.length > 0) {
+          searchedOpportunity = searchResults[0]; // Tomar la primera coincidencia
+          
+          // Si encontró una oportunidad diferente a la actual, analizarla
+          if (searchedOpportunity && (!currentOpportunity || searchedOpportunity.id !== currentOpportunity.id)) {
+            analyzeOpportunity(searchedOpportunity);
+            checkOpportunityHealth(searchedOpportunity);
+          }
         }
+      }
+
+      // Preparar contexto con toda la información de Ventapel
+      const ventapelContext = {
+        produtos: {
+          maquinas: "Better Packages BP555e, BP755, BP222 Curby, Random Sealer Automated (RSA)",
+          fitas: "VENOM (3-way reinforced, water-activated), Gorilla (300m e 700m)",
+          solucao: "Sistema completo de fechamento: máquina + fita + suporte técnico",
+          diferencial: "Redução de até 64% nos custos de fechamento, ROI em 2-3 meses"
+        },
+        casos_sucesso: {
+          loreal: {
+            problema: "+10% furtos, produtividade baixa, espaço limitado",
+            solucao: "RSA + Fita Gorilla 700m",
+            resultados: "100% furtos eliminados, +50% eficiência, ROI 3 meses, 12 caixas/min"
+          },
+          nike: {
+            problema: "10% caixas violadas, gargalos produção",
+            solucao: "BP755 + Fita Gorilla 300m", 
+            resultados: "Furtos eliminados, +30% eficiência, ROI 2 meses"
+          },
+          mercadolibre: "40% redução retrabalho",
+          natura: "60% menos violações",
+          magazine_luiza: "35% redução devoluções",
+          centauro: "95% redução furtos, economia R$50mi/ano"
+        },
+        metodologia: "PPVVCC - Pain, Power, Vision, Value, Control, Compras",
+        proposta_valor: [
+          "Inviolabilidade garantida - furtos ZERO",
+          "ROI comprovado em 2-3 meses",
+          "Redução drástica de retrabalho (+30-50% eficiência)",
+          "Melhoria ergonômica e eliminação de dores operadores",
+          "Sustentabilidade (fita kraft reciclável)",
+          "Suporte técnico próprio/dedicado"
+        ],
+        diferenciais_tecnicos: {
+          bp755: "1,15m/segundo, 2 anos garantia, até 3 comprimentos automáticos",
+          rsa: "12 caixas/minuto, totalmente automatizada",
+          fitas: "Reforço estrutural, 300-700m comprimento, melhor apresentação"
+        }
+      };
+
+      // Usar la oportunidad buscada si existe, sino la actual
+      const opportunityToAnalyze = searchedOpportunity || currentOpportunity;
+      
+      const opportunityContext = opportunityToAnalyze ? {
+        ...opportunityToAnalyze,
+        scales: {
+          pain: getScaleValue(opportunityToAnalyze.scales?.dor || opportunityToAnalyze.scales?.pain),
+          power: getScaleValue(opportunityToAnalyze.scales?.poder || opportunityToAnalyze.scales?.power),
+          vision: getScaleValue(opportunityToAnalyze.scales?.visao || opportunityToAnalyze.scales?.vision),
+          value: getScaleValue(opportunityToAnalyze.scales?.valor || opportunityToAnalyze.scales?.value),
+          control: getScaleValue(opportunityToAnalyze.scales?.controle || opportunityToAnalyze.scales?.control),
+          purchase: getScaleValue(opportunityToAnalyze.scales?.compras || opportunityToAnalyze.scales?.purchase)
+        },
+        diagnostico: searchedOpportunity ? analyzeOpportunity(searchedOpportunity) : analysis
       } : null;
+
+      // Preparar información de búsqueda para el contexto
+      const searchContext = searchedOpportunity ? {
+        found: true,
+        client: searchedOpportunity.client,
+        multipleResults: searchResults.length > 1,
+        totalFound: searchResults.length,
+        allResults: searchResults.map(opp => ({
+          client: opp.client,
+          value: opp.value,
+          stage: opp.stage,
+          vendor: opp.vendor
+        }))
+      } : (possibleClient && searchResults.length === 0 ? {
+        found: false,
+        searchTerm: possibleClient
+      } : null);
 
       const response = await fetch('/api/assistant', {
         method: 'POST',
@@ -498,6 +544,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
           messages: [...messages, userMessage],
           context: messageText,
           opportunityData: opportunityContext,
+          ventapelContext: ventapelContext,
+          searchContext: searchContext,
+          language: 'português brasileiro',
+          focusOn: 'venda consultiva PPVVCC, solução de fechamento, detectar problemas',
           pipelineData: {
             currentOpportunity: opportunityContext,
             allOpportunities: allOpportunities,
@@ -513,13 +563,13 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
       const data = await response.json();
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: data.response || 'No se pudo procesar la respuesta.' 
+        content: data.response || 'Erro ao processar resposta.' 
       }]);
     } catch (error) {
       console.error('Error:', error);
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: 'Error al procesar la solicitud. Por favor, verifica la configuración del API.' 
+        content: '❌ Erro na API. Verificar configuração.' 
       }]);
     } finally {
       setIsLoading(false);
@@ -528,39 +578,39 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
 
   return (
     <>
-      {/* Panel de Análisis en el CRM */}
+      {/* Panel de Análisis PPVVCC en el CRM */}
       {currentOpportunity && analysis && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 mb-4 rounded-lg shadow-md">
           <div className="flex justify-between items-start mb-3">
             <h3 className="font-bold text-lg flex items-center">
-              <Target className="mr-2" /> Análisis AI: {currentOpportunity.client}
+              <Target className="mr-2" /> Diagnóstico PPVVCC: {currentOpportunity.client}
             </h3>
             <div className="flex items-center gap-4">
               <button
                 onClick={loadPipelineData}
                 className="text-blue-600 hover:text-blue-800"
-                title="Actualizar datos"
+                title="Atualizar"
               >
                 <RefreshCw className="w-4 h-4" />
               </button>
               <div className="text-right">
                 <div className="text-2xl font-bold text-blue-600">{analysis.probability}%</div>
-                <div className="text-xs text-gray-600">Probabilidad cierre</div>
+                <div className="text-xs text-gray-600">Probabilidade real</div>
               </div>
             </div>
           </div>
 
-          {/* Info del Pipeline Total */}
+          {/* Pipeline Info */}
           {pipelineHealth && (
             <div className="bg-white/50 p-2 rounded mb-3 text-xs">
               <div className="flex justify-between">
-                <span>Pipeline Total: R${pipelineHealth.totalValue.toLocaleString()}</span>
-                <span className="text-red-600">En Riesgo: R${pipelineHealth.riskValue.toLocaleString()}</span>
+                <span>Pipeline: R${pipelineHealth.totalValue.toLocaleString('pt-BR')}</span>
+                <span className="text-red-600 font-bold">⚠️ Em Risco: R${pipelineHealth.riskValue.toLocaleString('pt-BR')}</span>
               </div>
             </div>
           )}
 
-          {/* Semáforo de Escalas */}
+          {/* Semáforo PPVVCC */}
           {currentOpportunity.scales && (
             <div className="grid grid-cols-6 gap-2 mb-4">
               {[
@@ -568,58 +618,75 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
                 { key: 'poder', label: 'PODER', altKey: 'power' },
                 { key: 'visao', label: 'VISÃO', altKey: 'vision' },
                 { key: 'valor', label: 'VALOR', altKey: 'value' },
-                { key: 'controle', label: 'CONTROL', altKey: 'control' },
+                { key: 'controle', label: 'CTRL', altKey: 'control' },
                 { key: 'compras', label: 'COMPRAS', altKey: 'purchase' }
               ].map(({ key, label, altKey }) => {
                 const value = getScaleValue(currentOpportunity.scales[key] || currentOpportunity.scales[altKey]);
+                const isCritical = value < 4;
+                const isWarning = value >= 4 && value < 7;
+                
                 return (
-                  <div key={key} className={`text-center p-2 rounded-lg ${
-                    value < 4 ? 'bg-red-500' : 
-                    value < 7 ? 'bg-yellow-500' : 
+                  <div key={key} className={`text-center p-2 rounded-lg transition-all ${
+                    isCritical ? 'bg-red-500 animate-pulse' : 
+                    isWarning ? 'bg-yellow-500' : 
                     'bg-green-500'
                   }`}>
                     <div className="text-white text-xs font-semibold">{label}</div>
                     <div className="text-white text-xl font-bold">{value}</div>
+                    {isCritical && <div className="text-white text-[10px]">CRÍTICO!</div>}
                   </div>
                 );
               })}
             </div>
           )}
 
-          {/* Alertas Críticas */}
-          {alerts.length > 0 && (
-            <div className="space-y-2 mb-4">
-              {alerts.map((alert, idx) => (
-                <div key={idx} className={`p-2 rounded-lg flex items-center ${
-                  alert.type === 'urgent' ? 'bg-red-100 text-red-700' :
-                  alert.type === 'warning' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-orange-100 text-orange-700'
-                }`}>
-                  <AlertTriangle className="mr-2 w-4 h-4" />
-                  <span className="text-sm font-medium">{alert.message}</span>
+          {/* INCONSISTENCIAS DETECTADAS */}
+          {analysis.inconsistencies && analysis.inconsistencies.length > 0 && (
+            <div className="bg-red-50 border border-red-300 rounded-lg p-3 mb-4">
+              <h4 className="font-bold text-red-700 text-sm mb-2 flex items-center">
+                <AlertTriangle className="mr-1 w-4 h-4" /> PROBLEMAS DETECTADOS:
+              </h4>
+              {analysis.inconsistencies.map((inc, idx) => (
+                <div key={idx} className="text-sm text-red-600 mb-1">
+                  • {inc.message}
                 </div>
               ))}
             </div>
           )}
 
-          {/* Próxima Acción Recomendada */}
+          {/* Alertas Temporales */}
+          {alerts.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {alerts.map((alert, idx) => (
+                <div key={idx} className={`p-2 rounded-lg flex items-center ${
+                  alert.type === 'urgent' ? 'bg-red-100 text-red-700 font-bold' :
+                  alert.type === 'critical' ? 'bg-orange-100 text-orange-700' :
+                  'bg-yellow-100 text-yellow-700'
+                }`}>
+                  <span className="text-sm">{alert.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Próxima Acción PPVVCC */}
           {analysis.nextAction && (
-            <div className="bg-white p-3 rounded-lg border border-blue-200">
-              <h4 className="font-semibold text-sm mb-1 flex items-center">
-                <TrendingUp className="mr-1 w-4 h-4" /> Próxima Acción:
+            <div className="bg-white p-3 rounded-lg border-2 border-blue-400">
+              <h4 className="font-semibold text-sm mb-2 flex items-center text-blue-700">
+                <TrendingUp className="mr-1 w-4 h-4" /> Próxima Ação Recomendada:
               </h4>
-              <p className="text-sm text-gray-700 mb-2">{analysis.nextAction.action}</p>
-              <div className="bg-blue-50 p-2 rounded border-l-2 border-blue-400">
-                <p className="text-xs text-gray-600 italic">"{analysis.nextAction.script}"</p>
+              <p className="text-sm font-bold text-gray-800 mb-2">{analysis.nextAction.action}</p>
+              <div className="bg-blue-50 p-2 rounded border-l-4 border-blue-500">
+                <p className="text-xs text-gray-700 italic">"{analysis.nextAction.script}"</p>
               </div>
               <button 
                 onClick={() => {
                   setIsOpen(true);
-                  setInput(analysis.nextAction.script);
+                  sendMessage(`Desenvolva esta ação: ${analysis.nextAction.action} para ${currentOpportunity.client}`);
                 }}
-                className="mt-2 bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition"
+                className="mt-2 bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 transition font-semibold"
               >
-                Generar Script Completo
+                Executar Ação →
               </button>
             </div>
           )}
@@ -632,8 +699,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
         className="fixed bottom-6 right-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all z-50"
       >
         <MessageCircle size={24} />
-        {alerts.length > 0 && (
-          <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+        {alerts.length > 0 && alerts.some(a => a.type === 'urgent') && (
+          <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
         )}
       </button>
 
@@ -642,30 +709,29 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
         <div className="fixed bottom-24 right-6 w-96 h-[600px] bg-white rounded-lg shadow-2xl z-50 flex flex-col">
           <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 rounded-t-lg">
             <div className="flex justify-between items-center mb-2">
-              <h3 className="font-semibold">Asistente Ventapel AI</h3>
+              <h3 className="font-semibold">Assistente Ventapel PPVVCC</h3>
               <button onClick={() => setIsOpen(false)}>
                 <X size={20} />
               </button>
             </div>
-            {currentUser && userPerformance && (
+            {currentUser && (
               <div className="text-xs opacity-90">
-                Hola {currentUser} • {userPerformance.totalOpps || 0} oportunidades • 
-                R${userPerformance.totalValue?.toLocaleString() || 0} en gestión
+                Vendedor: {currentUser} • Foco: Soluções de Fechamento
               </div>
             )}
           </div>
 
-          {/* Quick Actions */}
-          <div className="p-3 bg-gray-50 border-b overflow-x-auto">
-            <div className="flex gap-2 flex-nowrap">
+          {/* Quick Actions - MÁXIMO 4 BOTONES */}
+          <div className="p-3 bg-gray-50 border-b">
+            <div className="grid grid-cols-2 gap-2">
               {getQuickActions().map((action, idx) => (
                 <button
                   key={idx}
                   onClick={() => sendMessage(action.prompt)}
-                  className="flex-shrink-0 bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs hover:bg-gray-100 transition flex items-center gap-1"
+                  className="bg-white border-2 border-gray-300 rounded-lg px-3 py-2 text-xs hover:bg-blue-50 hover:border-blue-400 transition flex items-center gap-2 font-semibold"
                   disabled={isLoading}
                 >
-                  <span>{action.icon}</span>
+                  <span className="text-lg">{action.icon}</span>
                   <span>{action.label}</span>
                 </button>
               ))}
@@ -675,22 +741,54 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
           {/* Mensajes */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && currentOpportunity && (
-              <div className="text-center text-gray-500 text-sm">
-                <p className="mb-2">Analizando {currentOpportunity.client}...</p>
-                <p className="text-xs">Escalas promedio: {analysis?.avgScale}/10</p>
-                <p className="text-xs mt-2">💡 Pregúntame sobre:</p>
-                <ul className="text-xs text-left mt-1 space-y-1">
-                  <li>• Email de reactivación o follow-up</li>
-                  <li>• Script para llamada telefónica</li>
-                  <li>• Cómo preparar la demo</li>
-                  <li>• Manejo de objeciones de precio</li>
-                  <li>• Estrategia contra competencia</li>
-                </ul>
+              <div className="bg-blue-50 p-3 rounded-lg">
+                <p className="font-bold text-sm text-blue-700 mb-2">
+                  📊 Análise {currentOpportunity.client}
+                </p>
+                <div className="text-xs text-gray-600 space-y-1">
+                  <p>• Health Score: {analysis?.avgScale}/10</p>
+                  <p>• Probabilidade: {analysis?.probability}%</p>
+                  <p>• Valor: R${currentOpportunity.value?.toLocaleString('pt-BR')}</p>
+                  {analysis?.inconsistencies?.length > 0 && (
+                    <p className="text-red-600 font-bold">
+                      • ⚠️ {analysis.inconsistencies.length} problemas detectados
+                    </p>
+                  )}
+                </div>
+                <div className="mt-3 text-xs text-gray-500">
+                  💡 Pergunte sobre: emails, scripts, ROI, competência, objeções
+                </div>
+                <div className="mt-2 p-2 bg-yellow-50 rounded text-xs text-gray-600">
+                  🔍 <strong>NOVO:</strong> Posso buscar qualquer oportunidade! 
+                  <br/>Exemplos: "Como está Centauro?", "Análise da Natura", "Status MercadoLibre"
+                </div>
               </div>
             )}
+            
+            {messages.length === 0 && !currentOpportunity && (
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <p className="font-bold text-sm text-gray-700 mb-2">
+                  👋 Olá {currentUser || 'Vendedor'}!
+                </p>
+                <div className="text-xs text-gray-600 space-y-2">
+                  <p>Sou seu assistente PPVVCC. Posso ajudar com:</p>
+                  <ul className="ml-2 space-y-1">
+                    <li>• 🔍 Buscar e analisar qualquer oportunidade</li>
+                    <li>• 📊 Diagnosticar escalas PPVVCC</li>
+                    <li>• 📧 Gerar emails e scripts de venda</li>
+                    <li>• 💰 Calcular ROI específico</li>
+                    <li>• 🎯 Detectar problemas e inconsistências</li>
+                  </ul>
+                  <p className="mt-2 font-semibold">
+                    Digite o nome de um cliente para começar!
+                  </p>
+                </div>
+              </div>
+            )}
+            
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-3 rounded-lg ${
+                <div className={`max-w-[85%] p-3 rounded-lg ${
                   msg.role === 'user' 
                     ? 'bg-blue-500 text-white' 
                     : 'bg-gray-100 text-gray-800'
@@ -699,13 +797,14 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
                 </div>
               </div>
             ))}
+            
             {isLoading && (
               <div className="flex justify-start">
                 <div className="bg-gray-100 p-3 rounded-lg">
                   <div className="flex space-x-1">
                     <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
                   </div>
                 </div>
               </div>
@@ -720,14 +819,14 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser }) =
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
-                placeholder="Pregunta sobre la oportunidad..."
+                placeholder="Pergunte sobre a oportunidade..."
                 className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={isLoading}
               />
               <button
                 onClick={() => sendMessage()}
                 disabled={isLoading || !input.trim()}
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition disabled:opacity-50"
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition disabled:opacity-50 font-semibold"
               >
                 Enviar
               </button>
