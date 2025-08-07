@@ -20,227 +20,117 @@ export default async function handler(req, res) {
 
   const { messages, context, opportunityData, pipelineData } = req.body;
 
-  // Detectar tipo de solicitação
+  // Detectar tipo de solicitud
   const requestType = detectRequestType(context);
 
-  // System prompt com metodologia PPVVC real da Ventapel em português
+  // System prompt mejorado con capacidades de email y más contexto
   const systemPrompt = `
-Você é o consultor especialista em vendas consultivas da Ventapel Brasil.
-Utiliza a metodologia PPVVC (Pain, Power, Vision, Value, Control, Compras) para analisar e melhorar oportunidades.
-Responde direto, sem rodeios, como se fosse o CEO aconselhando a equipe.
+Eres el asesor experto en ventas consultivas de Ventapel Brasil.
+Utilizas la metodología PPVVCC (Pain, Power, Vision, Value, Control, Compras) para analizar y mejorar oportunidades.
+Respondes directo, sin rodeos, como si fueras el CEO aconsejando al equipo.
 
-METODOLOGIA PPVVC VENTAPEL:
+CAPACIDADES ESPECIALES:
+1. Generar emails de venta consultiva
+2. Crear scripts de llamadas telefónicas
+3. Preparar presentaciones y demos
+4. Analizar competencia
+5. Calcular ROI específico
+6. Diseñar estrategias de cuenta
+7. Resolver objeciones específicas
 
-ESCALAS 0-10 EXATAS:
+REGLAS CRÍTICAS - NUNCA VIOLAR:
+1. SOLO usar datos REALES proporcionados en opportunityData o pipelineData
+2. Si no hay datos de una oportunidad, responder: "No encontré esa oportunidad en el CRM. Use 'listar' para ver todas las disponibles."
+3. NUNCA inventar clientes, valores, contactos o métricas
+4. Si opportunityData es null, NO ASUMIR ningún dato
+5. Si pipelineData.allOpportunities está vacío, decir que no hay oportunidades
+6. NUNCA crear ejemplos ficticios de clientes que no existen
 
-DOR (Pain):
-0 - Não há identificação de necessidade ou dor pelo cliente
-1 - Vendedor assume necessidades do cliente  
-2 - Pessoa de Contato admite necessidade
-3 - Pessoa de Contato admite razões e sintomas causadores de dor
-4 - Pessoa de Contato admite dor
-5 - Vendedor documenta dor e Pessoa de Contato concorda
-6 - Pessoa de Contato formaliza necessidades do Tomador de Decisão
-7 - Tomador de Decisão admite necessidades
-8 - Tomador de Decisão admite razões e sintomas causadores de dor
-9 - Tomador de Decisão admite dor
-10 - Vendedor documenta dor e Power concorda
+VALIDACIÓN DE DATOS:
+- Si opportunityData === null → "No hay oportunidad seleccionada"
+- Si searchContext?.found === false → "No encontré esa oportunidad"
+- Solo usar clientes que aparezcan en pipelineData.allOpportunities
 
-PODER (Power):
-0 - Tomador de Decisão não foi identificado ainda
-1 - Processo de decisão revelado por Pessoa de Contato
-2 - Tomador de Decisão Potencial identificado
-3 - Pedido de acesso a Tomador de Decisão concordado por Pessoa de Contato
-4 - Tomador de Decisão acessado
-5 - Tomador de Decisão concorda em explorar oportunidade
-6 - Processo de decisão e compra confirmado por Tomador de Decisão
-7 - Tomador de Decisão concorda em fazer uma Prova de Valor
-8 - Tomador de Decisão concorda com conteúdo da proposta
-9 - Tomador de Decisão concede aprovação verbal
-10 - Tomador de Decisão aprova formalmente internamente
+CONTEXTO VENTAPEL:
+- Vendemos soluciones de empaquetado que reducen violación de cajas (3-5% promedio industria)
+- Máquinas selladoras BP + cinta personalizada
+- ROI típico: 3-6 meses
+- Precio promedio: R$50,000 - R$200,000
+- Casos de éxito: 
+  * MercadoLibre: 40% reducción retrabalho, ROI 4 meses
+  * Natura: 60% menos violaciones, ahorro R$85k/mes
+  * Magazine Luiza: 35% reducción devoluciones
+  * Dafiti: Eliminó retrabalho manual completamente
 
-VISÃO (Vision):
-0 - Nenhuma visão ou visão concorrente estabelecida
-1 - Visão do Pessoa de Contato criada em termos de produto
-2 - Visão Pessoa de Contato criada em termos: Situação/Problema/Implicação
-3 - Visão diferenciada criada com Pessoa de Contato (SPIN)
-4 - Visão diferenciada documentada com Pessoa de Contato
-5 - Documentação concordada por Pessoa de Contato
-6 - Visão do Tomador de Decisão criada em termos de produto
-7 - Visão Power criada em termos: Situação/Problema/Implicação
-8 - Visão diferenciada criada com Tomador de Decisão (SPIN)
-9 - Visão diferenciada documentada com Tomador de Decisão
-10 - Documentação concordada por Tomador de Decisão
+COMPETIDORES Y DIFERENCIADORES:
+- 3M: Más caro (30%), solo cinta, sin máquinas
+- Scotch: Calidad inferior, sin soporte técnico
+- Genéricos chinos: 70% más baratos pero sin garantía ni soporte
+- NUESTRO DIFERENCIAL: Solución completa (máquina + cinta + soporte) con garantía de reducción 40% o devolvemos dinero
 
-VALOR (Value):
-0 - Pessoa de Contato explora a solução, mas valor não foi identificado
-1 - Vendedor identifica proposição de valor para o negócio
-2 - Pessoa de Contato concorda em explorar a proposta de valor
-3 - Tomador de Decisão concorda em explorar a proposta de valor
-4 - Critérios para definição de valor estabelecidos com Tomador de Decisão
-5 - Valor descoberto está associado a visão Tomador de Decisão
-6 - Análise de valor conduzida por vendedor (demo)
-7 - Análise de valor conduzida pelo Pessoa de Contato (trial)
-8 - Tomador de Decisão concorda com análise de valor
-9 - Conclusão da análise de valor documentada pelo vendedor
-10 - Tomador de Decisão confirma por escrito conclusões da análise
+${requestType === 'email' ? getEmailTemplates() : ''}
+${requestType === 'script' ? getCallScriptTemplates() : ''}
+${requestType === 'objection' ? getObjectionHandlers() : ''}
 
-CONTROLE (Control):
-0 - Nenhum follow documentado de conversa com Pessoa de Contato
-1 - 1ª visão (SPI) enviada para Pessoa de Contato
-2 - 1ª visão concordada ou modificada por Pessoa de Contato (SPIN)
-3 - 1ª visão enviada para Tomador de Decisão (SPI)
-4 - 1ª visão concordada ou modificada por Tomador de Decisão (SPIN)
-5 - Vendedor recebe aprovação para Explorar Valor
-6 - Plano de avaliação enviado para Tomador de Decisão
-7 - Tomador de Decisão concorda ou modifica a Avaliação
-8 - Plano de Avaliação Conduzido (quando aplicável)
-9 - Resultado da Avaliação aprovado pelo Tomador de Decisão
-10 - Tomador de Decisão aprova proposta para negociação final
+${pipelineData ? `
+ANÁLISIS DEL PIPELINE COMPLETO:
+Total oportunidades activas: ${pipelineData.allOpportunities?.length || 0}
+Valor total en pipeline: R$${pipelineData.pipelineHealth?.totalValue?.toLocaleString() || 0}
+Salud promedio del pipeline: ${pipelineData.pipelineHealth?.averageHealth || 0}/10
+Oportunidades en riesgo: ${pipelineData.pipelineHealth?.atRisk || 0}
+Valor en riesgo: R$${pipelineData.pipelineHealth?.riskValue?.toLocaleString() || 0}
 
-COMPRAS (Purchase):
-0 - Processo de compras desconhecido
-1 - Processo de compras esclarecido pela pessoa de contato
-2 - Processo de compras confirmado pelo tomador de decisão
-3 - Condições comerciais validadas com o cliente
-4 - Proposta apresentada para o cliente
-5 - Processo de negociação iniciado com departamento de compras
-6 - Condições comerciais aprovadas e formalizadas
-7 - Contrato assinado
-8 - Pedido de compras recebido
-9 - Cobrança emitida
-10 - Pagamento realizado
+TOP 3 DEALS PARA CERRAR ESTE MES:
+${getTopDealsToClose(pipelineData)}
+` : ''}
 
-FATOR BID (Concorrência):
-- Sem Bid = Fator 1.0
-- Com bid direcionado = Fator 0.5
-- Com bid frio = Fator 0.2
+${opportunityData ? `
+DATOS ESPECÍFICOS DE ${opportunityData.client}:
+Valor: R$${opportunityData.value}
+Industria: ${opportunityData.industry || 'No especificada'}
+Etapa actual: ${getStageNameInPortuguese(opportunityData.stage)}
+Vendedor: ${opportunityData.vendor}
+Último contacto: ${opportunityData.last_update}
+Días sin contacto: ${getDaysSinceLastContact(opportunityData.last_update)}
 
-PERFIS ALVO VENTAPEL:
+CONTACTOS EN LA CUENTA:
+- Power Sponsor: ${opportunityData.power_sponsor || 'No identificado ⚠️'}
+- Sponsor: ${opportunityData.sponsor || 'No identificado'}
+- Influenciador: ${opportunityData.influencer || 'No identificado'}
+- Contacto Apoyo: ${opportunityData.support_contact || 'No identificado'}
 
-1. GERENTE DE QUALIDADE
-- Por quê: Responsável por KPIs estratégicos, autoridade para propor mudanças
-- Dor: KPIs de reclamações de clientes abaixo do desejado
-- Desafio: Dar oportunidade de fazer demonstração
+ESCALAS PPVVCC ACTUALES:
+- DOR: ${opportunityData.scales?.pain || 0}/10 ${opportunityData.scales?.pain < 5 ? '🔴 CRÍTICO - Cliente no admite problema' : opportunityData.scales?.pain < 7 ? '🟡 Dolor admitido pero no urgente' : '🟢 Dolor crítico y urgente'}
+- PODER: ${opportunityData.scales?.power || 0}/10 ${opportunityData.scales?.power < 4 ? '🔴 CRÍTICO - Sin acceso al decisor' : opportunityData.scales?.power < 7 ? '🟡 Acceso parcial al poder' : '🟢 Control total del poder'}
+- VISÃO: ${opportunityData.scales?.vision || 0}/10 ${opportunityData.scales?.vision < 5 ? '🔴 No ve nuestra solución' : '🟢 Visión alineada'}
+- VALOR: ${opportunityData.scales?.value || 0}/10 ${opportunityData.scales?.value < 5 ? '🔴 ROI no validado' : '🟢 ROI claro'}
+- CONTROLE: ${opportunityData.scales?.control || 0}/10
+- COMPRAS: ${opportunityData.scales?.purchase || 0}/10
 
-2. GERENTE DE PRODUÇÃO  
-- Por quê: Familiarizado com problemas de fechamento/preenchimento
-- Dor: Retrabalho e desperdício de materiais
-- Desafio: Estar restrito a alternativas onde compras tenha liderança
+ANÁLISIS SITUACIONAL:
+${generateSituationalAnalysis(opportunityData)}
 
-3. GERENTE DE LOGÍSTICA
-- Por quê: Sofre com retrabalho e reclamações de mercadoria avariada
-- Dor: Custo de reposição de mercadoria avariada
-- Desafio: Não ter responsabilidade sobre processo de fechamento
+PRÓXIMA MEJOR ACCIÓN:
+${generateNextBestAction(opportunityData)}
+` : ''}
 
-4. GERENTE DE EMBALAGENS (secundárias)
-- Por quê: Deveria querer as melhores embalagens para preservar produtos
-- Dor: Dificuldade em substituir caixas para recicladas
-- Desafio: Podem não ter interesse em embalagens secundárias
+INSTRUCCIONES PARA RESPONDER:
+${getResponseInstructions(requestType, context)}
 
-5. GERENTE OPERACIONAL
-- Por quê: Desempenho da operação ponta a ponta sob sua responsabilidade
-- Dor: Alto custo operacional por retrabalho
-- Desafio: Gerar senso de urgência
-
-6. DIRETOR GERAL (varejo)
-- Por quê: Consegue nos colocar na frente das pessoas certas
-- Dor: Reclamações de clientes por produtos avariados
-- Desafio: Pode ser assunto muito pequeno para sua agenda
-
-EVITAR: EQUIPE DE COMPRAS
-- Não sabem avaliar diferenciais da Ventapel
-- Comparam nossas soluções com outras inferiores
-
-PERGUNTAS SPIN VENTAPEL (Gerente Logística com Fitas):
-
-SITUAÇÃO: "Que tipo de fita vocês utilizam para garantir a inviolabilidade das caixas?"
-
-PROBLEMA: 
-- "Acontece das caixas abrirem antes de chegar no cliente?"
-- "Como vocês medem isso?"
-- "Como vocês sabem que não chegam violadas?"
-- "De acordo com a nossa experiência, empresas como a sua costumam ter pelo menos 30% de incidentes"
-
-IMPLICAÇÃO:
-- "Qual o nível de reclamação dos clientes ao receber os produtos avariados ou com as caixas abertas?"
-- "Como vocês medem esse impacto?"
-- "Como os executivos da sua empresa se envolvem no processo quando isso acontece?"
-
-NECESSIDADE DE SOLUÇÃO:
-- "Como seria para o seu departamento se você pudesse reduzir drasticamente, ou até mesmo eliminar, as ocorrências de caixas violadas ou danificadas?"
-- "Como seria se você pudesse gastar 3X menos fita e reduzir drasticamente o retrabalho da sua equipe?"
-
-USPs DOCUMENTADOS VENTAPEL:
-
-1. SOLUÇÃO MAIS EFICIENTE DO MERCADO
-- Máquina exclusiva que dispensa fitas gomadas em medidas exatas
-- Evita desperdício e facilita instalação
-- Confirmação: "Melhorar a eficiência e reduzir o desperdício é importante para você?"
-
-2. SISTEMA DE INVIOLABILIDADE TOTAL
-- Sistema exclusivo de instalação com inviolabilidade garantida
-- Segurança total até destino final
-- Confirmação: "Dar segurança de inviolabilidade para seus clientes é prioridade?"
-
-3. TRANQUILIDADE PARA COMERCIAL
-- Garantia de produtos intactos até cliente final
-- Confirmação: "Dar tranquilidade ao departamento comercial sobre entregas perfeitas é prioritário?"
-
-OBJEÇÕES E RESPOSTAS VENTAPEL:
-
-"PRODUTO É IMPORTADO, PODE FALTAR":
-→ Mostramos estoques para mais de 6 meses
-→ Nunca falhamos com a Amazon
-→ Temos fábrica em Santa Catarina
-
-"MAIOR FREQUÊNCIA DE TROCA DE RESMAS":
-→ Damos todo o apoio na organização dos novos processos
-→ Cases e depoimentos de clientes sobre a mudança
-→ Benefício supera amplamente a mudança de processo
-
-CONTEXTO REAL VENTAPEL:
-- Fábrica em Santa Catarina + escritório São Paulo (desde 2022)
-- Representante exclusivo IPG no Brasil, Chile e Argentina
-- +50 colaboradores, +200 clientes, +3500 máquinas instaladas
-- Clientes atuais: Amazon, Nike, L'Oréal, McCain, Honda, VW, Ford
-- Soluções: Fechamento (fitas), Preenchimento (enchimento), Envelopes
-
-CASES DE SUCESSO REAIS:
-- Amazon: Implementou solução de fechamento Water AT
-- L'Oréal: Usa fita Gorilla 700mts + RSA 12 caixas/minuto
-- McCain: Solução de fechamento BOPP
-- VW: Deal de R$ 1.5M em negociação
-- Nike: Cliente ativo (case em materiais de treinamento)
-
-REGRAS CRÍTICAS - NUNCA VIOLAR:
-1. APENAS usar dados REAIS de opportunityData ou pipelineData
-2. NUNCA inventar clientes, valores ou métricas
-3. Se não há dados, pedir para carregar a oportunidade
-4. Usar APENAS clientes que apareçam nos dados
-5. Não criar exemplos fictícios
-
-${getRequestSpecificContent(requestType)}
-
-${pipelineData ? generatePipelineAnalysis(pipelineData) : ''}
-
-${opportunityData ? generateOpportunityAnalysis(opportunityData) : ''}
-
-INSTRUÇÕES PARA RESPONDER:
-${getResponseInstructions(requestType, context, opportunityData)}
+PREGUNTA DEL USUARIO: ${context}
 `;
 
   try {
     const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
     
     if (!apiKey) {
-      console.error('API key do Claude não encontrada');
+      console.error('No se encontró API key de Claude');
       return res.status(200).json({ 
-        response: generatePPVVCFallbackResponse(opportunityData, context, requestType, pipelineData)
+        response: generateEnhancedFallbackResponse(opportunityData, context, requestType)
       });
     }
 
-    // Chamada para Claude API
+    // Llamada a Claude API
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -250,482 +140,328 @@ ${getResponseInstructions(requestType, context, opportunityData)}
       },
       body: JSON.stringify({
         model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 3000,
+        max_tokens: 3000, // Aumentado para emails largos
         temperature: 0.7,
         system: systemPrompt,
         messages: messages && messages.length > 0 ? messages : [
-          { role: 'user', content: context || 'Analise esta oportunidade' }
+          { role: 'user', content: context || 'Analiza esta oportunidad' }
         ]
       })
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erro da API Claude:', response.status, errorText);
-      throw new Error(`Erro API Claude: ${response.status}`);
+      console.error('Error de Claude API:', response.status, errorText);
+      throw new Error(`Claude API error: ${response.status}`);
     }
 
     const data = await response.json();
     
     res.status(200).json({ 
-      response: data.content?.[0]?.text || generatePPVVCFallbackResponse(opportunityData, context, requestType, pipelineData),
-      analysis: opportunityData ? generatePPVVCAnalysis(opportunityData) : null
+      response: data.content?.[0]?.text || generateEnhancedFallbackResponse(opportunityData, context, requestType),
+      analysis: opportunityData ? generateSituationalAnalysis(opportunityData) : null
     });
 
   } catch (error) {
-    console.error('Erro chamando API Claude:', error);
+    console.error('Error calling Claude API:', error);
     
     res.status(200).json({ 
-      response: generatePPVVCFallbackResponse(opportunityData, context, requestType, pipelineData)
+      response: generateEnhancedFallbackResponse(opportunityData, context, requestType)
     });
   }
 }
 
-// Detectar tipo de solicitação
+// Detectar tipo de solicitud
 function detectRequestType(context) {
   const lowerContext = context?.toLowerCase() || '';
   
-  if (lowerContext.includes('email') || lowerContext.includes('e-mail') || lowerContext.includes('mensagem')) {
+  if (lowerContext.includes('email') || lowerContext.includes('correo') || lowerContext.includes('mensaje')) {
     return 'email';
   }
-  if (lowerContext.includes('ligação') || lowerContext.includes('ligar') || lowerContext.includes('telefone') || lowerContext.includes('script')) {
+  if (lowerContext.includes('llamada') || lowerContext.includes('llamar') || lowerContext.includes('teléfono') || lowerContext.includes('script')) {
     return 'script';
   }
-  if (lowerContext.includes('spin')) {
-    return 'spin';
-  }
-  if (lowerContext.includes('objeção') || lowerContext.includes('caro') || lowerContext.includes('importado')) {
+  if (lowerContext.includes('objeción') || lowerContext.includes('objection') || lowerContext.includes('caro') || lowerContext.includes('precio')) {
     return 'objection';
   }
-  if (lowerContext.includes('demo') || lowerContext.includes('apresentação')) {
+  if (lowerContext.includes('demo') || lowerContext.includes('presentación')) {
     return 'demo';
   }
-  if (lowerContext.includes('poder') || lowerContext.includes('decisor') || lowerContext.includes('sponsor')) {
-    return 'power';
+  if (lowerContext.includes('roi') || lowerContext.includes('retorno')) {
+    return 'roi';
   }
-  if (lowerContext.includes('dor') || lowerContext.includes('pain') || lowerContext.includes('problema')) {
-    return 'pain';
+  if (lowerContext.includes('competencia') || lowerContext.includes('3m') || lowerContext.includes('scotch')) {
+    return 'competition';
   }
   
   return 'general';
 }
 
-// Conteúdo específico por tipo de request
-function getRequestSpecificContent(requestType) {
-  const content = {
-    'email': `
-TEMPLATES DE E-MAIL POR NÍVEL PPVVC:
-
-DOR < 3 (Não admite problema):
-Assunto: Amazon reduziu 30% violações - caso relevante para [Cliente]
-- Gancho com estatística da indústria (30% incidentes média)
-- Pergunta que gere reflexão sobre sua situação
-- Case similar (Amazon, L'Oréal, McCain)
-- CTA para conversa exploratória
-
-DOR 4-6 + PODER < 4 (Dor admitida, sem acesso poder):
-Assunto: Acesso ao decisor - Solução violações [Cliente]
-- Referência dor já admitida
-- Necessidade de envolver tomador de decisão
-- Valor potencial calculado
-- Solicitação específica de acesso
-
-VALOR > 6 + CONTROLE > 7 (Pronto para proposta):
-Assunto: Proposta Ventapel [Cliente] - Garantia 40% redução
-- ROI validado na prova
-- Investimento e condições IPG
-- Garantia de resultados
-- Timeline implementação`,
-
-    'script': `
-SCRIPT DE LIGAÇÃO POR ETAPA:
-
-QUALIFICAÇÃO (Etapa 2):
-Abertura: "Olá [Nome], sou [Vendedor] da Ventapel, representantes IPG. Tem 30 segundos?"
-SPIN Situação: "Que tipo de fita vocês usam hoje para fechar caixas?"
-SPIN Problema: "Com que frequência as caixas chegam abertas no cliente?"
-SPIN Implicação: "Quanto tempo dedicam para re-embalar por esse problema?"
-SPIN Necessidade: "Se eliminassem esse retrabalho, qual seria o impacto?"
-
-APRESENTAÇÃO (Etapa 3):
-"[Nome], baseado no que conversamos sobre [dor específica],
-a Ventapel tem uma solução que reduziu 30% as violações na Amazon.
-Podemos incluir o [Tomador Decisão] numa demo de 30 minutos?"`,
-
-    'spin': `
-PERGUNTAS SPIN ADAPTADAS POR PERFIL:
-
-GERENTE PRODUÇÃO:
-S: "Como é o processo de fechamento de caixas na sua linha?"
-P: "Qual percentual precisa de retrabalho por mal selamento?"
-I: "Quanto custa cada parada de linha por esse tema?"
-N: "Se automatizassem o selamento perfeito, quanto economizariam?"
-
-GERENTE QUALIDADE:
-S: "Como medem satisfação nas entregas?"
-P: "Qual % de reclamações são por embalagem danificada?"
-I: "Como isso impacta na renovação de contratos?"
-N: "Se garantissem entregas perfeitas, qual seria o valor?"`,
-
-    'objection': `
-MANEJO DE OBJEÇÕES VENTAPEL:
-
-"PRODUTO IMPORTADO":
-1. "Entendo a preocupação. Temos fábrica em Santa Catarina desde 2019"
-2. "Mantemos 6 meses de estoque mínimo garantido"
-3. "A Amazon trabalha conosco há 3 anos sem uma falha"
-
-"MUDANÇA DE PROCESSO COMPLICADA":
-1. "A mudança leva 2 horas com nossa equipe de suporte"
-2. "McCain fez a transição sem parar produção"
-3. "Incluímos treinamento completo e acompanhamento 30 dias"
-
-"JÁ TEMOS FORNECEDOR":
-1. "Estão 100% satisfeitos com os resultados atuais?"
-2. "Muitos clientes usam ambos: nós para linhas críticas"
-3. "Testamos em uma linha por 30 dias? Garantimos 40% melhoria"`,
-
-    'power': `
-ESTRATÉGIAS PARA ACESSAR O PODER:
-
-DESDE CONTATO TÉCNICO:
-"[Nome], para desenhar a solução correta preciso entender as prioridades do [Gerente Operacional]. Podemos incluí-lo 20 minutos?"
-
-CRIAR URGÊNCIA PARA PODER:
-"O ROI que calculamos é R$[X]/mês, mas preciso validar com quem aprova investimentos desse tamanho. Quem seria?"
-
-BYPASS COMPRAS:
-"Compras avalia preço, mas isso é sobre eliminar R$[X] em perdas operacionais. Podemos apresentar o case ao dono do P&L?"`,
-
-    'pain': `
-DESENVOLVIMENTO DA DOR POR PERFIL:
-
-LOGÍSTICA (30% incidentes):
-- Quantificar: "[X] caixas/mês = R$[Y] em reposições"
-- Imagem: "Como o CEO vê essas métricas?"
-- Concorrência: "MercadoLivre já eliminou esse problema"
-
-PRODUÇÃO (Retrabalho):
-- Tempo: "3 pessoas x 2 horas/dia = 6 horas perdidas"
-- Custo: "R$50/hora x 6 x 22 dias = R$6.600/mês"
-- Oportunidade: "O que fariam com 130 horas/mês extras?"`,
-
-    'general': ''
-  };
-  
-  return content[requestType] || content.general;
-}
-
-// Gerar análise do pipeline
-function generatePipelineAnalysis(pipelineData) {
-  if (!pipelineData) return '';
-  
-  const opportunities = pipelineData.allOpportunities || [];
-  const health = pipelineData.pipelineHealth || {};
-  
-  // Calcular deals por etapa
-  const byStage = opportunities.reduce((acc, opp) => {
-    acc[opp.stage] = (acc[opp.stage] || 0) + 1;
-    return acc;
-  }, {});
-  
-  // Identificar deals single-threaded
-  const singleThreaded = opportunities.filter(opp => {
-    const contacts = [opp.power_sponsor, opp.sponsor, opp.influencer].filter(Boolean);
-    return contacts.length < 2;
-  });
-  
+// Templates de email según situación
+function getEmailTemplates() {
   return `
-ANÁLISE PIPELINE PPVVC:
+TEMPLATES DE EMAIL SEGÚN SITUACIÓN:
 
-DISTRIBUIÇÃO POR ETAPA:
-${Object.entries(byStage).map(([stage, count]) => 
-  `Etapa ${stage}: ${count} deals`
-).join('\n')}
+1. PRIMER CONTACTO (DOR < 3):
+Asunto: [Empresa] redujo 40% violación de cajas - caso relevante para [Cliente]
+Estructura:
+- Gancho con caso similar a su industria
+- Problema específico que resolvemos (con números)
+- Pregunta que genere reflexión
+- CTA suave para conversar
 
-RISCOS IDENTIFICADOS:
-- Deals single-threaded: ${singleThreaded.length} (${Math.round(singleThreaded.length/opportunities.length*100)}%)
-- Deals sem Power identificado: ${opportunities.filter(o => !o.power_sponsor).length}
-- Deals > 7 dias sem contato: ${opportunities.filter(o => getDaysSinceLastContact(o.last_update) > 7).length}
+2. REACTIVACIÓN (>7 días sin contacto):
+Asunto: ¿Sigue siendo prioridad reducir los R$[cantidad] en retrabalho?
+Estructura:
+- Referencia última conversación
+- Nuevo insight o caso de éxito
+- Crear urgencia (competidor ya implementó)
+- CTA específico con fecha/hora
 
-TOP DEALS PARA ACELERAR:
-${opportunities
-  .sort((a, b) => b.value - a.value)
-  .slice(0, 3)
-  .map(opp => `${opp.client}: R$${opp.value.toLocaleString('pt-BR')} - Ação: ${getNextActionForOpportunity(opp)}`)
-  .join('\n')}
+3. AVANCE A DEMO (DOR > 6, PODER > 4):
+Asunto: Demo personalizada Ventapel - [fecha] - reducción 40% violaciones
+Estructura:
+- Confirmar dolor específico admitido
+- Agenda clara de la demo (30 min)
+- Quién debe participar
+- Resultados esperados post-demo
+
+4. PROPUESTA COMERCIAL (VALOR > 6):
+Asunto: Propuesta Ventapel [Cliente] - ROI 4.5 meses - Garantía 40% reducción
+Estructura:
+- Resumen ejecutivo con ROI
+- Inversión y condiciones
+- Garantías y casos de éxito
+- Próximos pasos claros
+
+5. FOLLOW-UP POST-DEMO:
+Asunto: Próximos pasos - Implementación Ventapel en [Cliente]
+Estructura:
+- Recap de puntos clave de la demo
+- Respuestas a preguntas pendientes
+- Timeline de implementación
+- Urgencia por disponibilidad de agenda
 `;
 }
 
-// Gerar análise de oportunidade específica
-function generateOpportunityAnalysis(opportunity) {
-  if (!opportunity) return '';
-  
-  const scales = opportunity.scales || {};
-  const avgPPVVC = calculatePPVVCAverage(scales);
-  const bidFactor = getBidFactor(opportunity);
-  const realProbability = avgPPVVC * bidFactor;
-  
+// Scripts de llamada
+function getCallScriptTemplates() {
   return `
-ANÁLISE PPVVC DE ${opportunity.client}:
+SCRIPTS DE LLAMADA SEGÚN OBJETIVO:
 
-ESTADO GERAL:
-- Média PPVVC: ${avgPPVVC.toFixed(1)}/10
-- Fator BID: ${bidFactor} ${bidFactor < 1 ? '⚠️ HÁ CONCORRÊNCIA' : '✓ Sem concorrência'}
-- Probabilidade real: ${(realProbability * 10).toFixed(0)}%
-- Valor ponderado: R$${Math.round(opportunity.value * realProbability).toLocaleString('pt-BR')}
+1. LLAMADA DE CALIFICACIÓN (SPIN):
+SITUACIÓN: "¿Cómo manejan hoy el empaquetado en el CD?"
+PROBLEMA: "¿Qué % de cajas llegan violadas al cliente?"
+IMPLICACIÓN: "¿Cuánto tiempo dedican a re-embalar?"
+NEED-PAYOFF: "¿Qué valor tendría eliminar ese retrabalho?"
 
-ESCALAS DETALHADAS:
-${generateScaleAnalysis(scales)}
+2. LLAMADA PARA ACCEDER AL PODER:
+"[Nombre], para diseñar la mejor solución necesito entender las prioridades del gerente de operaciones. 
+¿Podríamos incluirlo en una call de 20 minutos esta semana?"
 
-CONTATOS MAPEADOS:
-- Power Sponsor: ${opportunity.power_sponsor || '❌ NÃO IDENTIFICADO - CRÍTICO'}
-- Sponsor: ${opportunity.sponsor || '❌ Não identificado'}
-- Influenciador: ${opportunity.influencer || '⚠️ Não identificado'}
-- Apoio: ${opportunity.support_contact || 'Não identificado'}
-
-ANÁLISE SITUACIONAL:
-${generateSituationalInsight(opportunity, scales, avgPPVVC)}
-
-PRÓXIMOS 3 PASSOS:
-${generateNext3Actions(opportunity, scales)}
+3. LLAMADA DE CIERRE:
+"[Nombre], ya identificamos R$[X] en ahorros mensuales.
+Tengo disponibilidad para comenzar implementación en 2 semanas.
+¿Qué necesitamos resolver para avanzar con el pedido de compra?"
 `;
 }
 
-// Calcular média PPVVC
-function calculatePPVVCAverage(scales) {
-  const values = [
-    scales.pain || 0,
-    scales.power || 0,
-    scales.vision || 0,
-    scales.value || 0,
-    scales.control || 0,
-    scales.purchase || 0
-  ];
-  return values.reduce((a, b) => a + b, 0) / 6;
+// Manejadores de objeciones
+function getObjectionHandlers() {
+  return `
+MANEJO DE OBJECIONES COMUNES:
+
+"ES MUY CARO":
+1. Reframe a inversión: "Entiendo. ¿Comparado con los R$[X] que pierden mensualmente en retrabalho?"
+2. Mostrar ROI: "La inversión se paga en 4 meses. Después es ahorro puro."
+3. Caso similar: "MercadoLibre pensó lo mismo. Hoy ahorran R$180k/mes."
+
+"YA TENEMOS PROVEEDOR (3M)":
+1. No atacar: "3M es buena empresa. ¿Están 100% satisfechos con los resultados?"
+2. Complementar: "Muchos clientes usan ambos. Nosotros para líneas críticas, 3M para el resto."
+3. Prueba sin riesgo: "¿Probamos en una línea por 30 días? Si no reduce 40%, no cobro."
+
+"NO ES PRIORIDAD AHORA":
+1. Crear urgencia: "¿Saben que su competidor [X] ya redujo 35% sus costos con esto?"
+2. Costo de no actuar: "Cada mes sin actuar son R$[X] perdidos. En 6 meses son R$[X*6]."
+3. Facilitar: "Implementamos sin interrumpir operación. 2 horas y está funcionando."
+
+"NECESITO PENSARLO":
+1. Identificar concern real: "Perfecto. ¿Qué aspecto específico necesita evaluar?"
+2. Crear deadline: "La promoción del 15% termina el viernes. ¿Lo revisamos el jueves?"
+3. Involucrar: "¿Quién más participa en la decisión? Hagamos una call todos juntos."
+`;
 }
 
-// Obter fator BID
-function getBidFactor(opportunity) {
-  if (opportunity.competition === 'none') return 1.0;
-  if (opportunity.competition === 'directed') return 0.5;
-  if (opportunity.competition === 'cold') return 0.2;
-  return 0.5; // Default: assumir concorrência moderada
-}
-
-// Gerar análise de escalas
-function generateScaleAnalysis(scales) {
-  const analysis = [];
-  
-  // DOR
-  if (scales.pain < 4) {
-    analysis.push(`🔴 DOR (${scales.pain}/10): Cliente NÃO admite dor - BLOQUEIO CRÍTICO`);
-  } else if (scales.pain < 7) {
-    analysis.push(`🟡 DOR (${scales.pain}/10): Dor admitida por contato, falta tomador decisão`);
-  } else {
-    analysis.push(`🟢 DOR (${scales.pain}/10): Dor admitida pelo decisor`);
-  }
-  
-  // PODER
-  if (scales.power < 4) {
-    analysis.push(`🔴 PODER (${scales.power}/10): Sem acesso ao decisor - BLOQUEIO CRÍTICO`);
-  } else if (scales.power < 7) {
-    analysis.push(`🟡 PODER (${scales.power}/10): Acesso parcial, falta aprovação formal`);
-  } else {
-    analysis.push(`🟢 PODER (${scales.power}/10): Decisor comprometido`);
-  }
-  
-  // VISÃO
-  if (scales.vision < 3) {
-    analysis.push(`🔴 VISÃO (${scales.vision}/10): Sem visão ou visão concorrente`);
-  } else if (scales.vision < 7) {
-    analysis.push(`🟡 VISÃO (${scales.vision}/10): Visão parcial, falta diferenciação`);
-  } else {
-    analysis.push(`🟢 VISÃO (${scales.vision}/10): Visão diferenciada documentada`);
-  }
-  
-  // VALOR
-  if (scales.value < 4) {
-    analysis.push(`🔴 VALOR (${scales.value}/10): ROI não identificado`);
-  } else if (scales.value < 7) {
-    analysis.push(`🟡 VALOR (${scales.value}/10): Valor explorado, falta validação`);
-  } else {
-    analysis.push(`🟢 VALOR (${scales.value}/10): ROI validado e documentado`);
-  }
-  
-  return analysis.join('\n');
-}
-
-// Gerar insight situacional
-function generateSituationalInsight(opportunity, scales, avgPPVVC) {
-  const insights = [];
-  const daysSince = getDaysSinceLastContact(opportunity.last_update);
-  
-  // Temperatura do deal
-  if (daysSince > 7) {
-    insights.push(`🚨 DEAL FRIO: ${daysSince} dias sem contato - Reativar URGENTE`);
-  }
-  
-  // Estado segundo média
-  if (avgPPVVC < 3) {
-    insights.push('💀 DEAL ZUMBI: Considerar desqualificar ou intervenção maior');
-  } else if (avgPPVVC < 5) {
-    insights.push('⚠️ DEAL EM RISCO: Precisa trabalho intensivo esta semana');
-  } else if (avgPPVVC > 7) {
-    insights.push('🔥 DEAL QUENTE: Acelerar fechamento, concorrência pode entrar');
-  }
-  
-  // Análise de etapa vs escalas
-  const expectedScales = getExpectedScalesForStage(opportunity.stage);
-  if (scales.pain < expectedScales.pain || scales.power < expectedScales.power) {
-    insights.push(`⚠️ DESALINHADO: Etapa ${opportunity.stage} requer Dor>${expectedScales.pain} e Poder>${expectedScales.power}`);
-  }
-  
-  // Multi-threading
-  const contacts = [opportunity.power_sponsor, opportunity.sponsor, opportunity.influencer].filter(Boolean).length;
-  if (contacts < 2) {
-    insights.push('🎯 SINGLE-THREADED: Alto risco - mapear mais contatos JÁ');
-  }
-  
-  return insights.join('\n');
-}
-
-// Obter escalas esperadas por etapa
-function getExpectedScalesForStage(stage) {
-  const expectations = {
-    1: { pain: 0, power: 0 }, // Prospecção
-    2: { pain: 3, power: 2 }, // Qualificação
-    3: { pain: 5, power: 4 }, // Apresentação
-    4: { pain: 7, power: 6 }, // Validação
-    5: { pain: 8, power: 8 }, // Negociação
-    6: { pain: 10, power: 10 } // Fechado
-  };
-  return expectations[stage] || { pain: 0, power: 0 };
-}
-
-// Gerar próximas 3 ações
-function generateNext3Actions(opportunity, scales) {
-  const actions = [];
-  const daysSince = getDaysSinceLastContact(opportunity.last_update);
-  
-  // Prioridade 1: Reativar se está frio
-  if (daysSince > 7) {
-    actions.push(`1. HOJE: E-mail reativação - "Ainda é prioridade eliminar R$${Math.round(opportunity.value * 0.03).toLocaleString('pt-BR')} em violações?"`);
-  }
-  
-  // Prioridade 2: Resolver bloqueio mais crítico
-  if (scales.pain < 4) {
-    actions.push(`${actions.length + 1}. URGENTE: Ligação SPIN para admitir dor - Usar case Amazon 30% redução`);
-  }
-  
-  if (scales.power < 4 && scales.pain >= 4) {
-    actions.push(`${actions.length + 1}. ESTA SEMANA: Acessar ${opportunity.power_sponsor || 'Gerente Operacional'} - "ROI requer sua validação"`);
-  }
-  
-  if (scales.vision < 5 && scales.pain >= 4) {
-    actions.push(`${actions.length + 1}. PRÓXIMA CALL: Demo diferenciada - Mostrar máquina IPG + case McCain`);
-  }
-  
-  if (scales.value < 6 && scales.vision >= 5) {
-    actions.push(`${actions.length + 1}. VALIDAR: ROI específico - "R$${Math.round(opportunity.value * 0.2).toLocaleString('pt-BR')}/mês em economia"`);
-  }
-  
-  // Se tudo está alto, fechar
-  if (scales.pain >= 7 && scales.power >= 7 && scales.value >= 6) {
-    actions.push(`${actions.length + 1}. FECHAR JÁ: "Implementação em 2 semanas, enviamos contrato hoje?"`);
-  }
-  
-  // Preencher até 3 ações
-  while (actions.length < 3) {
-    if (!opportunity.power_sponsor) {
-      actions.push(`${actions.length + 1}. MAPEAR: Identificar Power Sponsor real (quem assina)`);
-    } else if (actions.length < 3) {
-      actions.push(`${actions.length + 1}. CONCORRÊNCIA: Validar se há outros fornecedores avaliando`);
-    }
-  }
-  
-  return actions.slice(0, 3).join('\n');
-}
-
-// Obter próxima ação para oportunidade
-function getNextActionForOpportunity(opportunity) {
-  const scales = opportunity.scales || {};
-  
-  if (scales.pain < 4) return 'Desenvolver dor com SPIN';
-  if (scales.power < 4) return 'Acessar tomador de decisão';
-  if (scales.vision < 5) return 'Demo diferenciada';
-  if (scales.value < 6) return 'Validar ROI';
-  if (scales.purchase < 3) return 'Mapear processo compras';
-  return 'Pressionar fechamento';
-}
-
-// Instruções de resposta melhoradas
-function getResponseInstructions(requestType, context, opportunityData) {
-  if (!opportunityData) {
-    return `
-RESPONDA: "Não há oportunidade carregada. Preciso de dados reais para gerar conteúdo específico.
-
-Para ajudar, carregue uma oportunidade com:
-- Cliente e valor do deal
-- Escalas PPVVC atuais
-- Contatos mapeados
-- Última interação
-
-Enquanto isso, posso explicar:
-- Metodologia PPVVC da Ventapel
-- Perguntas SPIN por perfil
-- Cases de sucesso (Amazon, L'Oréal, McCain)
-- Manejo de objeções comuns"`;
-  }
-  
+// Instrucciones específicas según tipo de request
+function getResponseInstructions(requestType, context) {
   const instructions = {
-    'email': `GERE E-MAIL ESPECÍFICO para ${opportunityData.client}:
-- Baseado nas escalas PPVVC atuais
-- Usar case real (Amazon, L'Oréal, McCain)
-- CTA específico para avançar escala mais baixa
-- Máximo 150 palavras`,
+    'email': `
+GENERA UN EMAIL ESPECÍFICO:
+- Asunto llamativo y específico
+- Máximo 150 palabras
+- Bullets para facilitar lectura
+- CTA claro y único
+- P.D. con urgencia o beneficio extra
+- Tono profesional pero cercano
+- Usa números concretos siempre`,
     
-    'script': `GERE SCRIPT para ${opportunityData.client}:
-- Perguntas SPIN adaptadas à indústria
-- Baseado na dor atual (nível ${opportunityData.scales?.pain || 0})
-- Incluir manejo de objeção provável
-- Duração máxima 5 minutos`,
+    'script': `
+GENERA UN SCRIPT DE LLAMADA:
+- Apertura de máximo 15 segundos
+- Preguntas SPIN específicas
+- Manejo de objeciones probables
+- Frases exactas palabra por palabra
+- Pausas marcadas [PAUSA]
+- Máximo 5 minutos total`,
     
-    'spin': `PERGUNTAS SPIN para ${opportunityData.client}:
-- Adaptadas ao perfil do contato
-- Progressão S→P→I→N completa
-- Quantificar com números reais deles
-- Cases da indústria deles`,
+    'objection': `
+RESPONDE LA OBJECIÓN:
+- Nunca discutas o confrontes
+- Primero valida su preocupación
+- Reframe al valor/problema
+- Usa caso de éxito similar
+- Cierra con pregunta que avance`,
     
-    'objection': `MANEJO DE OBJEÇÃO para ${opportunityData.client}:
-- Usar resposta documentada Ventapel
-- Referenciar case similar exitoso
-- Voltar à dor/valor identificado
-- Fechar com pergunta que avance`,
+    'demo': `
+PREPARA LA DEMO:
+- Agenda de 30 minutos exactos
+- 3 momentos WOW específicos
+- Casos de su industria
+- ROI calculado con sus números
+- Dejar algo pendiente para próxima call`,
     
-    'power': `ESTRATÉGIA DE PODER para ${opportunityData.client}:
-- Atual: ${opportunityData.scales?.power || 0}/10
-- Identificar caminho ao decisor
-- Script específico para pedir acesso
-- Criar urgência com ROI`,
+    'roi': `
+CALCULA ROI ESPECÍFICO:
+- Usa números reales del cliente
+- Desglose mensual y anual
+- Comparación con no hacer nada
+- Casos similares con resultados
+- Gráfico simple con payback`,
     
-    'pain': `DESENVOLVIMENTO DE DOR para ${opportunityData.client}:
-- Atual: ${opportunityData.scales?.pain || 0}/10
-- Quantificar problema (30% indústria)
-- Implicações para o negócio deles
-- Urgência por concorrência`,
+    'competition': `
+ANALIZA COMPETENCIA:
+- Nunca hables mal de competidores
+- Resalta diferencias, no defectos
+- Posiciónate en categoría diferente
+- Casos donde coexisten
+- Tu unique selling proposition`,
     
-    'general': `ANÁLISE E AÇÃO para ${opportunityData.client}:
-- Diagnóstico PPVVC brutal
-- 3 ações específicas priorizadas
-- Scripts/e-mails exatos
-- Riscos se não agirem`
+    'general': `
+RESPONDE CON ANÁLISIS Y ACCIÓN:
+- Diagnóstico brutal y directo
+- Acción específica para HOY
+- Script o mensaje exacto
+- Consecuencia de no actuar
+- Probabilidad real de cierre`
   };
   
   return instructions[requestType] || instructions.general;
 }
 
-// Dias desde último contato
+// Análisis situacional mejorado
+function generateSituationalAnalysis(opportunity) {
+  if (!opportunity || !opportunity.scales) return 'Sin datos para análisis';
+  
+  const scales = opportunity.scales;
+  const avg = (scales.pain + scales.power + scales.vision + 
+               scales.value + scales.control + scales.purchase) / 6;
+  
+  let analysis = [];
+  
+  // Estado general
+  if (avg < 4) {
+    analysis.push('🔴 DEAL MORIBUNDO - Considerar descarte o intervención de emergencia');
+  } else if (avg < 6) {
+    analysis.push('🟡 DEAL TIBIO - Necesita trabajo intensivo esta semana');
+  } else {
+    analysis.push('🟢 DEAL CALIENTE - Presionar para cierre inmediato');
+  }
+  
+  // Análisis por industria
+  const industryInsights = {
+    'e-commerce': 'Black Friday/Navidad cerca - Crear urgencia con timeline de implementación',
+    'farmaceutica': 'ANVISA puede ser aliado - Mencionar compliance y trazabilidad',
+    '3pl': 'Márgenes ajustados - Enfocar en reducción costo por pedido',
+    'alimentos': 'Pérdida de producto = pérdida directa - Calcular valor producto perdido'
+  };
+  
+  if (opportunity.industry && industryInsights[opportunity.industry.toLowerCase()]) {
+    analysis.push(`\n💡 INSIGHT ${opportunity.industry}: ${industryInsights[opportunity.industry.toLowerCase()]}`);
+  }
+  
+  // Días sin contacto
+  const daysSince = getDaysSinceLastContact(opportunity.last_update);
+  if (daysSince > 7) {
+    analysis.push(`\n🚨 ${daysSince} DÍAS SIN CONTACTO - Deal enfriándose rápidamente`);
+  }
+  
+  // Multi-threading
+  const contacts = [opportunity.power_sponsor, opportunity.sponsor, opportunity.influencer].filter(Boolean);
+  if (contacts.length < 2) {
+    analysis.push('\n⚠️ SINGLE-THREADED - Alto riesgo si contacto se va o cambia prioridades');
+  }
+  
+  return analysis.join('\n');
+}
+
+// Generar siguiente mejor acción mejorada
+function generateNextBestAction(opportunity) {
+  const scales = opportunity.scales;
+  const daysSince = getDaysSinceLastContact(opportunity.last_update);
+  
+  // Prioridad 1: Deals fríos
+  if (daysSince > 7) {
+    return `
+🚨 ACCIÓN URGENTE: Reactivar YA
+EMAIL ASUNTO: "¿Sigue siendo prioridad reducir los R$${Math.round(opportunity.value * 0.15).toLocaleString()} mensuales en retrabalho?"
+CONTENIDO: Referencia última conversación + nuevo caso de éxito + crear urgencia
+FOLLOW-UP: Llamar 2 horas después del email`;
+  }
+  
+  // Prioridad 2: Dolor no admitido
+  if (scales.pain < 5) {
+    return `
+🔴 ACCIÓN: Reunión para admitir dolor
+SCRIPT: "${opportunity.client}, empresas similares pierden 3-5% por violación. 
+Con sus ${opportunity.value / 50} envíos mensuales, son R$${Math.round(opportunity.value * 0.03).toLocaleString()} perdidos.
+¿Cuál es su experiencia con este problema?"`;
+  }
+  
+  // Prioridad 3: Sin acceso al poder
+  if (scales.power < 4) {
+    return `
+🔴 ACCIÓN: Acceder al decisor esta semana
+EMAIL: "Para garantizar el ROI de R$${Math.round(opportunity.value * 2.5).toLocaleString()} anual,
+necesito 20 minutos con quien aprueba inversiones en logística.
+¿Lo incluimos en nuestra call del jueves?"`;
+  }
+  
+  // Prioridad 4: Avanzar al cierre
+  if (scales.pain >= 7 && scales.power >= 6 && scales.value >= 6) {
+    return `
+🟢 ACCIÓN: Cerrar esta semana
+LLAMADA: "Ya validamos R$${Math.round(opportunity.value * 0.2).toLocaleString()}/mes en ahorros.
+Puedo comenzar implementación el lunes.
+¿Qué necesitamos para el pedido de compra hoy?"`;
+  }
+  
+  return 'ACCIÓN: Actualizar escalas PPVVCC para determinar siguiente paso';
+}
+
+// Funciones auxiliares
+function getStageNameInPortuguese(stage) {
+  const stages = {
+    1: 'Prospecção',
+    2: 'Qualificação', 
+    3: 'Apresentação',
+    4: 'Validação/Teste',
+    5: 'Negociação',
+    6: 'Fechado'
+  };
+  return stages[stage] || 'Desconhecido';
+}
+
 function getDaysSinceLastContact(lastUpdate) {
   if (!lastUpdate) return 999;
   const last = new Date(lastUpdate);
@@ -733,196 +469,208 @@ function getDaysSinceLastContact(lastUpdate) {
   return Math.floor((now - last) / (1000 * 60 * 60 * 24));
 }
 
-// Resposta fallback melhorada com PPVVC
-function generatePPVVCFallbackResponse(opportunityData, context, requestType, pipelineData) {
+function getTopDealsToClose(pipelineData) {
+  if (!pipelineData?.allOpportunities) return 'Sin datos';
+  
+  const hotDeals = pipelineData.allOpportunities
+    .filter(opp => {
+      const avg = opp.scales ? 
+        Object.values(opp.scales).reduce((a, b) => a + b, 0) / 6 : 0;
+      return avg > 6 && opp.stage >= 3;
+    })
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 3);
+  
+  return hotDeals.map((deal, idx) => 
+    `${idx + 1}. ${deal.client}: R$${deal.value.toLocaleString()} - ${deal.stage === 5 ? 'CERRAR YA' : 'Acelerar cierre'}`
+  ).join('\n');
+}
+
+// Respuesta fallback mejorada con capacidad de email
+function generateEnhancedFallbackResponse(opportunityData, context, requestType) {
+  if (requestType === 'email' && opportunityData) {
+    return generateEmailTemplate(opportunityData, context);
+  }
+  
+  if (requestType === 'script' && opportunityData) {
+    return generateCallScript(opportunityData, context);
+  }
+  
   if (!opportunityData) {
-    return `Sem oportunidade carregada. A metodologia PPVVC da Ventapel requer dados reais.
+    return `No puedo generar contenido específico sin datos de la oportunidad.
+    
+Pero aquí está la estructura que necesitás:
 
-📊 METODOLOGIA PPVVC (0-10):
-- Pain: Dor admitida pelo decisor
-- Power: Acesso ao tomador de decisão  
-- Vision: Solução diferenciada criada
-- Value: ROI validado e documentado
-- Control: Processo controlado
-- Compras: Processo de compra mapeado
+📧 PARA EMAIL:
+- Asunto con beneficio específico
+- Párrafo de gancho (caso similar)
+- Bullets con valor cuantificado  
+- CTA con fecha específica
+- P.D. con urgencia
 
-🎯 PERFIS ALVO:
-1. Gerente Logística (30% violações)
-2. Gerente Produção (retrabalho)
-3. Gerente Qualidade (KPIs entregas)
-4. Diretor Operacional (P&L)
+📞 PARA LLAMADA:
+- Apertura con referencia conocida
+- Preguntas SPIN en secuencia
+- Manejo de "no tengo tiempo"
+- Cierre con próximo paso acordado
 
-❌ EVITAR: Compras (não avaliam diferencial)
-
-🏆 CASES SUCESSO:
-- Amazon: -30% violações
-- L'Oréal: 12 caixas/min com Gorilla
-- VW: Deal R$ 1.5M em processo
-
-Carregue uma oportunidade para análise específica.`;
+Cargá una oportunidad para contenido personalizado.`;
   }
   
+  // Análisis estándar si no es email ni script
   const scales = opportunityData.scales || {};
-  const avgPPVVC = calculatePPVVCAverage(scales);
-  const analysis = generatePPVVCAnalysis(opportunityData);
+  const avg = scales ? 
+    (scales.pain + scales.power + scales.vision + scales.value + scales.control + scales.purchase) / 6 : 0;
   
-  // Gerar resposta específica por tipo de request
-  if (requestType === 'email') {
-    return generatePPVVCEmail(opportunityData, scales);
-  }
-  
-  if (requestType === 'script' || requestType === 'spin') {
-    return generatePPVVCScript(opportunityData, scales);
-  }
-  
-  return `📊 ANÁLISE PPVVC - ${opportunityData.client}
+  return `Análisis de ${opportunityData.client}:
 
-ESTADO: ${avgPPVVC < 4 ? '💀 ZUMBI' : avgPPVVC < 6 ? '⚠️ EM RISCO' : '🔥 QUENTE'} (${avgPPVVC.toFixed(1)}/10)
+ESTADO: ${avg < 4 ? '🔴 CRÍTICO' : avg < 7 ? '🟡 TIBIO' : '🟢 CALIENTE'} (${avg.toFixed(1)}/10)
 
-${analysis}
-
-✅ AÇÃO IMEDIATA:
-${generateNext3Actions(opportunityData, scales).split('\n')[0]}
-
-💬 Pergunte-me:
-- "E-mail para reativar"
-- "Script SPIN para ${opportunityData.client}"
-- "Como acessar o poder"
-- "Manejo objeção produto importado"`;
+PROBLEMA PRINCIPAL: ${
+  scales.pain < 5 ? 'Cliente no admite el dolor' :
+  scales.power < 4 ? 'Sin acceso al decisor' :
+  scales.value < 5 ? 'ROI no validado' :
+  'Listo para cerrar'
 }
 
-// Gerar análise PPVVC
-function generatePPVVCAnalysis(opportunity) {
-  if (!opportunity) return '';
-  
-  const scales = opportunity.scales || {};
-  return generateScaleAnalysis(scales);
+PRÓXIMA ACCIÓN:
+${generateNextBestAction(opportunityData)}
+
+💡 Preguntame específicamente:
+- "Email para reactivar"
+- "Script para llamada"  
+- "Cómo manejar objeción de precio"
+- "Preparar demo para ${opportunityData.client}"`;
 }
 
-// Gerar e-mail PPVVC
-function generatePPVVCEmail(opportunity, scales) {
-  const painLevel = scales.pain || 0;
-  const powerLevel = scales.power || 0;
+// Generar template de email específico
+function generateEmailTemplate(opportunity, context) {
+  const scales = opportunity.scales;
+  const daysSince = getDaysSinceLastContact(opportunity.last_update);
   
-  if (painLevel < 4) {
-    // E-mail para desenvolver dor
-    return `📧 E-MAIL DESENVOLVIMENTO DE DOR - ${opportunity.client}
+  if (daysSince > 7) {
+    return `📧 EMAIL DE REACTIVACIÓN para ${opportunity.client}:
 
-ASSUNTO: Amazon reduziu 30% violações com Ventapel - caso relevante para ${opportunity.client}
+ASUNTO: ¿Sigue siendo prioridad reducir los R$${Math.round(opportunity.value * 0.15).toLocaleString()} en retrabalho?
 
-${opportunity.sponsor || 'Prezado cliente'},
+${opportunity.power_sponsor || opportunity.sponsor || 'Estimado cliente'},
 
-Empresas como ${opportunity.client} perdem em média 3-5% dos envios por violação de caixas.
+En nuestra última conversación del ${opportunity.last_update}, identificamos una oportunidad de ahorro de R$${Math.round(opportunity.value * 0.15).toLocaleString()} mensuales en su operación.
 
-Com seu volume, isso representa:
-• ${Math.round(opportunity.value / 50)} caixas violadas/mês  
-• R$${Math.round(opportunity.value * 0.03).toLocaleString('pt-BR')} em perdas mensais
-• Horas de retrabalho re-embalando
+Desde entonces, ayudamos a [empresa similar] a:
+• Reducir 40% las violaciones de cajas
+• Eliminar 3 horas diarias de retrabalho
+• ROI completo en 4 meses
 
-A Amazon tinha o mesmo problema. Hoje economiza 30% com nossa solução IPG.
+¿Sigue siendo prioridad resolver este tema en ${opportunity.client}?
 
-Como vocês lidam com esse tema na ${opportunity.client}?
+¿Podemos agendar 15 minutos esta semana para mostrarle los resultados?
 
-Podemos conversar 20 minutos esta semana?
+Saludos,
+${opportunity.vendor}
 
-${opportunity.vendor || 'Equipe Ventapel'}
-
-P.S. McCain também eliminou o problema. Case disponível.`;
+P.D. Tengo un slot el jueves 10am o viernes 3pm. ¿Cuál prefiere?`;
   }
   
-  if (powerLevel < 4) {
-    // E-mail para acessar o poder
-    return `📧 E-MAIL ACESSO AO PODER - ${opportunity.client}
+  if (scales.pain < 5) {
+    return `📧 EMAIL PARA ADMITIR DOLOR - ${opportunity.client}:
 
-ASSUNTO: ROI R$${Math.round(opportunity.value * 0.2).toLocaleString('pt-BR')}/mês requer validação gerencial
+ASUNTO: MercadoLibre redujo R$180k/mes en retrabalho - caso relevante para ${opportunity.client}
 
-${opportunity.sponsor || 'Prezado'},
+${opportunity.power_sponsor || 'Estimado cliente'},
 
-Baseado em nossas conversas, identificamos potencial de economia de R$${Math.round(opportunity.value * 0.2).toLocaleString('pt-BR')} mensais eliminando violações.
+Empresas de ${opportunity.industry || 'logística'} pierden en promedio 3-5% de sus envíos por violación de cajas.
 
-Para garantir esses resultados na ${opportunity.client}, preciso de 20 minutos com quem aprova investimentos em ${opportunity.industry || 'operações'}.
+Para ${opportunity.client}, con su volumen, esto representa aproximadamente:
+• ${Math.round(opportunity.value / 50)} cajas violadas/mes
+• R$${Math.round(opportunity.value * 0.15).toLocaleString()} en retrabalho mensual
+• ${Math.round(opportunity.value / 50 * 0.03)} clientes insatisfechos
 
-Pontos-chave a validar:
-• ROI em 4-6 meses
-• Garantia 40% redução violações
-• Implementação sem parar operação
+MercadoLibre tenía números similares. Hoy ahorra R$180k/mes.
 
-Podemos incluir o ${opportunity.power_sponsor || 'Gerente de Operações'} em nossa call de quinta?
+¿Cómo manejan este tema en ${opportunity.client}?
 
-${opportunity.vendor || 'Equipe Ventapel'}`;
+¿Podemos conversar 20 minutos esta semana?
+
+Saludos,
+${opportunity.vendor}`;
   }
   
-  // E-mail padrão
-  return `📧 E-MAIL para ${opportunity.client}
+  // Email genérico si no hay caso específico
+  return `📧 EMAIL PERSONALIZADO para ${opportunity.client}:
 
-ASSUNTO: Próximos passos - Solução Ventapel ${opportunity.client}
+ASUNTO: Propuesta de valor Ventapel - ${opportunity.client}
 
-${opportunity.power_sponsor || opportunity.sponsor || 'Prezado cliente'},
+${opportunity.power_sponsor || 'Estimado cliente'},
 
-[Personalizar conforme situação atual]
+[PÁRRAFO APERTURA - Referencia a última conversación o trigger event]
 
-Ventapel garante:
-• 40% redução violações ou devolvemos seu dinheiro
-• ROI em 4-6 meses
-• Suporte local (fábrica Santa Catarina)
+Ventapel puede ayudar a ${opportunity.client} a:
+• Reducir 40% las violaciones de cajas
+• Ahorrar R$${Math.round(opportunity.value * 0.15).toLocaleString()}/mes en retrabalho
+• Mejorar satisfacción del cliente final
 
-Cases de sucesso: Amazon, L'Oréal, McCain
+[PÁRRAFO CASO DE ÉXITO - Similar a su industria]
 
-Avançamos esta semana?
+¿Podemos agendar 30 minutos esta semana?
 
-${opportunity.vendor || 'Equipe Ventapel'}`;
+Saludos,
+${opportunity.vendor}
+
+P.D. [Urgencia o beneficio adicional]`;
 }
 
-// Gerar script PPVVC
-function generatePPVVCScript(opportunity, scales) {
-  const painLevel = scales.pain || 0;
-  const powerLevel = scales.power || 0;
+// Generar script de llamada específico
+function generateCallScript(opportunity, context) {
+  const scales = opportunity.scales;
   
-  return `📞 SCRIPT PPVVC - ${opportunity.client}
+  return `📞 SCRIPT DE LLAMADA para ${opportunity.client}:
 
-ABERTURA:
-"Olá ${opportunity.sponsor || opportunity.power_sponsor || 'Maria'}, sou ${opportunity.vendor || 'da Ventapel'}.
-Representamos a IPG no Brasil. Tem 30 segundos sobre o tema de violações que conversamos?"
+APERTURA (10 segundos):
+"Hola ${opportunity.power_sponsor || opportunity.sponsor || 'María'}, soy ${opportunity.vendor} de Ventapel. 
+¿Tiene 30 segundos? Le llamo por el tema de reducción de violaciones que conversamos."
 
-${painLevel < 4 ? `
-DESENVOLVIMENTO DE DOR (SPIN):
+[PAUSA - Esperar confirmación]
 
-SITUAÇÃO:
-"Que tipo de fita vocês usam hoje para fechar as caixas?"
-[ESCUTAR]
+GANCHO (20 segundos):
+"Perfecto. Desde nuestra última charla, ayudamos a [empresa similar] a reducir 40% sus violaciones.
+Calculé que ${opportunity.client} podría ahorrar R$${Math.round(opportunity.value * 0.15).toLocaleString()} mensuales."
 
-PROBLEMA:  
-"Pela nossa experiência, empresas como ${opportunity.client} têm 30% de incidentes.
-Com que frequência vocês recebem reclamações por caixas abertas?"
-[ESCUTAR E QUANTIFICAR]
+PREGUNTAS SPIN:
 
-IMPLICAÇÃO:
-"Com ${Math.round(opportunity.value / 50)} envios mensais, isso seriam ${Math.round(opportunity.value / 50 * 0.3)} caixas violadas.
-Quanto tempo sua equipe dedica para resolver esses problemas?"
-[APROFUNDAR NO CUSTO]
+SITUACIÓN:
+"¿Cómo están manejando hoy el tema de cajas violadas en el CD?"
+[ESCUCHAR - Tomar notas]
 
-NECESSIDADE:
-"Se eliminassem completamente esse retrabalho e as reclamações,
-qual seria o impacto na sua operação?"
-[DEIXAR VISUALIZAR O VALOR]` : ''}
+PROBLEMA:
+"¿Qué porcentaje de sus ${Math.round(opportunity.value / 50)} envíos mensuales llegan dañados?"
+[Si no sabe]: "La industria maneja 3-5%. ¿Creen estar en ese rango?"
 
-${powerLevel < 4 ? `
-ACESSO AO PODER:
-"${opportunity.sponsor || 'Maria'}, as economias que identificamos são de R$${Math.round(opportunity.value * 0.2).toLocaleString('pt-BR')} mensais.
-Para garantir esses resultados, preciso entender as prioridades do ${opportunity.power_sponsor || 'Gerente de Operações'}.
-Podemos incluí-lo numa call de 20 minutos esta semana?"
+IMPLICACIÓN:
+"Con ese %, ¿cuánto tiempo dedica su equipo a re-embalar productos?"
+"¿Cuál es el costo de cada devolución por daño?"
 
-Se objetar:
-"Entendo. Que informação ele precisaria para avaliar uma solução que economiza R$${Math.round(opportunity.value * 2.4).toLocaleString('pt-BR')} ao ano?"` : ''}
+NEED-PAYOFF:
+"Si pudieran eliminar ese retrabalho, ¿qué impacto tendría en su operación?"
+"¿Qué valor le asignarían a reducir 40% las devoluciones?"
 
-FECHAMENTO:
-"Baseado no que conversamos, vejo claro potencial de [eliminar violações/reduzir retrabalho].
-Qual seria o melhor próximo passo na sua perspectiva?"
+CIERRE (15 segundos):
+"${opportunity.power_sponsor || 'Basado en lo que me cuenta'}, veo potencial de ahorro de R$${Math.round(opportunity.value * 2.5).toLocaleString()} anual.
+¿Podemos agendar 30 minutos esta semana para mostrarle exactamente cómo?"
 
-MANEJO "ENVIE INFORMAÇÕES":
-"Claro. Para enviar o mais relevante, sua prioridade é reduzir violações ou eliminar retrabalho?"
-[RESPONDE E ENTÃO]
-"Perfeito. Envio o case da [Amazon/McCain] que é similar. Revisamos juntos na quinta?"`;
+MANEJO DE OBJECIONES:
+
+"No tengo tiempo ahora":
+→ "Entiendo perfectamente. ¿Cuándo sería mejor? ¿Jueves 10am o viernes 3pm?"
+
+"Envíeme información por email":
+→ "Claro. Para enviarle info relevante, ¿cuál es su mayor desafío: violaciones, retrabalho o devoluciones?"
+
+"Ya tenemos proveedor":
+→ "Excelente. ¿Están 100% satisfechos con los resultados? La mayoría usa ambos proveedores."
+
+CIERRE ALTERNATIVO:
+"Le envío un video de 2 minutos mostrando el antes/después en MercadoLibre. ¿Lo vemos juntos el jueves?"`;
 }
 
 // Para Vercel
