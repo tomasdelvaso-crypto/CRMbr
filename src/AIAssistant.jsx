@@ -10,6 +10,9 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
   const [alerts, setAlerts] = useState([]);
   const [allOpportunities, setAllOpportunities] = useState([]);
   const [pipelineHealth, setPipelineHealth] = useState(null);
+  
+  // NUEVO: Estado para la oportunidad activa en el contexto del asistente
+  const [assistantActiveOpportunity, setAssistantActiveOpportunity] = useState(null);
 
   // Cargar datos del pipeline al iniciar
   useEffect(() => {
@@ -18,13 +21,14 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   }, [currentUser, supabase]);
 
-  // Analizar oportunidad cuando cambia
+  // MODIFICADO: Usar oportunidad activa del asistente O la que viene del CRM
   useEffect(() => {
-    if (currentOpportunity) {
-      analyzeOpportunity(currentOpportunity);
-      checkOpportunityHealth(currentOpportunity);
+    const opportunityToAnalyze = assistantActiveOpportunity || currentOpportunity;
+    if (opportunityToAnalyze) {
+      analyzeOpportunity(opportunityToAnalyze);
+      checkOpportunityHealth(opportunityToAnalyze);
     }
-  }, [currentOpportunity]);
+  }, [currentOpportunity, assistantActiveOpportunity]);
 
   // Cargar datos del pipeline completo
   const loadPipelineData = async () => {
@@ -263,7 +267,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     setAlerts(newAlerts);
   };
 
-  // Buscar oportunidad específica cuando el vendedor pregunta
+  // MEJORADO: Buscar oportunidad específica cuando el vendedor pregunta
   const searchOpportunity = async (clientName) => {
     if (!supabase) {
       console.warn('Supabase no disponible para búsqueda');
@@ -271,27 +275,43 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
     
     try {
-      // Buscar por nombre del cliente (case insensitive)
-      const { data, error } = await supabase
+      // Buscar por nombre del cliente o nombre de la oportunidad (case insensitive)
+      const { data: clientData, error: clientError } = await supabase
         .from('opportunities')
         .select('*')
-        .ilike('client', `%${clientName}%`);
+        .or(`client.ilike.%${clientName}%,name.ilike.%${clientName}%`);
       
-      if (error) throw error;
-      return data;
+      if (clientError) throw clientError;
+      
+      // Si hay resultados, retornarlos
+      if (clientData && clientData.length > 0) {
+        return clientData;
+      }
+      
+      // Si no hay resultados exactos, buscar por producto o industria
+      const { data: productData, error: productError } = await supabase
+        .from('opportunities')
+        .select('*')
+        .or(`product.ilike.%${clientName}%,industry.ilike.%${clientName}%`);
+      
+      if (productError) throw productError;
+      return productData || [];
+      
     } catch (err) {
       console.error('Error buscando oportunidad:', err);
       return null;
     }
   };
 
-  // Detectar si el mensaje pregunta por una oportunidad específica
+  // MEJORADO: Detectar si el mensaje pregunta por una oportunidad específica
   const detectOpportunityQuery = (message) => {
     const patterns = [
       /(?:como está|status|situação|análise|diagnóstico|info|información|dados|escalas|ppvvcc)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\?|$)/i,
       /(?:mostrar|ver|buscar|encontrar|analizar|checar)\s+(?:oportunidad|oportunidade|deal|negócio)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\?|$)/i,
       /(?:qual|como|qué)\s+(?:está|anda|vai)\s+(.+?)(?:\?|$)/i,
-      /^(.+?)\s+(?:está|anda|como vai|status|situação)/i
+      /^(.+?)\s+(?:está|anda|como vai|status|situação)/i,
+      /(?:buscar|busca|search|find)\s+(.+)/i,
+      /(?:cliente|empresa|company)\s+(.+)/i
     ];
     
     for (const pattern of patterns) {
@@ -300,41 +320,50 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         return match[1].trim();
       }
     }
+    
+    // Si no coincide con patrones, pero el mensaje es corto (posible nombre), intentar búsqueda
+    if (message.length < 50 && !message.includes(' ')) {
+      return message.trim();
+    }
+    
     return null;
   };
 
-  // Quick Actions dinámicas - MÁXIMO 4 BOTONES
+  // MODIFICADO: Quick Actions dinámicas - MÁXIMO 4 BOTONES
   const getQuickActions = () => {
-    // Si no hay oportunidad actual, mostrar acciones de búsqueda
-    if (!currentOpportunity) {
+    // Usar la oportunidad activa del asistente O la del CRM
+    const activeOpp = assistantActiveOpportunity || currentOpportunity;
+    
+    // Si no hay oportunidad activa, mostrar acciones de búsqueda y análisis general
+    if (!activeOpp) {
       return [
         {
           icon: '🔍',
-          label: 'Ver pipeline completo',
-          prompt: 'Muéstrame un resumen del pipeline completo con las oportunidades más importantes y en riesgo'
+          label: 'Buscar cliente',
+          prompt: 'Listar todas las oportunidades disponibles en el CRM'
         },
         {
           icon: '📊',
-          label: 'Oportunidades en riesgo',
-          prompt: 'Cuáles son las oportunidades en mayor riesgo? Dame un análisis detallado'
+          label: 'Pipeline completo',
+          prompt: 'Muéstrame un resumen del pipeline completo con las oportunidades más importantes y en riesgo'
         },
         {
           icon: '🎯',
-          label: 'Mejores oportunidades',
+          label: 'Top 5 deals',
           prompt: 'Cuáles son las 5 mejores oportunidades para cerrar este mes?'
         },
         {
-          icon: '📈',
-          label: 'Mi performance',
-          prompt: `Analiza mi performance como vendedor: total de oportunidades, valor en gestión, health score promedio`
+          icon: '⚠️',
+          label: 'Deals en riesgo',
+          prompt: 'Muéstrame todas las oportunidades en riesgo con análisis PPVVCC'
         }
       ];
     }
     
-    if (!currentOpportunity.scales) return [];
+    if (!activeOpp.scales) return [];
     
     const actions = [];
-    const scales = currentOpportunity.scales;
+    const scales = activeOpp.scales;
     
     const painValue = getScaleValue(scales.dor || scales.pain);
     const powerValue = getScaleValue(scales.poder || scales.power);
@@ -347,12 +376,12 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       actions.push({
         icon: '🚨',
         label: 'Reativar URGENTE',
-        prompt: `${currentOpportunity.client} está FRIO há dias. Preciso reativar HOJE este deal de R$${currentOpportunity.value}. 
+        prompt: `${activeOpp.client} está FRIO há dias. Preciso reativar HOJE este deal de R$${activeOpp.value}. 
         Me dê:
         1. Email de reativação que gere resposta imediata
         2. Script de ligação de 30 segundos
         3. WhatsApp message casual mas efetivo
-        Contexto: DOR=${painValue}, PODER=${powerValue}, última ação: ${currentOpportunity.next_action || 'não definida'}`
+        Contexto: DOR=${painValue}, PODER=${powerValue}, última ação: ${activeOpp.next_action || 'não definida'}`
       });
     }
     
@@ -361,9 +390,9 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       actions.push({
         icon: '⚠️',
         label: 'Corrigir problema',
-        prompt: `PROBLEMA DETECTADO em ${currentOpportunity.client}: ${analysis.inconsistencies[0].message}
+        prompt: `PROBLEMA DETECTADO em ${activeOpp.client}: ${analysis.inconsistencies[0].message}
         Como corrijo isso IMEDIATAMENTE? Preciso de ações específicas para hoje.
-        Valor do deal: R$${currentOpportunity.value}`
+        Valor do deal: R$${activeOpp.value}`
       });
     }
     
@@ -374,8 +403,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       actions.push({
         icon: '🎯',
         label: 'Gerar DOR',
-        prompt: `${currentOpportunity.client} NÃO admite o problema (DOR=${painValue}/10).
-        Preciso de 5 perguntas SPIN MATADORAS específicas para ${currentOpportunity.industry || 'logística'}.
+        prompt: `${activeOpp.client} NÃO admite o problema (DOR=${painValue}/10).
+        Preciso de 5 perguntas SPIN MATADORAS específicas para ${activeOpp.industry || 'logística'}.
         Foco: violação de caixas, retrabalho, custos ocultos.
         Quero perguntas que DOAM, que façam o cliente sentir o problema.`
       });
@@ -383,62 +412,25 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       actions.push({
         icon: '👔',
         label: 'Acessar decisor',
-        prompt: `Preciso URGENTE acessar o decisor em ${currentOpportunity.client}.
-        Poder atual: ${powerValue}/10. Contato atual: ${currentOpportunity.sponsor || 'não identificado'}.
+        prompt: `Preciso URGENTE acessar o decisor em ${activeOpp.client}.
+        Poder atual: ${powerValue}/10. Contato atual: ${activeOpp.sponsor || 'não identificado'}.
         Me dê 3 formas diferentes de conseguir acesso ao gerente de logística/operações.
         Incluir: email, LinkedIn approach, e pedido direto.`
       });
-    } else if (lowestScale === visionValue && visionValue < 5) {
-      actions.push({
-        icon: '🎬',
-        label: 'Demo Ventapel',
-        prompt: `Preparar DEMO MATADORA para ${currentOpportunity.client}.
-        Visão atual: ${visionValue}/10 - cliente acha que é "só trocar fita".
-        Estrutura: 
-        1. Caso MercadoLibre (40% redução retrabalho)
-        2. Demo BP555e + fita VENOM ao vivo
-        3. ROI calculado na hora
-        4. Fechar com teste piloto
-        Indústria: ${currentOpportunity.industry || 'logística'}`
-      });
-    } else if (lowestScale === valueValue && valueValue < 6) {
-      actions.push({
-        icon: '💰',
-        label: 'Calcular ROI',
-        prompt: `Calcular ROI ESPECÍFICO para ${currentOpportunity.client}.
-        Investimento: R$${currentOpportunity.value}
-        Indústria: ${currentOpportunity.industry || 'logística'}
-        Incluir:
-        - Redução 40% retrabalho (quantificar em R$)
-        - Economia mão de obra
-        - Redução devoluções
-        - Ganho ergonomia/produtividade
-        - Payback em meses
-        Fazer conta REAL com números do cliente.`
-      });
     }
     
-    // Prioridad 4: Casos de éxito
+    // Siempre agregar opción de cambiar cliente
     actions.push({
-      icon: '🏆',
-      label: 'Casos de éxito',
-      prompt: `Dame 3 casos de éxito relevantes para ${currentOpportunity.client} en industria ${currentOpportunity.industry || 'similar'}. 
-        Incluye: empresa, problema inicial, solución implementada, resultados cuantificados, ROI logrado.
-        Casos disponibles: 
-        - L'ORÉAL: 100% furtos eliminados, +50% eficiência, ROI 3 meses con RSA
-        - NIKE: Furtos zero, +30% eficiência, ROI 2 meses con BP755
-        - MercadoLibre: 40% reducción retrabalho
-        - Natura: 60% menos violaciones
-        - Magazine Luiza: 35% reducción devoluciones
-        - Centauro: 95% reducción furtos, ahorro R$50M/año
-        Usa los más relevantes para su industria y tamaño.`
+      icon: '🔄',
+      label: 'Cambiar cliente',
+      prompt: 'Listar todas las oportunidades disponibles para seleccionar otra'
     });
     
     // Retornar máximo 4 acciones
     return actions.slice(0, 4);
   };
 
-  // Enviar mensaje al asistente
+  // MODIFICADO: Enviar mensaje al asistente
   const sendMessage = async (messageText = input) => {
     if (!messageText.trim()) return;
 
@@ -458,12 +450,33 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         if (searchResults && searchResults.length > 0) {
           searchedOpportunity = searchResults[0]; // Tomar la primera coincidencia
           
-          // Si encontró una oportunidad diferente a la actual, analizarla
-          if (searchedOpportunity && (!currentOpportunity || searchedOpportunity.id !== currentOpportunity.id)) {
-            analyzeOpportunity(searchedOpportunity);
-            checkOpportunityHealth(searchedOpportunity);
-          }
+          // IMPORTANTE: Establecer la oportunidad activa en el contexto del asistente
+          setAssistantActiveOpportunity(searchedOpportunity);
+          
+          // Analizar la nueva oportunidad
+          analyzeOpportunity(searchedOpportunity);
+          checkOpportunityHealth(searchedOpportunity);
         }
+      }
+      
+      // Detectar si quiere listar todas las oportunidades
+      if (messageText.toLowerCase().includes('listar') || 
+          messageText.toLowerCase().includes('todas') ||
+          messageText.toLowerCase().includes('mostrar oportunidades')) {
+        const listMessage = `📋 **Oportunidades en el CRM:**\n\n` +
+          allOpportunities.map((opp, idx) => 
+            `${idx + 1}. **${opp.client}** - ${opp.name}\n` +
+            `   💰 R$ ${opp.value.toLocaleString('pt-BR')} | Etapa: ${opp.stage} | Vendedor: ${opp.vendor}\n` +
+            `   📊 Health Score: ${calculateHealthScore(opp.scales || {}).toFixed(1)}/10`
+          ).join('\n\n') +
+          `\n\n💡 **Tip:** Escribe el nombre del cliente para analizarlo en detalle.`;
+        
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: listMessage
+        }]);
+        setIsLoading(false);
+        return;
       }
 
       // Preparar contexto con toda la información de Ventapel
@@ -498,16 +511,11 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
           "Melhoria ergonômica e eliminação de dores operadores",
           "Sustentabilidade (fita kraft reciclável)",
           "Suporte técnico próprio/dedicado"
-        ],
-        diferenciais_tecnicos: {
-          bp755: "1,15m/segundo, 2 anos garantia, até 3 comprimentos automáticos",
-          rsa: "12 caixas/minuto, totalmente automatizada",
-          fitas: "Reforço estrutural, 300-700m comprimento, melhor apresentação"
-        }
+        ]
       };
 
-      // Usar la oportunidad buscada si existe, sino la actual
-      const opportunityToAnalyze = searchedOpportunity || currentOpportunity;
+      // Usar la oportunidad activa del asistente O la buscada O la del CRM
+      const opportunityToAnalyze = searchedOpportunity || assistantActiveOpportunity || currentOpportunity;
       
       const opportunityContext = opportunityToAnalyze ? {
         ...opportunityToAnalyze,
@@ -519,7 +527,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
           control: getScaleValue(opportunityToAnalyze.scales?.controle || opportunityToAnalyze.scales?.control),
           purchase: getScaleValue(opportunityToAnalyze.scales?.compras || opportunityToAnalyze.scales?.purchase)
         },
-        diagnostico: searchedOpportunity ? analyzeOpportunity(searchedOpportunity) : analysis
+        diagnostico: analysis
       } : null;
 
       // Preparar información de búsqueda para el contexto
@@ -551,9 +559,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
           language: 'português brasileiro',
           focusOn: 'venda consultiva PPVVCC, solução de fechamento, detectar problemas',
           instructions: {
-            dataAccuracy: 'CRÍTICO: Ao buscar informações sobre empresas, use APENAS dados verificados e reais. NUNCA invente ou estime dados. Se não encontrar informação verificada, diga claramente "Não encontrei dados verificados sobre isso". Sempre cite a fonte quando mencionar dados específicos.',
-            salesApproach: 'Seja direto e agressivo no diagnóstico PPVVCC. Detecte inconsistências e comunique sem rodeios.',
-            webSearchRules: 'Quando buscar informações sobre empresas competidoras ou clientes potenciais, APENAS use: dados oficiais da empresa, relatórios públicos, press releases verificados, informações de sites oficiais. NUNCA especule ou invente números.'
+            dataAccuracy: 'CRÍTICO: Ao buscar informações sobre empresas, use APENAS dados verificados e reais. NUNCA invente ou estime dados.',
+            salesApproach: 'Seja direto e agressivo no diagnóstico PPVVCC. Detecte inconsistências e comunique sem rodeios.'
           },
           pipelineData: {
             currentOpportunity: opportunityContext,
@@ -583,16 +590,30 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   };
 
+  // NUEVO: Obtener la oportunidad activa para mostrar en el panel
+  const getActiveOpportunity = () => {
+    return assistantActiveOpportunity || currentOpportunity;
+  };
+
   return (
     <>
       {/* Panel de Análisis PPVVCC en el CRM */}
-      {currentOpportunity && analysis && (
+      {getActiveOpportunity() && analysis && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 mb-4 rounded-lg shadow-md">
           <div className="flex justify-between items-start mb-3">
             <h3 className="font-bold text-lg flex items-center">
-              <Target className="mr-2" /> Diagnóstico PPVVCC: {currentOpportunity.client}
+              <Target className="mr-2" /> Diagnóstico PPVVCC: {getActiveOpportunity().client}
             </h3>
             <div className="flex items-center gap-4">
+              {assistantActiveOpportunity && (
+                <button
+                  onClick={() => setAssistantActiveOpportunity(null)}
+                  className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded hover:bg-yellow-200"
+                  title="Voltar para oportunidade do CRM"
+                >
+                  🔄 Voltar CRM
+                </button>
+              )}
               <button
                 onClick={loadPipelineData}
                 className="text-blue-600 hover:text-blue-800"
@@ -618,7 +639,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
           )}
 
           {/* Semáforo PPVVCC */}
-          {currentOpportunity.scales && (
+          {getActiveOpportunity().scales && (
             <div className="grid grid-cols-6 gap-2 mb-4">
               {[
                 { key: 'dor', label: 'DOR', altKey: 'pain' },
@@ -628,7 +649,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                 { key: 'controle', label: 'CTRL', altKey: 'control' },
                 { key: 'compras', label: 'COMPRAS', altKey: 'purchase' }
               ].map(({ key, label, altKey }) => {
-                const value = getScaleValue(currentOpportunity.scales[key] || currentOpportunity.scales[altKey]);
+                const value = getScaleValue(getActiveOpportunity().scales[key] || getActiveOpportunity().scales[altKey]);
                 const isCritical = value < 4;
                 const isWarning = value >= 4 && value < 7;
                 
@@ -689,7 +710,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
               <button 
                 onClick={() => {
                   setIsOpen(true);
-                  sendMessage(`Desenvolva esta ação: ${analysis.nextAction.action} para ${currentOpportunity.client}`);
+                  sendMessage(`Desenvolva esta ação: ${analysis.nextAction.action} para ${getActiveOpportunity().client}`);
                 }}
                 className="mt-2 bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 transition font-semibold"
               >
@@ -726,6 +747,11 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                 Vendedor: {currentUser} • Foco: Soluções de Fechamento
               </div>
             )}
+            {assistantActiveOpportunity && (
+              <div className="text-xs bg-white/20 rounded px-2 py-1 mt-2">
+                🎯 Analisando: {assistantActiveOpportunity.client}
+              </div>
+            )}
           </div>
 
           {/* Quick Actions - MÁXIMO 4 BOTONES */}
@@ -747,48 +773,25 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
           {/* Mensajes */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {messages.length === 0 && currentOpportunity && (
+            {messages.length === 0 && (
               <div className="bg-blue-50 p-3 rounded-lg">
                 <p className="font-bold text-sm text-blue-700 mb-2">
-                  📊 Análise {currentOpportunity.client}
-                </p>
-                <div className="text-xs text-gray-600 space-y-1">
-                  <p>• Health Score: {analysis?.avgScale}/10</p>
-                  <p>• Probabilidade: {analysis?.probability}%</p>
-                  <p>• Valor: R${currentOpportunity.value?.toLocaleString('pt-BR')}</p>
-                  {analysis?.inconsistencies?.length > 0 && (
-                    <p className="text-red-600 font-bold">
-                      • ⚠️ {analysis.inconsistencies.length} problemas detectados
-                    </p>
-                  )}
-                </div>
-                <div className="mt-3 text-xs text-gray-500">
-                  💡 Pergunte sobre: emails, scripts, ROI, competência, objeções
-                </div>
-                <div className="mt-2 p-2 bg-yellow-50 rounded text-xs text-gray-600">
-                  🔍 <strong>NOVO:</strong> Posso buscar qualquer oportunidade! 
-                  <br/>Exemplos: "Como está Centauro?", "Análise da Natura", "Status MercadoLibre"
-                </div>
-              </div>
-            )}
-            
-            {messages.length === 0 && !currentOpportunity && (
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <p className="font-bold text-sm text-gray-700 mb-2">
                   👋 Olá {currentUser || 'Vendedor'}!
                 </p>
                 <div className="text-xs text-gray-600 space-y-2">
                   <p>Sou seu assistente PPVVCC. Posso ajudar com:</p>
                   <ul className="ml-2 space-y-1">
-                    <li>• 🔍 Buscar e analisar qualquer oportunidade</li>
+                    <li>• 🔍 Buscar e analisar QUALQUER oportunidade</li>
                     <li>• 📊 Diagnosticar escalas PPVVCC</li>
                     <li>• 📧 Gerar emails e scripts de venda</li>
                     <li>• 💰 Calcular ROI específico</li>
                     <li>• 🎯 Detectar problemas e inconsistências</li>
                   </ul>
-                  <p className="mt-2 font-semibold">
-                    Digite o nome de um cliente para começar!
-                  </p>
+                  <div className="mt-3 p-2 bg-yellow-50 rounded border border-yellow-200">
+                    <p className="font-semibold text-yellow-800">
+                      💡 Digite o nome de qualquer cliente ou "listar" para ver todas!
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
@@ -826,7 +829,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
-                placeholder="Pergunte sobre a oportunidade..."
+                placeholder="Digite um cliente ou 'listar todas'..."
                 className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={isLoading}
               />
