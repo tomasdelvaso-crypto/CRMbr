@@ -551,11 +551,21 @@ const detectOpportunityQuery = (message) => {
       }
 
       // Detectar si está preguntando por una oportunidad específica
-      const possibleClient = detectOpportunityQuery(messageText);
-      let searchedOpportunity = null;
-      let searchResults = [];
-      
-      if (possibleClient && supabase) {
+const possibleClient = detectOpportunityQuery(messageText);
+let searchedOpportunity = null;
+let searchResults = [];
+
+// Detectar si está compartiendo info sobre una NUEVA oportunidad
+const newOppIndicators = ['tengo una nueva', 'nova oportunidade', 'nuevo cliente', 
+                          'voy a visitar', 'reunión con', 'demo con', 'presentación para'];
+const isNewOpportunity = newOppIndicators.some(indicator => 
+  messageText.toLowerCase().includes(indicator)
+);
+
+if (isNewOpportunity) {
+  // No buscar, es información nueva - dejar que el asistente la procese
+  searchedOpportunity = null;
+} else if (possibleClient && supabase) {
         searchResults = await searchOpportunity(possibleClient);
         if (searchResults && searchResults.length > 0) {
           searchedOpportunity = searchResults[0]; // Tomar la primera coincidencia
