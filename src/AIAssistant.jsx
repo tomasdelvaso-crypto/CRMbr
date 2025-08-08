@@ -324,31 +324,51 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   };
 
-  // Detectar si el mensaje pregunta por una oportunidad específica
-  const detectOpportunityQuery = (message) => {
-    const patterns = [
-      /(?:como está|status|situação|análise|diagnóstico|info|información|dados|escalas|ppvvcc)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\?|$)/i,
-      /(?:mostrar|ver|buscar|encontrar|analizar|checar)\s+(?:oportunidad|oportunidade|deal|negócio)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\?|$)/i,
-      /(?:qual|como|qué)\s+(?:está|anda|vai)\s+(.+?)(?:\?|$)/i,
-      /^(.+?)\s+(?:está|anda|como vai|status|situação)/i,
-      /(?:buscar|busca|search|find)\s+(.+)/i,
-      /(?:cliente|empresa|company)\s+(.+)/i
-    ];
-    
-    for (const pattern of patterns) {
-      const match = message.match(pattern);
-      if (match && match[1]) {
-        return match[1].trim();
-      }
-    }
-    
-    // Si no coincide con patrones, pero el mensaje es corto (posible nombre), intentar búsqueda
-    if (message.length < 50 && !message.includes(' ')) {
-      return message.trim();
-    }
-    
+// Detectar si el mensaje pregunta por una oportunidad específica
+const detectOpportunityQuery = (message) => {
+  // Primero verificar si es una CONSULTA sobre una oportunidad existente
+  const searchPatterns = [
+    /(?:como está|status de|situação de|análise de|info sobre|información sobre|dados de|escalas de|ppvvcc de)\s+(.+?)(?:\?|$)/i,
+    /(?:mostrar|ver|buscar|encontrar|analizar|checar)\s+(?:oportunidad|oportunidade|deal|negócio|cliente)\s+(.+?)(?:\?|$)/i,
+    /(?:qual|como|qué)\s+(?:está|anda|vai)\s+(.+?)(?:\?|$)/i,
+    /^buscar\s+(.+)/i,
+    /^encontrar\s+(.+)/i,
+    /^cliente\s+(.+?)(?:\s|$)/i
+  ];
+  
+  // Palabras que indican que NO es una búsqueda sino contexto nuevo
+  const contextIndicators = [
+    'tengo', 'tenho', 'nueva', 'novo', 'voy a', 'vou', 'visitaré', 
+    'reunión', 'meeting', 'demo', 'presentación', 'llamé', 'contacté',
+    'hablé', 'falei', 'admitieron', 'dijeron', 'quieren', 'necesitan'
+  ];
+  
+  const lowerMessage = message.toLowerCase();
+  
+  // Si el mensaje contiene indicadores de contexto nuevo, NO es búsqueda
+  if (contextIndicators.some(indicator => lowerMessage.includes(indicator))) {
     return null;
-  };
+  }
+  
+  // Verificar patrones de búsqueda explícita
+  for (const pattern of searchPatterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  // Solo si es UNA SOLA PALABRA podría ser nombre de empresa
+  const words = message.trim().split(/\s+/);
+  if (words.length === 1 && words[0].length > 2) {
+    // Pero NO si parece ser parte de una oración
+    if (!message.includes('.') && !message.includes(',')) {
+      return words[0];
+    }
+  }
+  
+  return null;
+};
 
   // Quick Actions dinámicas - MÁXIMO 4 BOTONES
   const getQuickActions = () => {
