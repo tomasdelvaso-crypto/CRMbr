@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageCircle, X, AlertTriangle, Target, RefreshCw, TrendingUp } from 'lucide-react';
+import { MessageCircle, X, AlertTriangle, Target, RefreshCw, TrendingUp, Globe } from 'lucide-react';
 
 const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, supabase }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -11,7 +11,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
   const [allOpportunities, setAllOpportunities] = useState([]);
   const [pipelineHealth, setPipelineHealth] = useState(null);
   
-  // NUEVO: Estado para la oportunidad activa en el contexto del asistente
+  // Estado para la oportunidad activa en el contexto del asistente
   const [assistantActiveOpportunity, setAssistantActiveOpportunity] = useState(null);
 
   // Cargar datos del pipeline al iniciar
@@ -21,7 +21,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   }, [currentUser, supabase]);
 
-  // MODIFICADO: Usar oportunidad activa del asistente O la que viene del CRM
+  // Usar oportunidad activa del asistente O la que viene del CRM
   useEffect(() => {
     const opportunityToAnalyze = assistantActiveOpportunity || currentOpportunity;
     if (opportunityToAnalyze) {
@@ -267,7 +267,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     setAlerts(newAlerts);
   };
 
-  // MEJORADO: Buscar oportunidad específica cuando el vendedor pregunta
+  // Buscar oportunidad específica en Supabase
   const searchOpportunity = async (clientName) => {
     if (!supabase) {
       console.warn('Supabase no disponible para búsqueda');
@@ -303,7 +303,28 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   };
 
-  // MEJORADO: Detectar si el mensaje pregunta por una oportunidad específica
+  // NUEVO: Buscar en Google con Serper
+  const searchGoogle = async (searchTerm) => {
+    try {
+      const response = await fetch('/api/google-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: searchTerm })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.results && data.results.length > 0) {
+        return data.results;
+      }
+      return null;
+    } catch (err) {
+      console.error('Error buscando en Google:', err);
+      return null;
+    }
+  };
+
+  // Detectar si el mensaje pregunta por una oportunidad específica
   const detectOpportunityQuery = (message) => {
     const patterns = [
       /(?:como está|status|situação|análise|diagnóstico|info|información|dados|escalas|ppvvcc)\s+(?:de\s+|da\s+|do\s+)?(.+?)(?:\?|$)/i,
@@ -329,7 +350,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return null;
   };
 
-  // MODIFICADO: Quick Actions dinámicas - MÁXIMO 4 BOTONES
+  // Quick Actions dinámicas - MÁXIMO 4 BOTONES
   const getQuickActions = () => {
     // Usar la oportunidad activa del asistente O la del CRM
     const activeOpp = assistantActiveOpportunity || currentOpportunity;
@@ -385,7 +406,14 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       });
     }
     
-    // Prioridad 2: Diagnóstico de inconsistencias
+    // Prioridad 2: Buscar en Google
+    actions.push({
+      icon: '🌐',
+      label: 'Google empresa',
+      prompt: `buscar en Google ${activeOpp.client}`
+    });
+    
+    // Prioridad 3: Diagnóstico de inconsistencias
     if (analysis && analysis.inconsistencies && analysis.inconsistencies.length > 0) {
       actions.push({
         icon: '⚠️',
@@ -396,7 +424,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       });
     }
     
-    // Prioridad 3: Basado en la escala más baja
+    // Prioridad 4: Basado en la escala más baja
     const lowestScale = Math.min(painValue, powerValue, visionValue, valueValue);
     
     if (lowestScale === painValue && painValue < 5) {
@@ -430,7 +458,12 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return actions.slice(0, 4);
   };
 
-  // MODIFICADO: Enviar mensaje al asistente
+  // Obtener la oportunidad activa para mostrar en el panel
+  const getActiveOpportunity = () => {
+    return assistantActiveOpportunity || currentOpportunity;
+  };
+
+  // Enviar mensaje al asistente
   const sendMessage = async (messageText = input) => {
     if (!messageText.trim()) return;
 
@@ -440,6 +473,63 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     setIsLoading(true);
 
     try {
+      // NUEVO: Detectar búsqueda en Google
+      if (messageText.toLowerCase().includes('google') || 
+          messageText.toLowerCase().includes('buscar web') ||
+          messageText.toLowerCase().includes('buscar en internet')) {
+        
+        // Extraer el término de búsqueda
+        const searchTerm = messageText
+          .replace(/buscar en google|buscar web|buscar en internet|google/gi, '')
+          .trim() || getActiveOpportunity()?.client;
+        
+        if (!searchTerm) {
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: '❌ Especifica qué empresa querés buscar.\n\nEjemplos:\n• "buscar Google MercadoLibre"\n• "Google Natura Brasil"\n• "buscar web Amazon"'
+          }]);
+          setIsLoading(false);
+          return;
+        }
+        
+        // Buscar en Google
+        const results = await searchGoogle(searchTerm + ' Brasil empresa');
+        
+        if (results && results.length > 0) {
+          const formatted = results.map((r, idx) => 
+            `${idx + 1}. **${r.title}**\n` +
+            `   ${r.snippet}\n` +
+            `   🔗 [Ver más](${r.link})\n` +
+            (r.hasRevenue ? '   💰 Menciona facturación\n' : '') +
+            (r.hasEmployees ? '   👥 Menciona empleados\n' : '')
+          ).join('\n');
+          
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: `🔍 **Resultados de Google para "${searchTerm}":**\n\n${formatted}\n\n` +
+                     `💡 **Cómo usar esta info:**\n` +
+                     `• **Dimensionar oportunidad** - Ver tamaño y facturación\n` +
+                     `• **Preparar reunión** - Entender su negocio\n` +
+                     `• **Encontrar pain points** - Buscar problemas en noticias\n` +
+                     `• **Identificar decisores** - LinkedIn de los ejecutivos\n\n` +
+                     `📝 **Próximo paso:** Actualiza el CRM con esta información relevante.`
+          }]);
+        } else {
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: `❌ No encontré información sobre "${searchTerm}" en Google.\n\n` +
+                     `Probá con búsquedas más específicas:\n` +
+                     `• "${searchTerm} facturación 2024"\n` +
+                     `• "${searchTerm} empleados Brasil"\n` +
+                     `• "${searchTerm} noticias logística"\n` +
+                     `• "${searchTerm} problemas distribución"`
+          }]);
+        }
+        
+        setIsLoading(false);
+        return;
+      }
+
       // Detectar si está preguntando por una oportunidad específica
       const possibleClient = detectOpportunityQuery(messageText);
       let searchedOpportunity = null;
@@ -588,11 +678,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // NUEVO: Obtener la oportunidad activa para mostrar en el panel
-  const getActiveOpportunity = () => {
-    return assistantActiveOpportunity || currentOpportunity;
   };
 
   return (
@@ -782,6 +867,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                   <p>Sou seu assistente PPVVCC. Posso ajudar com:</p>
                   <ul className="ml-2 space-y-1">
                     <li>• 🔍 Buscar e analisar QUALQUER oportunidade</li>
+                    <li>• 🌐 Buscar información en Google</li>
                     <li>• 📊 Diagnosticar escalas PPVVCC</li>
                     <li>• 📧 Gerar emails e scripts de venda</li>
                     <li>• 💰 Calcular ROI específico</li>
@@ -789,8 +875,13 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                   </ul>
                   <div className="mt-3 p-2 bg-yellow-50 rounded border border-yellow-200">
                     <p className="font-semibold text-yellow-800">
-                      💡 Digite o nome de qualquer cliente ou "listar" para ver todas!
+                      💡 Comandos útiles:
                     </p>
+                    <ul className="text-xs mt-1">
+                      <li>• "listar" - Ver todas las oportunidades</li>
+                      <li>• "Amazon" - Analizar cliente específico</li>
+                      <li>• "google MercadoLibre" - Buscar en internet</li>
+                    </ul>
                   </div>
                 </div>
               </div>
@@ -829,7 +920,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
-                placeholder="Digite um cliente ou 'listar todas'..."
+                placeholder='Ej: "listar", "Amazon", "google Natura"...'
                 className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={isLoading}
               />
