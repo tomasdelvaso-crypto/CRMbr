@@ -1,4 +1,48 @@
 // api/assistant.js
+
+// ============= FUNCIÓN PARA BUSCAR EN GOOGLE =============
+async function searchGoogleForContext(query) {
+  const SERPER_API_KEY = process.env.SERPER_API_KEY;
+  if (!SERPER_API_KEY) return null;
+  
+  try {
+    const response = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': SERPER_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        q: query,
+        gl: 'br',
+        hl: 'pt',
+        num: 5,
+        type: 'search'
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.organic && data.organic.length > 0) {
+      return data.organic.map(r => ({
+        title: r.title,
+        snippet: r.snippet,
+        link: r.link,
+        // Extraer métricas si aparecen
+        hasRevenue: r.snippet?.includes('R$') || r.snippet?.includes('milhões') || r.snippet?.includes('bilhões'),
+        hasEmployees: r.snippet?.match(/\d+\s*(funcionários|empleados|employees)/i) !== null,
+        hasExpansion: r.snippet?.toLowerCase().includes('expansão') || r.snippet?.toLowerCase().includes('novo centro'),
+        hasProblems: r.snippet?.toLowerCase().includes('problema') || r.snippet?.toLowerCase().includes('desafio')
+      }));
+    }
+    return null;
+  } catch (error) {
+    console.error('Error buscando en Google:', error);
+    return null;
+  }
+}
+
+// ============= HANDLER PRINCIPAL =============
 export default async function handler(req, res) {
   // Habilitar CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -18,12 +62,43 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { messages, context, opportunityData, pipelineData } = req.body;
+  const { messages, context, opportunityData, pipelineData, searchContext } = req.body;
+
+  // NUEVO: Validar si la búsqueda falló
+  if (searchContext && searchContext.found === false) {
+    return res.status(200).json({
+      response: `❌ No encontré "${searchContext.searchTerm}" en el CRM.\n\n` +
+                `📋 Oportunidades disponibles:\n` +
+                (pipelineData?.allOpportunities?.slice(0, 10).map(o => 
+                  `• ${o.client} - R$${o.value?.toLocaleString() || 0}`
+                ).join('\n') || 'No hay oportunidades cargadas') +
+                `\n\n💡 Usa "listar" para ver todas o escribe el nombre exacto del cliente.`
+    });
+  }
+
+  // NUEVO: Buscar información adicional en Google si hay una oportunidad
+  let googleContext = null;
+  if (opportunityData && opportunityData.client) {
+    // Detectar si necesita información actualizada
+    const needsWebSearch = context.toLowerCase().includes('actualiz') || 
+                          context.toLowerCase().includes('noticia') ||
+                          context.toLowerCase().includes('reciente') ||
+                          context.toLowerCase().includes('información') ||
+                          context.toLowerCase().includes('expansion') ||
+                          context.toLowerCase().includes('facturación');
+    
+    if (needsWebSearch) {
+      console.log('Buscando en Google para:', opportunityData.client);
+      googleContext = await searchGoogleForContext(
+        `${opportunityData.client} Brasil ${opportunityData.industry || ''} facturación empleados noticias 2024 2025`
+      );
+    }
+  }
 
   // Detectar tipo de solicitud
   const requestType = detectRequestType(context);
 
-  // System prompt mejorado con capacidades de email y más contexto
+  // System prompt mejorado con contexto de Google
   const systemPrompt = `
 Eres el asesor experto en ventas consultivas de Ventapel Brasil.
 Utilizas la metodología PPVVCC (Pain, Power, Vision, Value, Control, Compras) para analizar y mejorar oportunidades.
@@ -37,19 +112,22 @@ CAPACIDADES ESPECIALES:
 5. Calcular ROI específico
 6. Diseñar estrategias de cuenta
 7. Resolver objeciones específicas
+8. Usar información actualizada de internet cuando está disponible
 
 REGLAS CRÍTICAS - NUNCA VIOLAR:
-1. SOLO usar datos REALES proporcionados en opportunityData o pipelineData
+1. SOLO usar datos REALES proporcionados en opportunityData, pipelineData o googleContext
 2. Si no hay datos de una oportunidad, responder: "No encontré esa oportunidad en el CRM. Use 'listar' para ver todas las disponibles."
 3. NUNCA inventar clientes, valores, contactos o métricas
 4. Si opportunityData es null, NO ASUMIR ningún dato
 5. Si pipelineData.allOpportunities está vacío, decir que no hay oportunidades
 6. NUNCA crear ejemplos ficticios de clientes que no existen
+7. Si hay googleContext, usarlo para enriquecer la respuesta con información actualizada
 
 VALIDACIÓN DE DATOS:
 - Si opportunityData === null → "No hay oportunidad seleccionada"
 - Si searchContext?.found === false → "No encontré esa oportunidad"
 - Solo usar clientes que aparezcan en pipelineData.allOpportunities
+- Si hay googleContext → Mencionar la información actualizada encontrada
 
 CONTEXTO VENTAPEL:
 - Vendemos soluciones de empaquetado que reducen violación de cajas (3-5% promedio industria)
@@ -57,10 +135,13 @@ CONTEXTO VENTAPEL:
 - ROI típico: 3-6 meses
 - Precio promedio: R$50,000 - R$200,000
 - Casos de éxito: 
-  * MercadoLibre: 40% reducción retrabalho, ROI 4 meses
+  * L'Oréal: 100% furtos eliminados, +50% eficiencia, ROI 3 meses
+  * Nike: Furtos zero, +30% eficiencia, ROI 2 meses
+  * MercadoLibre: 40% reducción retrabalho, ahorro R$180k/mes
   * Natura: 60% menos violaciones, ahorro R$85k/mes
   * Magazine Luiza: 35% reducción devoluciones
-  * Dafiti: Eliminó retrabalho manual completamente
+  * Centauro: 95% reducción furtos, economía R$50M/año
+  * Honda Argentina: +40% velocidad, 100% reducción faltantes
 
 COMPETIDORES Y DIFERENCIADORES:
 - 3M: Más caro (30%), solo cinta, sin máquinas
@@ -68,8 +149,28 @@ COMPETIDORES Y DIFERENCIADORES:
 - Genéricos chinos: 70% más baratos pero sin garantía ni soporte
 - NUESTRO DIFERENCIAL: Solución completa (máquina + cinta + soporte) con garantía de reducción 40% o devolvemos dinero
 
-${requestType === 'email' ? getEmailTemplates() : ''}
-${requestType === 'script' ? getCallScriptTemplates() : ''}
+${googleContext && googleContext.length > 0 ? `
+📰 INFORMACIÓN ACTUALIZADA DE INTERNET sobre ${opportunityData?.client}:
+${googleContext.map((r, idx) => `
+${idx + 1}. ${r.title}
+   ${r.snippet}
+   ${r.hasRevenue ? '💰 Menciona facturación o números financieros' : ''}
+   ${r.hasEmployees ? '👥 Menciona cantidad de empleados' : ''}
+   ${r.hasExpansion ? '🚀 Menciona expansión o crecimiento' : ''}
+   ${r.hasProblems ? '⚠️ Menciona problemas o desafíos' : ''}
+   Fuente: ${r.link}
+`).join('\n')}
+
+INSTRUCCIONES PARA USAR ESTA INFO:
+- Si hay expansión mencionada → Es momento ideal para propuesta (están invirtiendo)
+- Si hay problemas logísticos → Conectar directamente con nuestra solución
+- Si hay datos financieros → Dimensionar correctamente la propuesta
+- Si hay cambios recientes → Usarlos como trigger para reactivar
+- SIEMPRE mencionar que tienes información actualizada cuando la uses
+` : ''}
+
+${requestType === 'email' ? getEmailTemplates(googleContext) : ''}
+${requestType === 'script' ? getCallScriptTemplates(googleContext) : ''}
 ${requestType === 'objection' ? getObjectionHandlers() : ''}
 
 ${pipelineData ? `
@@ -108,14 +209,15 @@ ESCALAS PPVVCC ACTUALES:
 - COMPRAS: ${opportunityData.scales?.purchase || 0}/10
 
 ANÁLISIS SITUACIONAL:
-${generateSituationalAnalysis(opportunityData)}
+${generateSituationalAnalysis(opportunityData, googleContext)}
 
 PRÓXIMA MEJOR ACCIÓN:
-${generateNextBestAction(opportunityData)}
+${generateNextBestAction(opportunityData, googleContext)}
 ` : ''}
 
 INSTRUCCIONES PARA RESPONDER:
 ${getResponseInstructions(requestType, context)}
+${googleContext ? '\n- MENCIONA que tienes información actualizada de internet cuando sea relevante' : ''}
 
 PREGUNTA DEL USUARIO: ${context}
 `;
@@ -126,7 +228,7 @@ PREGUNTA DEL USUARIO: ${context}
     if (!apiKey) {
       console.error('No se encontró API key de Claude');
       return res.status(200).json({ 
-        response: generateEnhancedFallbackResponse(opportunityData, context, requestType)
+        response: generateEnhancedFallbackResponse(opportunityData, context, requestType, googleContext)
       });
     }
 
@@ -140,7 +242,7 @@ PREGUNTA DEL USUARIO: ${context}
       },
       body: JSON.stringify({
         model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 3000, // Aumentado para emails largos
+        max_tokens: 3000,
         temperature: 0.7,
         system: systemPrompt,
         messages: messages && messages.length > 0 ? messages : [
@@ -158,15 +260,15 @@ PREGUNTA DEL USUARIO: ${context}
     const data = await response.json();
     
     res.status(200).json({ 
-      response: data.content?.[0]?.text || generateEnhancedFallbackResponse(opportunityData, context, requestType),
-      analysis: opportunityData ? generateSituationalAnalysis(opportunityData) : null
+      response: data.content?.[0]?.text || generateEnhancedFallbackResponse(opportunityData, context, requestType, googleContext),
+      analysis: opportunityData ? generateSituationalAnalysis(opportunityData, googleContext) : null
     });
 
   } catch (error) {
     console.error('Error calling Claude API:', error);
     
     res.status(200).json({ 
-      response: generateEnhancedFallbackResponse(opportunityData, context, requestType)
+      response: generateEnhancedFallbackResponse(opportunityData, context, requestType, googleContext)
     });
   }
 }
@@ -174,6 +276,14 @@ PREGUNTA DEL USUARIO: ${context}
 // Detectar tipo de solicitud
 function detectRequestType(context) {
   const lowerContext = context?.toLowerCase() || '';
+  
+  // NUEVO: Detectar necesidad de información web
+  if (lowerContext.includes('actualiz') || 
+      lowerContext.includes('noticia') ||
+      lowerContext.includes('reciente') ||
+      lowerContext.includes('información')) {
+    return 'web-enriched';
+  }
   
   if (lowerContext.includes('email') || lowerContext.includes('correo') || lowerContext.includes('mensaje')) {
     return 'email';
@@ -197,23 +307,27 @@ function detectRequestType(context) {
   return 'general';
 }
 
-// Templates de email según situación
-function getEmailTemplates() {
+// Templates de email mejorados con contexto web
+function getEmailTemplates(googleContext) {
+  const hasRecentNews = googleContext && googleContext.length > 0;
+  const triggerEvent = hasRecentNews && googleContext[0].hasExpansion ? 
+    `Vi que están expandiendo operaciones - ` : '';
+  
   return `
 TEMPLATES DE EMAIL SEGÚN SITUACIÓN:
 
 1. PRIMER CONTACTO (DOR < 3):
-Asunto: [Empresa] redujo 40% violación de cajas - caso relevante para [Cliente]
+Asunto: ${triggerEvent}[Empresa] redujo 40% violación de cajas
 Estructura:
-- Gancho con caso similar a su industria
+- ${hasRecentNews ? 'Referencia a noticia reciente de la empresa' : 'Gancho con caso similar'}
 - Problema específico que resolvemos (con números)
 - Pregunta que genere reflexión
 - CTA suave para conversar
 
 2. REACTIVACIÓN (>7 días sin contacto):
-Asunto: ¿Sigue siendo prioridad reducir los R$[cantidad] en retrabalho?
+Asunto: ${triggerEvent}¿Sigue siendo prioridad reducir los R$[cantidad]?
 Estructura:
-- Referencia última conversación
+- ${hasRecentNews ? 'Mencionar cambio/noticia reciente' : 'Referencia última conversación'}
 - Nuevo insight o caso de éxito
 - Crear urgencia (competidor ya implementó)
 - CTA específico con fecha/hora
@@ -222,7 +336,7 @@ Estructura:
 Asunto: Demo personalizada Ventapel - [fecha] - reducción 40% violaciones
 Estructura:
 - Confirmar dolor específico admitido
-- Agenda clara de la demo (30 min)
+- ${hasRecentNews ? 'Conectar con situación actual de la empresa' : 'Agenda clara de la demo'}
 - Quién debe participar
 - Resultados esperados post-demo
 
@@ -230,7 +344,7 @@ Estructura:
 Asunto: Propuesta Ventapel [Cliente] - ROI 4.5 meses - Garantía 40% reducción
 Estructura:
 - Resumen ejecutivo con ROI
-- Inversión y condiciones
+- ${hasRecentNews ? 'Alineación con objetivos actuales mencionados en noticias' : 'Inversión y condiciones'}
 - Garantías y casos de éxito
 - Próximos pasos claros
 
@@ -238,28 +352,33 @@ Estructura:
 Asunto: Próximos pasos - Implementación Ventapel en [Cliente]
 Estructura:
 - Recap de puntos clave de la demo
-- Respuestas a preguntas pendientes
+- ${hasRecentNews ? 'Conexión con iniciativas actuales' : 'Respuestas a preguntas pendientes'}
 - Timeline de implementación
 - Urgencia por disponibilidad de agenda
 `;
 }
 
-// Scripts de llamada
-function getCallScriptTemplates() {
+// Scripts de llamada mejorados
+function getCallScriptTemplates(googleContext) {
+  const hasRecentInfo = googleContext && googleContext.length > 0;
+  
   return `
 SCRIPTS DE LLAMADA SEGÚN OBJETIVO:
 
 1. LLAMADA DE CALIFICACIÓN (SPIN):
+${hasRecentInfo ? 'APERTURA CON TRIGGER: "Vi que [mencionar noticia reciente]..."' : ''}
 SITUACIÓN: "¿Cómo manejan hoy el empaquetado en el CD?"
 PROBLEMA: "¿Qué % de cajas llegan violadas al cliente?"
 IMPLICACIÓN: "¿Cuánto tiempo dedican a re-embalar?"
 NEED-PAYOFF: "¿Qué valor tendría eliminar ese retrabalho?"
 
 2. LLAMADA PARA ACCEDER AL PODER:
+${hasRecentInfo ? 'GANCHO: "Con la [expansión/cambio] que están haciendo..."' : ''}
 "[Nombre], para diseñar la mejor solución necesito entender las prioridades del gerente de operaciones. 
 ¿Podríamos incluirlo en una call de 20 minutos esta semana?"
 
 3. LLAMADA DE CIERRE:
+${hasRecentInfo ? 'URGENCIA: "Considerando su [proyecto/expansión actual]..."' : ''}
 "[Nombre], ya identificamos R$[X] en ahorros mensuales.
 Tengo disponibilidad para comenzar implementación en 2 semanas.
 ¿Qué necesitamos resolver para avanzar con el pedido de compra?"
@@ -274,7 +393,7 @@ MANEJO DE OBJECIONES COMUNES:
 "ES MUY CARO":
 1. Reframe a inversión: "Entiendo. ¿Comparado con los R$[X] que pierden mensualmente en retrabalho?"
 2. Mostrar ROI: "La inversión se paga en 4 meses. Después es ahorro puro."
-3. Caso similar: "MercadoLibre pensó lo mismo. Hoy ahorran R$180k/mes."
+3. Caso similar: "L'Oréal pensó lo mismo. Hoy ahorran R$280k/mes con ROI de 3 meses."
 
 "YA TENEMOS PROVEEDOR (3M)":
 1. No atacar: "3M es buena empresa. ¿Están 100% satisfechos con los resultados?"
@@ -296,6 +415,13 @@ MANEJO DE OBJECIONES COMUNES:
 // Instrucciones específicas según tipo de request
 function getResponseInstructions(requestType, context) {
   const instructions = {
+    'web-enriched': `
+RESPONDE CON INFO ACTUALIZADA:
+- Menciona explícitamente que tienes información reciente
+- Conecta la info de web con la oportunidad
+- Usa triggers de noticias para crear urgencia
+- Personaliza con datos específicos encontrados`,
+    
     'email': `
 GENERA UN EMAIL ESPECÍFICO:
 - Asunto llamativo y específico
@@ -359,8 +485,8 @@ RESPONDE CON ANÁLISIS Y ACCIÓN:
   return instructions[requestType] || instructions.general;
 }
 
-// Análisis situacional mejorado
-function generateSituationalAnalysis(opportunity) {
+// Análisis situacional mejorado con contexto web
+function generateSituationalAnalysis(opportunity, googleContext) {
   if (!opportunity || !opportunity.scales) return 'Sin datos para análisis';
   
   const scales = opportunity.scales;
@@ -378,12 +504,34 @@ function generateSituationalAnalysis(opportunity) {
     analysis.push('🟢 DEAL CALIENTE - Presionar para cierre inmediato');
   }
   
+  // NUEVO: Agregar insights de Google si están disponibles
+  if (googleContext && googleContext.length > 0) {
+    analysis.push('\n📰 CONTEXTO ACTUAL (información de internet):');
+    
+    googleContext.forEach((item, idx) => {
+      if (item.hasExpansion) {
+        analysis.push(`• 🚀 OPORTUNIDAD: Están expandiendo - momento IDEAL para propuesta`);
+      }
+      if (item.hasProblems) {
+        analysis.push(`• ⚠️ PAIN POINT DETECTADO: Problemas mencionados que podemos resolver`);
+      }
+      if (item.hasRevenue) {
+        analysis.push(`• 💰 DIMENSIÓN: Empresa con facturación significativa - ajustar propuesta`);
+      }
+      if (item.hasEmployees) {
+        analysis.push(`• 👥 TAMAÑO: Información de empleados disponible para dimensionar`);
+      }
+    });
+  }
+  
   // Análisis por industria
   const industryInsights = {
     'e-commerce': 'Black Friday/Navidad cerca - Crear urgencia con timeline de implementación',
     'farmaceutica': 'ANVISA puede ser aliado - Mencionar compliance y trazabilidad',
     '3pl': 'Márgenes ajustados - Enfocar en reducción costo por pedido',
-    'alimentos': 'Pérdida de producto = pérdida directa - Calcular valor producto perdido'
+    'alimentos': 'Pérdida de producto = pérdida directa - Calcular valor producto perdido',
+    'cosmetica': 'Alto valor unitario - Enfoque en seguridad y presentación premium',
+    'textil': 'Volumen alto, márgenes bajos - Eficiencia es clave'
   };
   
   if (opportunity.industry && industryInsights[opportunity.industry.toLowerCase()]) {
@@ -405,17 +553,27 @@ function generateSituationalAnalysis(opportunity) {
   return analysis.join('\n');
 }
 
-// Generar siguiente mejor acción mejorada
-function generateNextBestAction(opportunity) {
+// Generar siguiente mejor acción mejorada con contexto web
+function generateNextBestAction(opportunity, googleContext) {
   const scales = opportunity.scales;
   const daysSince = getDaysSinceLastContact(opportunity.last_update);
+  
+  // NUEVO: Si hay trigger event en Google, usarlo
+  let triggerEvent = '';
+  if (googleContext && googleContext.length > 0) {
+    if (googleContext[0].hasExpansion) {
+      triggerEvent = 'Vi que están expandiendo operaciones. ';
+    } else if (googleContext[0].hasProblems) {
+      triggerEvent = 'Vi los desafíos logísticos que mencionaron. ';
+    }
+  }
   
   // Prioridad 1: Deals fríos
   if (daysSince > 7) {
     return `
 🚨 ACCIÓN URGENTE: Reactivar YA
-EMAIL ASUNTO: "¿Sigue siendo prioridad reducir los R$${Math.round(opportunity.value * 0.15).toLocaleString()} mensuales en retrabalho?"
-CONTENIDO: Referencia última conversación + nuevo caso de éxito + crear urgencia
+EMAIL ASUNTO: "${triggerEvent}¿Sigue siendo prioridad reducir los R$${Math.round(opportunity.value * 0.15).toLocaleString()} mensuales?"
+CONTENIDO: ${triggerEvent}Referencia última conversación + nuevo caso de éxito + crear urgencia
 FOLLOW-UP: Llamar 2 horas después del email`;
   }
   
@@ -423,8 +581,8 @@ FOLLOW-UP: Llamar 2 horas después del email`;
   if (scales.pain < 5) {
     return `
 🔴 ACCIÓN: Reunión para admitir dolor
-SCRIPT: "${opportunity.client}, empresas similares pierden 3-5% por violación. 
-Con sus ${opportunity.value / 50} envíos mensuales, son R$${Math.round(opportunity.value * 0.03).toLocaleString()} perdidos.
+SCRIPT: "${opportunity.client}, ${triggerEvent}empresas similares pierden 3-5% por violación. 
+Con sus ${Math.round(opportunity.value / 50)} envíos mensuales, son R$${Math.round(opportunity.value * 0.03).toLocaleString()} perdidos.
 ¿Cuál es su experiencia con este problema?"`;
   }
   
@@ -432,7 +590,7 @@ Con sus ${opportunity.value / 50} envíos mensuales, son R$${Math.round(opportun
   if (scales.power < 4) {
     return `
 🔴 ACCIÓN: Acceder al decisor esta semana
-EMAIL: "Para garantizar el ROI de R$${Math.round(opportunity.value * 2.5).toLocaleString()} anual,
+EMAIL: "${triggerEvent}Para garantizar el ROI de R$${Math.round(opportunity.value * 2.5).toLocaleString()} anual,
 necesito 20 minutos con quien aprueba inversiones en logística.
 ¿Lo incluimos en nuestra call del jueves?"`;
   }
@@ -441,7 +599,7 @@ necesito 20 minutos con quien aprueba inversiones en logística.
   if (scales.pain >= 7 && scales.power >= 6 && scales.value >= 6) {
     return `
 🟢 ACCIÓN: Cerrar esta semana
-LLAMADA: "Ya validamos R$${Math.round(opportunity.value * 0.2).toLocaleString()}/mes en ahorros.
+LLAMADA: "${triggerEvent}Ya validamos R$${Math.round(opportunity.value * 0.2).toLocaleString()}/mes en ahorros.
 Puedo comenzar implementación el lunes.
 ¿Qué necesitamos para el pedido de compra hoy?"`;
   }
@@ -486,81 +644,98 @@ function getTopDealsToClose(pipelineData) {
   ).join('\n');
 }
 
-// Respuesta fallback mejorada con capacidad de email
-function generateEnhancedFallbackResponse(opportunityData, context, requestType) {
+// Respuesta fallback mejorada con capacidad de email y contexto web
+function generateEnhancedFallbackResponse(opportunityData, context, requestType, googleContext) {
+  // Si no hay oportunidad, dar instrucciones
+  if (!opportunityData) {
+    return `❌ No hay ninguna oportunidad seleccionada o no existe en el CRM.
+
+📋 Comandos disponibles:
+• "listar" - Ver todas las oportunidades  
+• Escribir el nombre exacto del cliente
+• "buscar [nombre]" - Buscar cliente específico
+
+💡 Para generar emails, scripts o análisis, primero necesito que selecciones una oportunidad real del CRM.`;
+  }
+  
+  // Generar respuesta según tipo
   if (requestType === 'email' && opportunityData) {
-    return generateEmailTemplate(opportunityData, context);
+    return generateEmailTemplate(opportunityData, context, googleContext);
   }
   
   if (requestType === 'script' && opportunityData) {
-    return generateCallScript(opportunityData, context);
+    return generateCallScript(opportunityData, context, googleContext);
   }
   
-  if (!opportunityData) {
-    return `No puedo generar contenido específico sin datos de la oportunidad.
-    
-Pero aquí está la estructura que necesitás:
-
-📧 PARA EMAIL:
-- Asunto con beneficio específico
-- Párrafo de gancho (caso similar)
-- Bullets con valor cuantificado  
-- CTA con fecha específica
-- P.D. con urgencia
-
-📞 PARA LLAMADA:
-- Apertura con referencia conocida
-- Preguntas SPIN en secuencia
-- Manejo de "no tengo tiempo"
-- Cierre con próximo paso acordado
-
-Cargá una oportunidad para contenido personalizado.`;
-  }
-  
-  // Análisis estándar si no es email ni script
+  // Análisis estándar con contexto web si está disponible
   const scales = opportunityData.scales || {};
   const avg = scales ? 
     (scales.pain + scales.power + scales.vision + scales.value + scales.control + scales.purchase) / 6 : 0;
   
-  return `Análisis de ${opportunityData.client}:
+  let response = `📊 Análisis de ${opportunityData.client}:
 
-ESTADO: ${avg < 4 ? '🔴 CRÍTICO' : avg < 7 ? '🟡 TIBIO' : '🟢 CALIENTE'} (${avg.toFixed(1)}/10)
+ESTADO: ${avg < 4 ? '🔴 CRÍTICO' : avg < 7 ? '🟡 TIBIO' : '🟢 CALIENTE'} (${avg.toFixed(1)}/10)`;
 
-PROBLEMA PRINCIPAL: ${
-  scales.pain < 5 ? 'Cliente no admite el dolor' :
-  scales.power < 4 ? 'Sin acceso al decisor' :
-  scales.value < 5 ? 'ROI no validado' :
-  'Listo para cerrar'
-}
+  // Agregar contexto web si está disponible
+  if (googleContext && googleContext.length > 0) {
+    response += `\n\n📰 INFORMACIÓN ACTUALIZADA (de internet):`;
+    googleContext.slice(0, 3).forEach((item, idx) => {
+      response += `\n${idx + 1}. ${item.title}`;
+      if (item.hasExpansion) response += ` 🚀 [Expansión detectada]`;
+      if (item.hasProblems) response += ` ⚠️ [Problemas mencionados]`;
+    });
+  }
+
+  response += `\n\nPROBLEMA PRINCIPAL: ${
+    scales.pain < 5 ? 'Cliente no admite el dolor' :
+    scales.power < 4 ? 'Sin acceso al decisor' :
+    scales.value < 5 ? 'ROI no validado' :
+    'Listo para cerrar'
+  }
 
 PRÓXIMA ACCIÓN:
-${generateNextBestAction(opportunityData)}
+${generateNextBestAction(opportunityData, googleContext)}
 
-💡 Preguntame específicamente:
+💡 Pregúntame específicamente:
 - "Email para reactivar"
 - "Script para llamada"  
 - "Cómo manejar objeción de precio"
-- "Preparar demo para ${opportunityData.client}"`;
+- "Preparar demo para ${opportunityData.client}"
+- "Información actualizada de ${opportunityData.client}"`;
+
+  return response;
 }
 
-// Generar template de email específico
-function generateEmailTemplate(opportunity, context) {
+// Generar template de email específico con contexto web
+function generateEmailTemplate(opportunity, context, googleContext) {
   const scales = opportunity.scales;
   const daysSince = getDaysSinceLastContact(opportunity.last_update);
+  
+  // Buscar trigger event si hay contexto web
+  let triggerEvent = '';
+  if (googleContext && googleContext.length > 0) {
+    if (googleContext[0].hasExpansion) {
+      triggerEvent = `Vi que ${opportunity.client} está expandiendo operaciones. `;
+    } else if (googleContext[0].hasProblems) {
+      triggerEvent = `Vi los desafíos logísticos que ${opportunity.client} mencionó recientemente. `;
+    }
+  }
   
   if (daysSince > 7) {
     return `📧 EMAIL DE REACTIVACIÓN para ${opportunity.client}:
 
-ASUNTO: ¿Sigue siendo prioridad reducir los R$${Math.round(opportunity.value * 0.15).toLocaleString()} en retrabalho?
+ASUNTO: ${triggerEvent || ''}¿Sigue siendo prioridad reducir los R$${Math.round(opportunity.value * 0.15).toLocaleString()} en retrabalho?
 
 ${opportunity.power_sponsor || opportunity.sponsor || 'Estimado cliente'},
 
+${triggerEvent}
+
 En nuestra última conversación del ${opportunity.last_update}, identificamos una oportunidad de ahorro de R$${Math.round(opportunity.value * 0.15).toLocaleString()} mensuales en su operación.
 
-Desde entonces, ayudamos a [empresa similar] a:
-• Reducir 40% las violaciones de cajas
-• Eliminar 3 horas diarias de retrabalho
-• ROI completo en 4 meses
+Desde entonces, ayudamos a L'Oréal a:
+• Eliminar 100% los furtos
+• Aumentar 50% la eficiencia
+• ROI completo en 3 meses
 
 ¿Sigue siendo prioridad resolver este tema en ${opportunity.client}?
 
@@ -575,9 +750,11 @@ P.D. Tengo un slot el jueves 10am o viernes 3pm. ¿Cuál prefiere?`;
   if (scales.pain < 5) {
     return `📧 EMAIL PARA ADMITIR DOLOR - ${opportunity.client}:
 
-ASUNTO: MercadoLibre redujo R$180k/mes en retrabalho - caso relevante para ${opportunity.client}
+ASUNTO: ${triggerEvent || 'MercadoLibre redujo R$180k/mes en retrabalho'} - caso relevante para ${opportunity.client}
 
 ${opportunity.power_sponsor || 'Estimado cliente'},
+
+${triggerEvent}
 
 Empresas de ${opportunity.industry || 'logística'} pierden en promedio 3-5% de sus envíos por violación de cajas.
 
@@ -596,44 +773,56 @@ Saludos,
 ${opportunity.vendor}`;
   }
   
-  // Email genérico si no hay caso específico
+  // Email genérico mejorado
   return `📧 EMAIL PERSONALIZADO para ${opportunity.client}:
 
-ASUNTO: Propuesta de valor Ventapel - ${opportunity.client}
+ASUNTO: ${triggerEvent || 'Propuesta de valor Ventapel'} - ${opportunity.client}
 
 ${opportunity.power_sponsor || 'Estimado cliente'},
 
-[PÁRRAFO APERTURA - Referencia a última conversación o trigger event]
+${triggerEvent}
 
 Ventapel puede ayudar a ${opportunity.client} a:
 • Reducir 40% las violaciones de cajas
 • Ahorrar R$${Math.round(opportunity.value * 0.15).toLocaleString()}/mes en retrabalho
 • Mejorar satisfacción del cliente final
 
-[PÁRRAFO CASO DE ÉXITO - Similar a su industria]
+Caso similar: L'Oréal eliminó 100% los furtos con ROI de 3 meses.
 
 ¿Podemos agendar 30 minutos esta semana?
 
 Saludos,
 ${opportunity.vendor}
 
-P.D. [Urgencia o beneficio adicional]`;
+P.D. ${googleContext && googleContext[0]?.hasExpansion ? 
+  'Con su expansión actual, es el momento ideal para optimizar procesos.' : 
+  'Cada mes sin actuar = R$' + Math.round(opportunity.value * 0.15).toLocaleString() + ' perdidos.'}`;
 }
 
-// Generar script de llamada específico
-function generateCallScript(opportunity, context) {
+// Generar script de llamada específico con contexto web
+function generateCallScript(opportunity, context, googleContext) {
   const scales = opportunity.scales;
+  
+  // Buscar info relevante de Google
+  let openingHook = '';
+  if (googleContext && googleContext.length > 0) {
+    if (googleContext[0].hasExpansion) {
+      openingHook = `Vi que están expandiendo operaciones. `;
+    } else if (googleContext[0].hasProblems) {
+      openingHook = `Vi los desafíos logísticos que mencionaron. `;
+    }
+  }
   
   return `📞 SCRIPT DE LLAMADA para ${opportunity.client}:
 
 APERTURA (10 segundos):
 "Hola ${opportunity.power_sponsor || opportunity.sponsor || 'María'}, soy ${opportunity.vendor} de Ventapel. 
-¿Tiene 30 segundos? Le llamo por el tema de reducción de violaciones que conversamos."
+${openingHook}¿Tiene 30 segundos? Le llamo por el tema de reducción de violaciones que conversamos."
 
 [PAUSA - Esperar confirmación]
 
 GANCHO (20 segundos):
-"Perfecto. Desde nuestra última charla, ayudamos a [empresa similar] a reducir 40% sus violaciones.
+"Perfecto. ${openingHook}Desde nuestra última charla, ayudamos a L'Oréal a eliminar 100% sus furtos.
 Calculé que ${opportunity.client} podría ahorrar R$${Math.round(opportunity.value * 0.15).toLocaleString()} mensuales."
 
 PREGUNTAS SPIN:
@@ -667,7 +856,7 @@ MANEJO DE OBJECIONES:
 → "Claro. Para enviarle info relevante, ¿cuál es su mayor desafío: violaciones, retrabalho o devoluciones?"
 
 "Ya tenemos proveedor":
-→ "Excelente. ¿Están 100% satisfechos con los resultados? La mayoría usa ambos proveedores."
+→ "Excelente. ¿Están 100% satisfechos con los resultados? L'Oréal también usaba 3M y redujo costos 40%."
 
 CIERRE ALTERNATIVO:
 "Le envío un video de 2 minutos mostrando el antes/después en MercadoLibre. ¿Lo vemos juntos el jueves?"`;
