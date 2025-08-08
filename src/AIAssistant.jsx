@@ -667,28 +667,32 @@ if (isNewOpportunity) {
         searchTerm: possibleClient
       } : null);
 
-      const response = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [...messages, userMessage],
-          context: messageText,
-          opportunityData: opportunityContext,
-          ventapelContext: ventapelContext,
-          searchContext: searchContext,
-          language: 'português brasileiro',
-          focusOn: 'venda consultiva PPVVCC, solução de fechamento, detectar problemas',
-          instructions: {
-            dataAccuracy: 'CRÍTICO: Ao buscar informações sobre empresas, use APENAS dados verificados e reais. NUNCA invente ou estime dados.',
-            salesApproach: 'Seja direto e agressivo no diagnóstico PPVVCC. Detecte inconsistências e comunique sem rodeios.'
-          },
-          pipelineData: {
-            currentOpportunity: opportunityContext,
-            allOpportunities: allOpportunities,
-            pipelineHealth: pipelineHealth
-          }
-        })
-      });
+const response = await fetch('/api/assistant', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    messages: [...messages, userMessage],
+    context: messageText,
+    opportunityData: opportunityContext,
+    ventapelContext: ventapelContext,
+    searchContext: searchContext,
+    language: 'português brasileiro',
+    focusOn: 'venda consultiva PPVVCC, solução de fechamento, detectar problemas',
+    instructions: {
+      dataAccuracy: 'CRÍTICO: Ao buscar informações sobre empresas, use APENAS dados verificados e reais. NUNCA invente ou estime dados.',
+      salesApproach: 'Seja direto e agressivo no diagnóstico PPVVCC. Detecte inconsistências e comunique sem rodeios.',
+      newOpportunities: isNewOpportunity ? 
+        'O usuário está compartilhando informações sobre uma NOVA oportunidade. Ajude a estruturar isso em formato PPVVCC e sugira próximos passos.' : 
+        'Responda sobre oportunidades existentes no CRM.'
+    },
+    pipelineData: {
+      currentOpportunity: opportunityContext,
+      allOpportunities: allOpportunities,
+      pipelineHealth: pipelineHealth
+    },
+    isNewOpportunity: isNewOpportunity  // <-- AGREGAR ESTA LÍNEA
+  })
+});
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
