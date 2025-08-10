@@ -1318,3 +1318,274 @@ Email sugerido: "${opp?.client}, descobrimos que empresas como vocês perdem ${c
               </button>
             </div>
           )}
+
+          {/* Info de Contatos e Timeline */}
+          {analysis.contacts && (
+            <div className="bg-white/50 p-2 rounded mb-3 text-xs grid grid-cols-2 gap-2">
+              <div>
+                <span className="font-semibold">Contatos Mapeados:</span>
+                <div className="ml-2">
+                  Power: {analysis.contacts.powerSponsor || '❌ FALTA'}
+                  {analysis.contacts.sponsor && <div>Sponsor: {analysis.contacts.sponsor}</div>}
+                  {analysis.contacts.influencer && <div>Influencer: {analysis.contacts.influencer}</div>}
+                </div>
+              </div>
+              <div>
+                <span className="font-semibold">Timeline:</span>
+                <div className="ml-2">
+                  Dias no pipeline: {analysis.timeline?.daysInPipeline || 0}
+                  {analysis.timeline?.expectedClose && <div>Fechar: {new Date(analysis.timeline.expectedClose).toLocaleDateString('pt-BR')}</div>}
+                  {analysis.timeline?.nextAction && <div className="text-green-700 font-bold">📋 {analysis.timeline.nextAction}</div>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Semáforo PPVVCC */}
+          {getActiveOpportunity().scales && (
+            <div className="grid grid-cols-6 gap-2 mb-4">
+              {[
+                { key: 'dor', label: 'DOR', altKey: 'pain' },
+                { key: 'poder', label: 'PODER', altKey: 'power' },
+                { key: 'visao', label: 'VISÃO', altKey: 'vision' },
+                { key: 'valor', label: 'VALOR', altKey: 'value' },
+                { key: 'controle', label: 'CTRL', altKey: 'control' },
+                { key: 'compras', label: 'COMPRAS', altKey: 'purchase' }
+              ].map(({ key, label, altKey }) => {
+                const value = getScaleValue(getActiveOpportunity().scales[key] || getActiveOpportunity().scales[altKey]);
+                const isCritical = value < 4;
+                const isWarning = value >= 4 && value < 7;
+                
+                return (
+                  <div key={key} className={`text-center p-2 rounded-lg transition-all ${
+                    isCritical ? 'bg-red-500 animate-pulse' : 
+                    isWarning ? 'bg-yellow-500' : 
+                    'bg-green-500'
+                  }`}>
+                    <div className="text-white text-xs font-semibold">{label}</div>
+                    <div className="text-white text-xl font-bold">{value}</div>
+                    {isCritical && <div className="text-white text-[10px]">CRÍTICO!</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* INCONSISTENCIAS DETECTADAS con datos reales */}
+          {analysis.inconsistencies && analysis.inconsistencies.length > 0 && (
+            <div className="bg-red-50 border border-red-300 rounded-lg p-3 mb-4">
+              <h4 className="font-bold text-red-700 text-sm mb-2 flex items-center">
+                <AlertTriangle className="mr-1 w-4 h-4" /> PROBLEMAS DETECTADOS:
+              </h4>
+              {analysis.inconsistencies.map((inc, idx) => (
+                <div key={idx} className="mb-2">
+                  <div className="text-sm text-red-600">• {inc.message}</div>
+                  {inc.dataPoint && (
+                    <div className="text-xs text-gray-600 ml-4 italic">{inc.dataPoint}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Alertas Temporales */}
+          {alerts.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {alerts.map((alert, idx) => (
+                <div key={idx} className={`p-2 rounded-lg flex flex-col ${
+                  alert.type === 'urgent' ? 'bg-red-100 text-red-700 font-bold' :
+                  alert.type === 'critical' ? 'bg-orange-100 text-orange-700' :
+                  'bg-yellow-100 text-yellow-700'
+                }`}>
+                  <span className="text-sm">{alert.message}</span>
+                  {alert.dataPoint && (
+                    <span className="text-xs italic mt-1">{alert.dataPoint}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Próxima Acción CONTEXTUAL con contacto específico */}
+          {analysis.nextAction && (
+            <div className="bg-white p-3 rounded-lg border-2 border-blue-400">
+              <h4 className="font-semibold text-sm mb-2 flex items-center text-blue-700">
+                <TrendingUp className="mr-1 w-4 h-4" /> Próxima Ação Recomendada:
+              </h4>
+              <p className="text-sm font-bold text-gray-800 mb-2">{analysis.nextAction.action}</p>
+              {analysis.nextAction.contact && (
+                <p className="text-xs text-gray-600 mb-2">
+                  👤 Contactar: <strong>{analysis.nextAction.contact}</strong>
+                </p>
+              )}
+              <div className="bg-blue-50 p-2 rounded border-l-4 border-blue-500">
+                <p className="text-xs text-gray-700 italic">"{analysis.nextAction.script}"</p>
+                {analysis.nextAction.dataPoint && (
+                  <p className="text-xs text-gray-600 mt-1 font-semibold">
+                    📊 {analysis.nextAction.dataPoint}
+                  </p>
+                )}
+              </div>
+              <button 
+                onClick={() => {
+                  setIsOpen(true);
+                  sendMessage(`Desenvolva esta ação: ${analysis.nextAction.action} para ${getActiveOpportunity().client} com ${analysis.nextAction.contact || 'contato apropriado'}`);
+                }}
+                className="mt-2 bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 transition font-semibold"
+              >
+                Executar com Contexto →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Botón flotante del asistente */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="fixed bottom-6 right-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all z-50"
+      >
+        <MessageCircle size={24} />
+        {alerts.length > 0 && alerts.some(a => a.type === 'urgent') && (
+          <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
+        )}
+      </button>
+
+      {/* Chat del asistente */}
+      {isOpen && (
+        <div className="fixed bottom-24 right-6 w-96 h-[600px] bg-white rounded-lg shadow-2xl z-50 flex flex-col">
+          <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 rounded-t-lg">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-semibold">Assistente Ventapel PPVVCC</h3>
+              <button onClick={() => setIsOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            {currentUser && (
+              <div className="text-xs opacity-90">
+                Vendedor: {currentUser} • Dados reais CRM
+              </div>
+            )}
+            {assistantActiveOpportunity && (
+              <div className="text-xs bg-white/20 rounded px-2 py-1 mt-2">
+                🎯 Analisando: {assistantActiveOpportunity.client}
+              </div>
+            )}
+          </div>
+
+          {/* Quick Actions */}
+          <div className="p-3 bg-gray-50 border-b">
+            <div className="grid grid-cols-2 gap-2">
+              {getQuickActions().map((action, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => sendMessage(action.prompt)}
+                  className="bg-white border-2 border-gray-300 rounded-lg px-3 py-2 text-xs hover:bg-blue-50 hover:border-blue-400 transition flex items-center gap-2 font-semibold"
+                  disabled={isLoading}
+                >
+                  <span className="text-lg">{action.icon}</span>
+                  <span>{action.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Mensajes */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {messages.length === 0 && (
+              <div className="bg-blue-50 p-3 rounded-lg">
+                <p className="font-bold text-sm text-blue-700 mb-2">
+                  👋 Olá {currentUser || 'Vendedor'}!
+                </p>
+                <div className="text-xs text-gray-600 space-y-2">
+                  <p>Sou seu assistente CONTEXTUAL com dados REAIS do CRM:</p>
+                  <ul className="ml-2 space-y-1">
+                    <li>• 📊 Uso dados dos SEUS clientes, não benchmarks genéricos</li>
+                    <li>• 💰 ROI calculado com perdas admitidas pelos clientes</li>
+                    <li>• 📈 {historicalPatterns?.successfulDeals?.length || 0} casos de sucesso no SEU pipeline</li>
+                    <li>• 👤 Análise de contatos mapeados e próximas ações</li>
+                    <li>• 🎯 Probabilidade ajustada ao histórico do vendedor</li>
+                  </ul>
+                  
+                  {historicalPatterns && (
+                    <div className="mt-3 p-2 bg-white rounded">
+                      <p className="font-semibold text-gray-700">Seus Padrões:</p>
+                      <ul className="text-xs mt-1">
+                        <li>• Ciclo médio: {historicalPatterns.averageCloseTime || 'N/A'} dias</li>
+                        <li>• Melhor indústria: {Object.entries(historicalPatterns.byIndustry || {})
+                          .sort((a, b) => (b[1].winRate || 0) - (a[1].winRate || 0))[0]?.[0] || 'N/A'}</li>
+                        <li>• Deals fechados: {historicalPatterns.successfulDeals?.length || 0}</li>
+                      </ul>
+                    </div>
+                  )}
+                  
+                  <div className="mt-3 p-2 bg-yellow-50 rounded border border-yellow-200">
+                    <p className="font-semibold text-yellow-800">
+                      💡 Comandos inteligentes:
+                    </p>
+                    <ul className="text-xs mt-1">
+                      <li>• "listar" - Ver TODAS as oportunidades com contexto</li>
+                      <li>• "[nome_cliente]" - Análise completa com histórico</li>
+                      <li>• "plan semanal" - Baseado em SEUS padrões</li>
+                      <li>• "calcular ROI" - Com dados REAIS admitidos</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] p-3 rounded-lg ${
+                  msg.role === 'user' 
+                    ? 'bg-blue-500 text-white' 
+                    : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {msg.role === 'assistant' ? (
+                    <MessageRenderer content={msg.content} onButtonClick={handleActionClick} />
+                  ) : (
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+            
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-gray-100 p-3 rounded-lg">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Input */}
+          <div className="p-4 border-t">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
+                placeholder='Ex: "calcular ROI", "plan semanal", "listar"...'
+                className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={isLoading}
+              />
+              <button
+                onClick={() => sendMessage()}
+                disabled={isLoading || !input.trim()}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition disabled:opacity-50 font-semibold"
+              >
+                Enviar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
