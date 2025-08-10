@@ -114,14 +114,32 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     });
   };
 
+  // FUNCIÓN MEJORADA para obtener valor de escala
   const getScaleValue = (scale) => {
-    if (!scale) return 0;
-    if (typeof scale === 'object' && scale.score !== undefined) {
-      return scale.score;
-    }
+    if (!scale && scale !== 0) return 0;
+    
+    // Si es un número directo
     if (typeof scale === 'number') {
       return scale;
     }
+    
+    // Si es un objeto con score
+    if (typeof scale === 'object' && scale !== null) {
+      if ('score' in scale) {
+        return Number(scale.score) || 0;
+      }
+      // Si es un objeto pero sin score, intentar convertir a número
+      if ('value' in scale) {
+        return Number(scale.value) || 0;
+      }
+    }
+    
+    // Si es string, intentar parsear
+    if (typeof scale === 'string') {
+      const parsed = Number(scale);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    
     return 0;
   };
 
@@ -462,7 +480,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return assistantActiveOpportunity || currentOpportunity;
   };
 
-  // VERSIÓN DEBUG - Para identificar el problema exacto
+  // VERSIÓN CORREGIDA - Para actualizar escalas correctamente
   const handleActionClick = async (actionPayload) => {
     console.log('🔵 handleActionClick llamado con:', actionPayload);
     
@@ -491,7 +509,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         console.log('❌ No hay ID de oportunidad');
         setMessages(prev => [...prev, { 
           role: 'assistant', 
-          content: '❌ Erro: Não há oportunidade selecionada para atualizar.\n\nDebug: No opportunity ID found' 
+          content: '❌ Erro: Não há oportunidade selecionada para atualizar.' 
         }]);
         return;
       }
@@ -514,48 +532,62 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       try {
         console.log('📡 Buscando oportunidad actual...');
         
-        // OPCIÓN 1: Buscar la oportunidad actual
+        // Buscar la oportunidad actual
         const { data: currentOpp, error: fetchError } = await supabase
           .from('opportunities')
           .select('*')
           .eq('id', opportunityToUpdateId)
           .single();
 
-        console.log('📊 Oportunidad actual:', currentOpp);
-        console.log('❗ Error al buscar:', fetchError);
-
-        if (fetchError) {
+        if (fetchError || !currentOpp) {
           console.error('Error fetch:', fetchError);
-          throw fetchError;
-        }
-        
-        if (!currentOpp) {
-          console.log('❌ No se encontró la oportunidad');
           throw new Error('Oportunidade não encontrada');
         }
-
-        // Ver estructura actual de scales
+        
+        console.log('📊 Oportunidad actual:', currentOpp);
         console.log('🔍 Escalas actuales:', currentOpp.scales);
-        console.log('🔍 Tipo de scales:', typeof currentOpp.scales);
         
-        // Preparar objeto scales
-        const currentScales = currentOpp.scales || {};
-        
-        // IMPORTANTE: Verificar si scales es un objeto o string
-        let parsedScales = currentScales;
-        if (typeof currentScales === 'string') {
-          console.log('⚠️ Scales es string, parseando...');
-          try {
-            parsedScales = JSON.parse(currentScales);
-          } catch (e) {
-            console.error('Error parseando scales:', e);
-            parsedScales = {};
+        // NORMALIZACIÓN MEJORADA DE ESCALAS
+        const normalizeScales = (scales) => {
+          if (!scales) return {};
+          
+          // Si ya es un objeto con estructura correcta
+          if (typeof scales === 'object' && !Array.isArray(scales)) {
+            const normalized = {};
+            
+            // Extraer valores numéricos de cualquier estructura
+            ['dor', 'pain', 'poder', 'power', 'visao', 'vision', 'valor', 'value', 'controle', 'control', 'compras', 'purchase'].forEach(key => {
+              if (scales[key] !== undefined) {
+                // Si es un objeto con score
+                if (typeof scales[key] === 'object' && scales[key] !== null) {
+                  normalized[key] = Number(scales[key].score || scales[key].value || 0);
+                } else {
+                  // Si es un valor directo
+                  normalized[key] = Number(scales[key]) || 0;
+                }
+              }
+            });
+            
+            return normalized;
           }
-        }
+          
+          // Si es un string, intentar parsear
+          if (typeof scales === 'string') {
+            try {
+              return normalizeScales(JSON.parse(scales));
+            } catch (e) {
+              console.error('Error parseando scales string:', e);
+              return {};
+            }
+          }
+          
+          return {};
+        };
         
-        console.log('📋 Escalas parseadas:', parsedScales);
+        const currentScales = normalizeScales(currentOpp.scales);
+        console.log('📋 Escalas normalizadas:', currentScales);
         
-        // Mapear nombres - AJUSTAR SEGÚN TU BD
+        // Mapear nombres de escalas - UNIFICAR TODO A PORTUGUÉS
         const scaleMapping = {
           'dor': 'dor',
           'pain': 'dor',
@@ -571,116 +603,138 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
           'purchase': 'compras'
         };
 
-        const mappedScale = scaleMapping[scale.toLowerCase()] || scale;
+        const mappedScale = scaleMapping[scale.toLowerCase()] || scale.toLowerCase();
         console.log('🎯 Escala mapeada:', scale, '->', mappedScale);
         
-        // Crear estructura actualizada
+        // Crear estructura unificada con TODOS los campos en portugués
         const updatedScales = {
-          dor: parsedScales.dor || parsedScales.pain || 0,
-          poder: parsedScales.poder || parsedScales.power || 0,
-          visao: parsedScales.visao || parsedScales.vision || 0,
-          valor: parsedScales.valor || parsedScales.value || 0,
-          controle: parsedScales.controle || parsedScales.control || 0,
-          compras: parsedScales.compras || parsedScales.purchase || 0
+          dor: currentScales.dor || currentScales.pain || 0,
+          poder: currentScales.poder || currentScales.power || 0,
+          visao: currentScales.visao || currentScales.vision || 0,
+          valor: currentScales.valor || currentScales.value || 0,
+          controle: currentScales.controle || currentScales.control || 0,
+          compras: currentScales.compras || currentScales.purchase || 0
         };
+        
+        // Guardar el valor anterior para mostrar el cambio
+        const oldValue = updatedScales[mappedScale];
         
         // Actualizar el campo específico
         updatedScales[mappedScale] = valueInt;
         
         console.log('✅ Escalas actualizadas:', updatedScales);
         
-        // OPCIÓN A: Actualizar con objeto directo
+        // CREAR ESTRUCTURA COMPLEJA SI ES NECESARIO
+        // Algunos CRMs esperan estructura {score: X, description: ""}
+        const complexScales = {};
+        Object.keys(updatedScales).forEach(key => {
+          complexScales[key] = {
+            score: updatedScales[key],
+            description: ''
+          };
+        });
+        
         console.log('📤 Enviando actualización a Supabase...');
         
-        const updatePayload = {
-          scales: updatedScales,
-          last_update: new Date().toISOString()
-        };
-        
-        console.log('📦 Payload de actualización:', updatePayload);
-        
-        const { data: updatedOpp, error: updateError } = await supabase
+        // INTENTAR PRIMERO CON ESTRUCTURA SIMPLE
+        let updateResult = await supabase
           .from('opportunities')
-          .update(updatePayload)
+          .update({
+            scales: updatedScales,
+            last_update: new Date().toISOString()
+          })
           .eq('id', opportunityToUpdateId)
           .select()
           .single();
 
-        console.log('✅ Respuesta de Supabase:', updatedOpp);
-        console.log('❌ Error de Supabase:', updateError);
+        console.log('✅ Resultado intento 1 (simple):', updateResult);
 
-        if (updateError) {
-          console.error('Error update completo:', updateError);
+        // SI FALLA, INTENTAR CON ESTRUCTURA COMPLEJA
+        if (updateResult.error) {
+          console.log('🔄 Intentando con estructura compleja...');
           
-          // OPCIÓN B: Si falla, intentar con JSON.stringify
-          console.log('🔄 Intentando con JSON.stringify...');
-          
-          const { data: updatedOpp2, error: updateError2 } = await supabase
+          updateResult = await supabase
             .from('opportunities')
             .update({
-              scales: JSON.stringify(updatedScales),
+              scales: complexScales,
               last_update: new Date().toISOString()
             })
             .eq('id', opportunityToUpdateId)
             .select()
             .single();
             
-          console.log('✅ Respuesta intento 2:', updatedOpp2);
-          console.log('❌ Error intento 2:', updateError2);
-          
-          if (updateError2) {
-            throw updateError2;
-          }
-          
-          // Si el segundo intento funcionó
-          const oldValue = parsedScales[mappedScale] || 0;
-          setMessages(prev => [...prev, { 
-            role: 'assistant', 
-            content: `✅ Atualização confirmada!\n\n**${currentOpp.client}**\n**${mappedScale.toUpperCase()}: ${oldValue} → ${valueInt}/10**\n\n💡 Dado Brasil: ${mappedScale === 'dor' ? '10% perdas média (IBEVAR)' : 'ROI 2-3 meses garantido'}` 
-          }]);
-          
-          // Actualizar oportunidad activa si es la misma
-          if (assistantActiveOpportunity?.id === opportunityToUpdateId) {
-            setAssistantActiveOpportunity(updatedOpp2);
-          }
-        } else {
-          // Si el primer intento funcionó
-          const oldValue = parsedScales[mappedScale] || 0;
-          setMessages(prev => [...prev, { 
-            role: 'assistant', 
-            content: `✅ Atualização confirmada!\n\n**${currentOpp.client}**\n**${mappedScale.toUpperCase()}: ${oldValue} → ${valueInt}/10**\n\n💡 Dado Brasil: ${mappedScale === 'dor' ? '10% perdas média (IBEVAR)' : 'ROI 2-3 meses garantido'}` 
-          }]);
-          
-          // Actualizar oportunidad activa si es la misma
-          if (assistantActiveOpportunity?.id === opportunityToUpdateId) {
-            setAssistantActiveOpportunity(updatedOpp);
-          }
+          console.log('✅ Resultado intento 2 (complejo):', updateResult);
         }
         
-        // Recargar datos
-        console.log('🔄 Recargando pipeline...');
+        if (updateResult.error) {
+          throw updateResult.error;
+        }
+        
+        // Mensaje de éxito con datos reales
+        const scaleNameMap = {
+          'dor': 'DOR (Pain)',
+          'poder': 'PODER (Power)',
+          'visao': 'VISÃO (Vision)',
+          'valor': 'VALOR (Value)',
+          'controle': 'CONTROLE (Control)',
+          'compras': 'COMPRAS (Purchase)'
+        };
+        
+        const contextMessages = {
+          'dor': '💡 Lembre: 10% de perdas é a média Brasil (IBEVAR)',
+          'poder': '💡 Importante: Decisor controla o budget de logística',
+          'visao': '💡 Mostrar caso L\'Oréal: 100% furtos eliminados',
+          'valor': '💡 ROI médio Ventapel: 2-3 meses garantido',
+          'controle': '💡 Definir próximos passos com datas específicas',
+          'compras': '💡 Mapear processo completo de aprovação'
+        };
+        
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `✅ **Atualização confirmada!**
+
+**${currentOpp.client}**
+**${scaleNameMap[mappedScale] || mappedScale.toUpperCase()}: ${oldValue} → ${valueInt}/10**
+
+${contextMessages[mappedScale] || ''}
+
+${valueInt >= 7 ? '🎯 Excelente! Próximo passo para avançar o deal.' : 
+  valueInt >= 4 ? '⚠️ Precisa melhorar. Vamos trabalhar nisso.' :
+  '🔴 CRÍTICO! Ação urgente necessária.'}` 
+        }]);
+        
+        // Actualizar la oportunidad en el estado
+        const updatedOpp = updateResult.data;
+        
+        if (assistantActiveOpportunity?.id === opportunityToUpdateId) {
+          setAssistantActiveOpportunity(updatedOpp);
+        }
+        
+        // Notificar al componente padre si existe
+        if (onOpportunityUpdate && typeof onOpportunityUpdate === 'function') {
+          onOpportunityUpdate(updatedOpp);
+        }
+        
+        // Recargar datos y re-analizar
         await loadPipelineData();
-        
-        // Re-analizar con nuevos valores
-        if (updatedOpp || updatedOpp2) {
-          analyzeOpportunity(updatedOpp || updatedOpp2);
-          checkOpportunityHealth(updatedOpp || updatedOpp2);
-        }
+        analyzeOpportunity(updatedOpp);
+        checkOpportunityHealth(updatedOpp);
         
       } catch (error) {
         console.error('💥 Error completo:', error);
-        console.error('Stack trace:', error.stack);
         
-        let errorMessage = '❌ Falha ao atualizar no CRM\n\n';
-        errorMessage += `**Debug Info:**\n`;
-        errorMessage += `• Action: ${action}\n`;
-        errorMessage += `• Scale: ${scale}\n`;
-        errorMessage += `• Value: ${newValue}\n`;
-        errorMessage += `• Opp ID: ${opportunityToUpdateId}\n`;
-        errorMessage += `• Error: ${error.message}\n`;
+        let errorMessage = '❌ **Falha ao atualizar no CRM**\n\n';
         
-        if (error.code) {
-          errorMessage += `• Error Code: ${error.code}\n`;
+        if (error.message) {
+          errorMessage += `Erro: ${error.message}\n`;
+        }
+        
+        if (error.code === '22P02') {
+          errorMessage += '\n⚠️ Problema com formato de dados. Contacte suporte.';
+        } else if (error.code === '42703') {
+          errorMessage += '\n⚠️ Campo não encontrado na base de dados.';
+        } else {
+          errorMessage += '\n💡 Tente novamente ou verifique a conexão.';
         }
         
         setMessages(prev => [...prev, { 
