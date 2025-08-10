@@ -546,6 +546,19 @@ export default async function handler(req, res) {
     return res.status(200).json({ response: confirmationMessage });
   }
 
+  // Calcular ROI antes del systemPrompt si hay opportunityData
+  let roiAnalysisText = '';
+  if (opportunityData) {
+    const roiCalc = calculateVentapelROI(opportunityData);
+    roiAnalysisText = `
+ANÁLISIS ROI ESPECÍFICO para ${opportunityData.client}:
+  - Pérdida actual mensual: R$${roiCalc.currentLosses.totalMonthlyLoss.toLocaleString()}
+  - Ahorro proyectado mensual: R$${roiCalc.projectedSavings.totalMonthlySavings.toLocaleString()}
+  - ROI: ${roiCalc.roi.paybackMonths} meses
+  - Solución recomendada: ${roiCalc.ventapelSolution.implementation.equipment}
+`;
+  }
+
   // System prompt mejorado con datos reales de Brasil
   const systemPrompt = `
 Eres el asesor experto en ventas consultivas de Ventapel Brasil.
@@ -594,18 +607,7 @@ ARGUMENTOS CON DATOS REALES:
 - Mencionar los R$3 bil/año de pérdidas en e-commerce
 - Enfatizar que 80% de averías son evitables con embalaje correcto
 
-${opportunityData ? `
-ANÁLISIS ROI ESPECÍFICO para ${opportunityData.client}:
-${(() => {
-  const roiCalc = calculateVentapelROI(opportunityData);
-  return `
-  - Pérdida actual mensual: R$${roiCalc.currentLosses.totalMonthlyLoss.toLocaleString()}
-  - Ahorro proyectado mensual: R$${roiCalc.projectedSavings.totalMonthlySavings.toLocaleString()}
-  - ROI: ${roiCalc.roi.paybackMonths} meses
-  - Solución recomendada: ${roiCalc.ventapelSolution.implementation.equipment}
-  `;
-})()}
-` : ''}
+${roiAnalysisText}
 
 INSTRUCCIONES CRÍTICAS:
 1. SIEMPRE usar datos reales: 10% pérdida Brasil, R$3 bil e-commerce, 80% por embalaje
