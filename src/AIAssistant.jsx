@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+export default AIAssistant;import React, { useState, useEffect } from 'react';
 import { MessageCircle, X, AlertTriangle, Target, RefreshCw, TrendingUp, Globe, Calendar, Zap, DollarSign } from 'lucide-react';
 
 // Componente para renderizar mensajes con botones interactivos
@@ -307,7 +307,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       });
     }
     
-    // Calcular probabilidade usando dados históricos
+    // Calcular probabilidad usando datos históricos
     let probability = calculateRealProbability(opp, scaleValues);
 
     // Análise de tempo no pipeline
