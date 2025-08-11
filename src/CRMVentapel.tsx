@@ -2128,20 +2128,19 @@ const CRMVentapel: React.FC = () => {
 
 <StageChecklistModal />
       
-      <AIAssistant
-        currentOpportunity={selectedOpportunity || editingOpportunity}
-        onOpportunityUpdate={(updated) => {
-          if (selectedOpportunity?.id === updated.id) {
-            setSelectedOpportunity(updated);
-          }
-          if (editingOpportunity?.id === updated.id) {
-            setEditingOpportunity(updated);
-          }
-          loadOpportunities();
-        }}
-        currentUser={currentUser}
-        supabase={supabase}
-      />
+<AIAssistant
+  currentOpportunity={selectedOpportunity || editingOpportunity}
+  onOpportunityUpdate={async (updated) => {
+    if (selectedOpportunity?.id === updated.id) {
+      setSelectedOpportunity(updated);
+    }
+    if (editingOpportunity?.id === updated.id) {
+      setEditingOpportunity(updated);
+    }
+  }}
+  currentUser={currentUser}
+  supabase={supabase}
+/>
     </div>
   );
 };
