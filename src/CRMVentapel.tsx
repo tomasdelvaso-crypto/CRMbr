@@ -2104,8 +2104,8 @@ const CRMVentapel: React.FC = () => {
           </div>
         </div>
       </nav>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      
+<main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'opportunities' && <OpportunityList />}
       </main>
@@ -2128,11 +2128,14 @@ const CRMVentapel: React.FC = () => {
 
       <StageChecklistModal />
       
-<AIAssistant
-  currentOpportunity={selectedOpportunity || editingOpportunity}
-  currentUser={currentUser}
-  supabase={supabase}
-/>
+      <AIAssistant
+        currentOpportunity={selectedOpportunity || editingOpportunity}
+        currentUser={currentUser}
+        supabase={supabase}
+      />
+    </div>
+  );
+};
 
 // --- APP WRAPPER CON PROVIDER ---
 const App: React.FC = () => {
