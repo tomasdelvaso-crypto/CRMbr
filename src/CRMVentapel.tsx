@@ -2128,14 +2128,21 @@ const CRMVentapel: React.FC = () => {
 
       <StageChecklistModal />
       
-      <AIAssistant
-        currentOpportunity={selectedOpportunity || editingOpportunity}
-        currentUser={currentUser}
-        supabase={supabase}
-      />
-    </div>
-  );
-};
+<AIAssistant
+  currentOpportunity={selectedOpportunity || editingOpportunity}
+  onOpportunityUpdate={(updated) => {
+    if (selectedOpportunity?.id === updated.id) {
+      setSelectedOpportunity(updated);
+    }
+    if (editingOpportunity?.id === updated.id) {
+      setEditingOpportunity(updated);
+    }
+    // Recargar oportunidades si es necesario
+    loadOpportunities();
+  }}
+  currentUser={currentUser}
+  supabase={supabase}
+/>
 
 // --- APP WRAPPER CON PROVIDER ---
 const App: React.FC = () => {
