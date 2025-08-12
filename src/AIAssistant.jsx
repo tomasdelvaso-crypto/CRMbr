@@ -509,16 +509,57 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
     try {
       let response = '';
 
-      // Primero verificar si es un nombre de empresa del CRM
-      const foundOpp = allOpportunities.find(opp => 
-        opp.client?.toLowerCase() === lowerText ||
-        opp.client?.toLowerCase().includes(lowerText) ||
-        lowerText.includes(opp.client?.toLowerCase())
-      );
+      // Primero verificar si menciona una empresa del CRM
+      const foundOpp = allOpportunities.find(opp => {
+        const clientLower = opp.client?.toLowerCase() || '';
+        return clientLower === lowerText ||
+               clientLower.includes(lowerText) ||
+               lowerText.includes(clientLower) ||
+               lowerText.split(' ').some(word => word.length > 3 && clientLower.includes(word));
+      });
 
       if (foundOpp) {
-        // Usuario escribió el nombre de una empresa existente
+        // Usuario mencionó una empresa existente
+        setIsThinking(true);
         response = await analyzeWithClaude(foundOpp);
+        
+        // Si Claude no responde o responde null, generar respuesta local
+        if (!response || response === 'null') {
+          const healthScore = calculateHealthScore(foundOpp.scales);
+          const daysSince = foundOpp.last_update ? 
+            Math.floor((new Date() - new Date(foundOpp.last_update)) / (1000 * 60 * 60 * 24)) : 999;
+          
+          response = `📊 **ANÁLISIS DE ${foundOpp.client}**\n\n`;
+          response += `💰 **Valor:** R$ ${foundOpp.value?.toLocaleString('pt-BR')}\n`;
+          response += `📈 **Etapa:** ${foundOpp.stage} - Probabilidad ${foundOpp.probability}%\n`;
+          response += `❤️ **Health Score:** ${healthScore}/10\n`;
+          response += `📅 **Días sin contacto:** ${daysSince}\n\n`;
+          
+          response += `**🎯 SCORES PPVVCC:**\n`;
+          response += `• DOR: ${foundOpp.scales?.dor?.score || 0}/10\n`;
+          response += `• PODER: ${foundOpp.scales?.poder?.score || 0}/10\n`;
+          response += `• VISIÓN: ${foundOpp.scales?.visao?.score || 0}/10\n`;
+          response += `• VALOR: ${foundOpp.scales?.valor?.score || 0}/10\n`;
+          response += `• CONTROL: ${foundOpp.scales?.controle?.score || 0}/10\n`;
+          response += `• COMPRAS: ${foundOpp.scales?.compras?.score || 0}/10\n\n`;
+          
+          // Análisis de riesgos
+          if (daysSince > 7) {
+            response += `⚠️ **ALERTA:** ${daysSince} días sin contacto - REACTIVAR URGENTE\n`;
+          }
+          if (!foundOpp.power_sponsor) {
+            response += `⚠️ **ALERTA:** Power Sponsor no identificado\n`;
+          }
+          if (foundOpp.scales?.dor?.score < 5) {
+            response += `⚠️ **ALERTA:** Dolor no admitido - NO hay venta posible\n`;
+          }
+          
+          response += `\n**Próximos pasos sugeridos:**\n`;
+          response += `1. ${daysSince > 7 ? 'Llamar HOY para reactivar' : 'Mantener momentum'}\n`;
+          response += `2. ${foundOpp.scales?.dor?.score < 5 ? 'Volver a calificar dolor' : 'Avanzar en pipeline'}\n`;
+          response += `3. ${!foundOpp.power_sponsor ? 'Identificar decisor real' : 'Involucrar al power sponsor'}\n`;
+        }
+        setIsThinking(false);
         
       } else if (lowerText === 'hola' || lowerText === 'ola' || lowerText === 'hey' || lowerText === 'hi') {
         response = `👋 Hola ${currentUser}! ¿En qué puedo ayudarte?\n\n`;
@@ -547,12 +588,27 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
         response += `• "listar" - Ver todas las oportunidades\n`;
         response += `• "ayuda" - Ver estos comandos\n`;
         
-      } else if (lowerText.includes('busca') || lowerText.includes('investiga')) {
-        const company = text.replace(/busca|buscar|investiga|investigar|información de|sobre/gi, '').trim();
-        if (company) {
-          response = await searchCompanyWeb(company);
+      } else if (lowerText.includes('busca') || lowerText.includes('investiga') || lowerText.includes('buscar')) {
+        // Verificar si es una pregunta sobre buscar o realmente quiere buscar
+        if (lowerText.includes('?') || lowerText.includes('podemos') || lowerText.includes('puedo')) {
+          response = "¡Claro que sí! Puedo buscar cualquier empresa online.\n\n";
+          response += "Escribe: **busca [nombre de la empresa]**\n\n";
+          response += "Ejemplos:\n";
+          response += "• busca Natura\n";
+          response += "• busca Magazine Luiza\n";
+          response += "• busca Intelbras\n\n";
+          response += "Te daré información completa + estrategia de approach Ventapel.";
         } else {
-          response = "¿Qué empresa quieres que investigue? Ejemplo: 'busca Natura'";
+          const company = text.replace(/busca|buscar|buscá|investiga|investigar|información de|sobre/gi, '').trim();
+          if (company && company.length > 2) {
+            response = await searchCompanyWeb(company);
+            if (!response || response === 'null') {
+              response = `❌ No pude encontrar información sobre "${company}".\n\n`;
+              response += `Intenta con el nombre completo o verifica la ortografía.`;
+            }
+          } else {
+            response = "¿Qué empresa quieres que investigue? Ejemplo: 'busca Natura'";
+          }
         }
         
       } else if (lowerText.includes('email')) {
@@ -596,21 +652,36 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
         
       } else {
         // Si no es un comando conocido, intentar con Claude para pregunta general
+        setIsThinking(true);
         response = await callClaudeAPI(text, {
           cliente: currentOpportunity?.client,
           industria: currentOpportunity?.industry,
           valor: currentOpportunity?.value,
-          oportunidadesDisponibles: allOpportunities.map(o => o.client).join(', ')
+          oportunidadesDisponibles: allOpportunities.map(o => o.client).slice(0, 10).join(', ')
         });
+        setIsThinking(false);
         
-        if (!response) {
-          // Si Claude no responde, dar ayuda
-          response = `No entendí "${text}".\n\n`;
-          response += `Puedes:\n`;
-          response += `• Escribir el nombre de un cliente: ${allOpportunities.slice(0, 3).map(o => o.client).join(', ')}\n`;
-          response += `• Usar comandos: email, script, roi, estrategia\n`;
-          response += `• Buscar empresas: "busca [nombre]"\n`;
-          response += `• Ver ayuda completa: "ayuda"`;
+        // Si Claude no responde o retorna null, dar ayuda contextual
+        if (!response || response === 'null' || response.toLowerCase().includes('no pude procesar')) {
+          response = `🤔 Interpreto que quieres: "${text}"\n\n`;
+          
+          // Intentar ser más inteligente con la respuesta
+          if (lowerText.includes('?')) {
+            // Es una pregunta
+            response += `Para responder mejor, puedo:\n`;
+            response += `• Analizar cualquier cliente: ${allOpportunities.slice(0, 3).map(o => o.client).join(', ')}\n`;
+            response += `• Buscar empresas nuevas: "busca [nombre]"\n`;
+            response += `• Generar contenido: email, script, roi, estrategia\n\n`;
+            response += `¿Qué necesitas específicamente?`;
+          } else {
+            // Es una afirmación o comando no reconocido
+            response += `Comandos disponibles:\n`;
+            response += `• **Clientes del CRM:** ${allOpportunities.slice(0, 5).map(o => o.client).join(', ')}\n`;
+            response += `• **Buscar online:** "busca [empresa]"\n`;
+            response += `• **Generar:** email, script, roi, estrategia\n`;
+            response += `• **Ver todo:** listar\n`;
+            response += `• **Ayuda:** ayuda`;
+          }
         }
       }
 
