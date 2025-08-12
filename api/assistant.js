@@ -217,9 +217,8 @@ function analyzeForVentapel(companyName, searchResults) {
   return analysis;
 }
 
-// ============= ROI CALCULATOR (MANTENER EXISTENTE) =============
+// ============= ROI CALCULATOR =============
 function calculateVentapelROI(opportunity, monthlyVolume = null) {
-  // [MANTENER TODO EL CÓDIGO EXISTENTE DE ROI]
   const industryBenchmarks = {
     'e-commerce': { 
       violationRate: 0.10,
@@ -392,9 +391,8 @@ function generateROISummary(opportunity, losses, savings, roi, solution, benchma
 • Retorno 3 anos: ${roi.threeYearROI}%`;
 }
 
-// ============= PLAN SEMANAL (MANTENER EXISTENTE) =============
+// ============= PLAN SEMANAL =============
 function generateWeeklyPlan(opportunities, vendorName = "Vendedor") {
-  // [MANTENER TODO EL CÓDIGO EXISTENTE DEL PLAN SEMANAL]
   if (!opportunities || opportunities.length === 0) {
     return "📋 Não há oportunidades no pipeline para planejar a semana.";
   }
@@ -473,6 +471,8 @@ function generateWeeklyPlan(opportunities, vendorName = "Vendedor") {
   plan += `• Para Fechar: R$ ${totalClosing.toLocaleString('pt-BR')}\n`;
   plan += `• Em Risco: R$ ${totalAtRisk.toLocaleString('pt-BR')}\n\n`;
   
+  // Agregar tareas detalladas aquí...
+  
   return plan;
 }
 
@@ -530,7 +530,9 @@ export default async function handler(req) {
       searchQuery 
     } = body;
 
-    // CASO NUEVO: Búsqueda web de empresa
+    console.log('📌 Request recibido:', { specialRequestType, companyName, context });
+
+    // CASO 1: Búsqueda web de empresa
     if (specialRequestType === 'web_research' && companyName) {
       console.log(`📌 Procesando búsqueda web para: ${companyName}`);
       
@@ -619,7 +621,7 @@ export default async function handler(req) {
       );
     }
 
-    // CASO 1: Plan Semanal
+    // CASO 2: Plan Semanal
     if (specialRequestType === 'weekly_plan') {
       const plan = generateWeeklyPlan(
         pipelineData?.allOpportunities || [],
@@ -635,7 +637,7 @@ export default async function handler(req) {
       );
     }
 
-    // CASO 2: Calcular ROI
+    // CASO 3: Calcular ROI
     if (context?.toLowerCase().includes('roi') || context?.toLowerCase().includes('calcular')) {
       if (opportunityData) {
         const roiAnalysis = calculateVentapelROI(opportunityData);
@@ -650,7 +652,7 @@ export default async function handler(req) {
       }
     }
 
-    // CASO 3: Análisis de oportunidad con contexto inteligente
+    // CASO 4: Análisis de oportunidad con contexto inteligente
     if (opportunityData && intelligentContext) {
       let response = `📊 **Análisis Inteligente - ${opportunityData.client}**\n\n`;
       
@@ -667,7 +669,6 @@ export default async function handler(req) {
       if (intelligentContext.priority2_similarDeals?.hasData) {
         response += `**🔄 Patrones de ${intelligentContext.priority2_similarDeals.count} deals similares:**\n`;
         response += `• Valor promedio: R$ ${intelligentContext.priority2_similarDeals.avgValue.toLocaleString('pt-BR')}\n`;
-        response += `• Tiempo promedio de cierre: ${intelligentContext.priority2_similarDeals.avgCloseTime} días\n`;
         
         if (intelligentContext.priority2_similarDeals.commonPatterns) {
           intelligentContext.priority2_similarDeals.commonPatterns.forEach(pattern => {
@@ -690,7 +691,7 @@ export default async function handler(req) {
       );
     }
 
-    // CASO 4: Respuesta genérica
+    // CASO 5: Respuesta genérica
     let genericResponse = "👋 Hola! Soy tu asistente Ventapel con datos reales de Brasil.\n\n";
     genericResponse += "**Puedo ayudarte con:**\n";
     genericResponse += "• 🔍 Búsqueda web de empresas nuevas\n";
