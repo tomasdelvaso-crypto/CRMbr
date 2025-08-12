@@ -228,6 +228,185 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return values.length > 0 ? sum / values.length : 0;
   };
 
+  const analyzePipelineHealth = (opportunities) => {
+    const totalValue = opportunities.reduce((sum, opp) => sum + (opp.value || 0), 0);
+    const riskOpps = opportunities.filter(opp => {
+      const avgScale = calculateHealthScore(opp.scales || {});
+      return avgScale < 4 && opp.value > 50000;
+    });
+
+    setPipelineHealth({
+      total: opportunities.length,
+      totalValue,
+      atRisk: riskOpps.length,
+      riskValue: riskOpps.reduce((sum, opp) => sum + (opp.value || 0), 0)
+    });
+  };
+
+  const analyzeOpportunityWithContext = (opp) => {
+    if (!opp || !opp.scales) return;
+
+    const context = getIntelligentContext(opp);
+    
+    const scaleValues = {
+      pain: getScaleValue(opp.scales.dor || opp.scales.pain),
+      power: getScaleValue(opp.scales.poder || opp.scales.power),
+      vision: getScaleValue(opp.scales.visao || opp.scales.vision),
+      value: getScaleValue(opp.scales.valor || opp.scales.value),
+      control: getScaleValue(opp.scales.controle || opp.scales.control),
+      purchase: getScaleValue(opp.scales.compras || opp.scales.purchase)
+    };
+    
+    const avgScale = calculateHealthScore(opp.scales);
+    const inconsistencies = [];
+    
+    // Detectar inconsistencias
+    if (opp.stage >= 3 && scaleValues.pain < 5) {
+      inconsistencies.push({
+        type: 'critical',
+        message: '🔴 INCONSISTENCIA: Presentando sin DOR confirmada!',
+        action: 'Volver a calificación URGENTE',
+        script: spinQuestions.problema[0]
+      });
+    }
+    
+    if (opp.value > 100000 && scaleValues.power < 4) {
+      inconsistencies.push({
+        type: 'critical',
+        message: `⛔ PROBLEMA: R$${opp.value.toLocaleString('pt-BR')} sin hablar con decisor`,
+        action: 'Conseguir acceso al POWER hoy',
+        script: "Necesito validar con quien aprueba inversiones de este monto"
+      });
+    }
+
+    // Calcular probabilidad real
+    let probability = 0;
+    if (scaleValues.pain >= 7 && scaleValues.power >= 6 && scaleValues.value >= 6) {
+      probability = 75;
+    } else if (scaleValues.pain >= 5 && scaleValues.power >= 4 && scaleValues.value >= 4) {
+      probability = 40;
+    } else if (scaleValues.pain >= 3) {
+      probability = 15;
+    } else {
+      probability = 5;
+    }
+
+    setAnalysis({
+      avgScale: avgScale.toFixed(1),
+      probability,
+      scaleValues,
+      inconsistencies,
+      nextAction: generateSmartNextAction(opp, scaleValues, inconsistencies, context),
+      context,
+      similarDealsCount: similarDeals.length
+    });
+  };
+
+  const getIntelligentContext = (opp) => {
+    const context = {
+      priority1_clientNotes: {},
+      priority2_similarDeals: {},
+      priority3_ventapelCases: {},
+      priority4_brazilBenchmarks: {},
+      dataSource: null
+    };
+
+    // Prioridad 1: Notas del cliente
+    if (opp) {
+      context.priority1_clientNotes = {
+        hasData: false,
+        notes: []
+      };
+
+      if (opp.next_action) {
+        context.priority1_clientNotes.notes.push(`Próxima acción: ${opp.next_action}`);
+        context.priority1_clientNotes.hasData = true;
+      }
+      
+      if (opp.scales?.dor?.description) {
+        context.priority1_clientNotes.notes.push(`Dolor: ${opp.scales.dor.description}`);
+        context.priority1_clientNotes.hasData = true;
+      }
+    }
+
+    // Prioridad 2: Deals similares
+    if (similarDeals.length > 0) {
+      context.priority2_similarDeals = {
+        hasData: true,
+        count: similarDeals.length,
+        avgValue: similarDeals.reduce((sum, d) => sum + d.value, 0) / similarDeals.length
+      };
+    }
+
+    // Determinar fuente principal
+    if (context.priority1_clientNotes.hasData) {
+      context.dataSource = 'DATOS DEL CLIENTE';
+    } else if (context.priority2_similarDeals.hasData) {
+      context.dataSource = 'DEALS SIMILARES';
+    } else {
+      context.dataSource = 'BENCHMARKS BRASIL';
+    }
+
+    return context;
+  };
+
+  const generateSmartNextAction = (opp, scaleValues, inconsistencies, context) => {
+    if (inconsistencies.length > 0 && inconsistencies[0].type === 'critical') {
+      return {
+        action: inconsistencies[0].action,
+        script: inconsistencies[0].script,
+        dataSource: context.dataSource
+      };
+    }
+    
+    if (scaleValues.pain < 5) {
+      return {
+        action: "🎯 Hacer que ADMITA el problema",
+        script: spinQuestions.problema[0],
+        dataSource: context.dataSource
+      };
+    }
+    
+    if (scaleValues.power < 4) {
+      return {
+        action: "👔 Acceder al DECISOR",
+        script: "Para garantizar ROI de 3 meses, necesito validar con quien aprueba",
+        dataSource: context.dataSource
+      };
+    }
+    
+    if (scaleValues.vision < 5) {
+      return {
+        action: "🎬 Demo urgente",
+        script: `Mostrar caso ${successCases[opp.industry?.toLowerCase()]?.empresa || 'L\'Oréal'}`,
+        dataSource: context.dataSource
+      };
+    }
+    
+    return {
+      action: "✅ CERRAR el negocio",
+      script: "¿Cuál es el proceso interno para aprobar esta inversión?",
+      dataSource: context.dataSource
+    };
+  };
+
+  const checkOpportunityHealth = (opp) => {
+    const newAlerts = [];
+    
+    if (opp.last_update) {
+      const daysSince = Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24));
+      if (daysSince > 7) {
+        newAlerts.push({
+          type: 'urgent',
+          message: `🔴 ${daysSince} días sin contacto - VAI PERDER!`,
+          action: 'reactivate'
+        });
+      }
+    }
+
+    setAlerts(newAlerts);
+  };
+
   // ============= GENERADORES DE CONTENIDO =============
   
   const generateCompleteStrategy = (opp) => {
@@ -334,10 +513,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     
     // Recursos
     strategy += `🛠️ **RECURSOS DISPONIBLES:**\n`;
-    strategy += `• [Calculadora ROI](calcular ROI ${opp.client})\n`;
-    strategy += `• [Caso ${successCase.empresa}](mostrar caso ${successCase.empresa})\n`;
-    strategy += `• [Demo en video](link demo Ventapel)\n`;
-    strategy += `• [Propuesta template](generar propuesta)\n`;
+    strategy += `• [Calculadora ROI|calcular:ROI:${opp.client}]\n`;
+    strategy += `• [Caso ${successCase.empresa}|mostrar:caso:${successCase.empresa}]\n`;
+    strategy += `• [Demo en video|link:demo:Ventapel]\n`;
+    strategy += `• [Propuesta template|generar:propuesta]\n`;
     
     return strategy;
   };
@@ -504,186 +683,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return script;
   };
 
-  const analyzeOpportunityWithContext = (opp) => {
-    if (!opp || !opp.scales) return;
-
-    const context = getIntelligentContext(opp);
-    
-    const scaleValues = {
-      pain: getScaleValue(opp.scales.dor || opp.scales.pain),
-      power: getScaleValue(opp.scales.poder || opp.scales.power),
-      vision: getScaleValue(opp.scales.visao || opp.scales.vision),
-      value: getScaleValue(opp.scales.valor || opp.scales.value),
-      control: getScaleValue(opp.scales.controle || opp.scales.control),
-      purchase: getScaleValue(opp.scales.compras || opp.scales.purchase)
-    };
-    
-    const avgScale = calculateHealthScore(opp.scales);
-    const inconsistencies = [];
-    
-    // Detectar inconsistencias
-    if (opp.stage >= 3 && scaleValues.pain < 5) {
-      inconsistencies.push({
-        type: 'critical',
-        message: '🔴 INCONSISTENCIA: Presentando sin DOR confirmada!',
-        action: 'Volver a calificación URGENTE',
-        script: spinQuestions.problema[0]
-      });
-    }
-    
-    if (opp.value > 100000 && scaleValues.power < 4) {
-      inconsistencies.push({
-        type: 'critical',
-        message: `⛔ PROBLEMA: R$${opp.value.toLocaleString('pt-BR')} sin hablar con decisor`,
-        action: 'Conseguir acceso al POWER hoy',
-        script: "Necesito validar con quien aprueba inversiones de este monto"
-      });
-    }
-
-    // Calcular probabilidad real
-    let probability = 0;
-    if (scaleValues.pain >= 7 && scaleValues.power >= 6 && scaleValues.value >= 6) {
-      probability = 75;
-    } else if (scaleValues.pain >= 5 && scaleValues.power >= 4 && scaleValues.value >= 4) {
-      probability = 40;
-    } else if (scaleValues.pain >= 3) {
-      probability = 15;
-    } else {
-      probability = 5;
-    }
-
-    setAnalysis({
-      avgScale: avgScale.toFixed(1),
-      probability,
-      scaleValues,
-      inconsistencies,
-      nextAction: generateSmartNextAction(opp, scaleValues, inconsistencies, context),
-      context,
-      similarDealsCount: similarDeals.length
-    });
-  };
-
-  const getIntelligentContext = (opp) => {
-    const context = {
-      priority1_clientNotes: {},
-      priority2_similarDeals: {},
-      priority3_ventapelCases: {},
-      priority4_brazilBenchmarks: {},
-      dataSource: null
-    };
-
-    // Prioridad 1: Notas del cliente
-    if (opp) {
-      context.priority1_clientNotes = {
-        hasData: false,
-        notes: []
-      };
-
-      if (opp.next_action) {
-        context.priority1_clientNotes.notes.push(`Próxima acción: ${opp.next_action}`);
-        context.priority1_clientNotes.hasData = true;
-      }
-      
-      if (opp.scales?.dor?.description) {
-        context.priority1_clientNotes.notes.push(`Dolor: ${opp.scales.dor.description}`);
-        context.priority1_clientNotes.hasData = true;
-      }
-    }
-
-    // Prioridad 2: Deals similares
-    if (similarDeals.length > 0) {
-      context.priority2_similarDeals = {
-        hasData: true,
-        count: similarDeals.length,
-        avgValue: similarDeals.reduce((sum, d) => sum + d.value, 0) / similarDeals.length
-      };
-    }
-
-    // Determinar fuente principal
-    if (context.priority1_clientNotes.hasData) {
-      context.dataSource = 'DATOS DEL CLIENTE';
-    } else if (context.priority2_similarDeals.hasData) {
-      context.dataSource = 'DEALS SIMILARES';
-    } else {
-      context.dataSource = 'BENCHMARKS BRASIL';
-    }
-
-    return context;
-  };
-
-  const generateSmartNextAction = (opp, scaleValues, inconsistencies, context) => {
-    if (inconsistencies.length > 0 && inconsistencies[0].type === 'critical') {
-      return {
-        action: inconsistencies[0].action,
-        script: inconsistencies[0].script,
-        dataSource: context.dataSource
-      };
-    }
-    
-    if (scaleValues.pain < 5) {
-      return {
-        action: "🎯 Hacer que ADMITA el problema",
-        script: spinQuestions.problema[0],
-        dataSource: context.dataSource
-      };
-    }
-    
-    if (scaleValues.power < 4) {
-      return {
-        action: "👔 Acceder al DECISOR",
-        script: "Para garantizar ROI de 3 meses, necesito validar con quien aprueba",
-        dataSource: context.dataSource
-      };
-    }
-    
-    if (scaleValues.vision < 5) {
-      return {
-        action: "🎬 Demo urgente",
-        script: `Mostrar caso ${successCases[opp.industry?.toLowerCase()]?.empresa || 'L\'Oréal'}`,
-        dataSource: context.dataSource
-      };
-    }
-    
-    return {
-      action: "✅ CERRAR el negocio",
-      script: "¿Cuál es el proceso interno para aprobar esta inversión?",
-      dataSource: context.dataSource
-    };
-  };
-
-  const analyzePipelineHealth = (opportunities) => {
-    const totalValue = opportunities.reduce((sum, opp) => sum + (opp.value || 0), 0);
-    const riskOpps = opportunities.filter(opp => {
-      const avgScale = calculateHealthScore(opp.scales || {});
-      return avgScale < 4 && opp.value > 50000;
-    });
-
-    setPipelineHealth({
-      total: opportunities.length,
-      totalValue,
-      atRisk: riskOpps.length,
-      riskValue: riskOpps.reduce((sum, opp) => sum + (opp.value || 0), 0)
-    });
-  };
-
-  const checkOpportunityHealth = (opp) => {
-    const newAlerts = [];
-    
-    if (opp.last_update) {
-      const daysSince = Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24));
-      if (daysSince > 7) {
-        newAlerts.push({
-          type: 'urgent',
-          message: `🔴 ${daysSince} días sin contacto - VAI PERDER!`,
-          action: 'reactivate'
-        });
-      }
-    }
-
-    setAlerts(newAlerts);
-  };
-
-  // FUNCIÓN CORREGIDA: Detectar intenciones del usuario
+  // ============= DETECCIÓN DE INTENCIONES =============
+  
   const detectUserIntent = (message) => {
     const lower = message.toLowerCase().trim();
     
@@ -703,7 +704,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
     
     // PRIORIDAD 2: Detección de búsqueda web - MEJORADA
-    // Detectar patrones de búsqueda web explícitos
     const webSearchPatterns = [
       /^(?:busca|buscar|buscá)\s+(?:online|en\s+internet|en\s+la\s+web|web)\s+(.+)$/i,
       /^(?:busca|buscar|buscá)\s+(?:información|info|informacion)\s+(?:de|sobre)\s+(.+)$/i,
@@ -720,7 +720,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
     
     // PRIORIDAD 3: Verificar si es un nombre de empresa existente
-    // Primero buscar en el mensaje limpio
     if (cleanMessage && cleanMessage.length > 1) {
       const foundOpp = allOpportunities.find(opp => 
         opp.client?.toLowerCase() === cleanMessage ||
@@ -765,12 +764,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return null;
   };
 
-  // Función auxiliar para extraer el nombre de la empresa
   const extractCompanyName = (message, intent) => {
     const lower = message.toLowerCase().trim();
     
     if (intent === 'web_search') {
-      // Patrones para extraer nombre de empresa en búsquedas web
       const patterns = [
         /(?:busca|buscar|buscá)\s+(?:online|en\s+internet|en\s+la\s+web|web)\s+(.+)$/i,
         /(?:busca|buscar|buscá)\s+(?:información|info|informacion)\s+(?:de|sobre)\s+(.+)$/i,
@@ -785,7 +782,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         }
       }
     } else if (intent === 'analyze_existing') {
-      // Para empresas existentes, limpiar el mensaje
       const cleanMessage = lower
         .replace(/^(ayuda|ayudame|ayúdame|help|asiste|asisteme|analicemos|analizar|trabajemos|veamos)\s+(con|en|a|el|la|sobre)?\s*/i, '')
         .trim();
@@ -793,12 +789,12 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       return cleanMessage;
     }
     
-    // Si no se pudo extraer, usar la última palabra significativa
     const words = message.split(' ').filter(w => w.length > 2);
     return words[words.length - 1] || message;
   };
 
-  // FUNCIÓN PRINCIPAL MEJORADA: Procesar mensajes
+  // ============= PROCESAMIENTO DE MENSAJES =============
+  
   const sendMessage = async (messageText = input) => {
     if (!messageText.trim()) return;
 
@@ -807,86 +803,83 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     setInput('');
     setIsLoading(true);
     
-    // Detectar intención PRIMERO
     const intent = detectUserIntent(messageText);
     const activeOpp = assistantActiveOpportunity || currentOpportunity;
     
     console.log('🎯 Intent detectado:', intent);
     console.log('📝 Mensaje:', messageText);
     
-    // CASO 1: LISTAR OPORTUNIDADES
-    if (intent === 'list_opportunities') {
-      let listMessage = `📋 **TODAS LAS OPORTUNIDADES:**\n\n`;
-      
-      if (allOpportunities.length === 0) {
-        listMessage = `📭 **No hay oportunidades en el pipeline**\n\n`;
-        listMessage += `¿Quieres buscar una empresa nueva?\n`;
-        listMessage += `Escribe: "buscar información de [nombre empresa]"`;
-      } else {
-        allOpportunities.slice(0, 10).forEach(opp => {
-          const score = calculateHealthScore(opp.scales || {});
-          listMessage += `**${opp.client}** - R$ ${opp.value?.toLocaleString('pt-BR')}\n`;
-          listMessage += `  Etapa: ${opp.stage} | Score: ${score.toFixed(1)}/10\n`;
-          listMessage += `  Vendedor: ${opp.vendor}\n`;
-          listMessage += `  [Ver estrategia|select:${opp.id}]\n\n`;
-        });
+    try {
+      // CASO 1: LISTAR OPORTUNIDADES
+      if (intent === 'list_opportunities') {
+        let listMessage = `📋 **TODAS LAS OPORTUNIDADES:**\n\n`;
         
-        if (allOpportunities.length > 10) {
-          listMessage += `\n... y ${allOpportunities.length - 10} oportunidades más`;
+        if (allOpportunities.length === 0) {
+          listMessage = `📭 **No hay oportunidades en el pipeline**\n\n`;
+          listMessage += `¿Quieres buscar una empresa nueva?\n`;
+          listMessage += `Escribe: "buscar información de [nombre empresa]"`;
+        } else {
+          allOpportunities.slice(0, 10).forEach(opp => {
+            const score = calculateHealthScore(opp.scales || {});
+            listMessage += `**${opp.client}** - R$ ${opp.value?.toLocaleString('pt-BR')}\n`;
+            listMessage += `  Etapa: ${opp.stage} | Score: ${score.toFixed(1)}/10\n`;
+            listMessage += `  Vendedor: ${opp.vendor}\n`;
+            listMessage += `  [Ver estrategia|select:${opp.id}]\n\n`;
+          });
+          
+          if (allOpportunities.length > 10) {
+            listMessage += `\n... y ${allOpportunities.length - 10} oportunidades más`;
+          }
+          
+          listMessage += `\n**Acciones rápidas:**\n`;
+          listMessage += `[🔍 Buscar empresa nueva|search:new]\n`;
+          listMessage += `[📅 Ver plan semanal|plan_semanal]`;
         }
         
-        listMessage += `\n**Acciones rápidas:**\n`;
-        listMessage += `[🔍 Buscar empresa nueva|search:new]\n`;
-        listMessage += `[📅 Ver plan semanal|plan_semanal]`;
+        setMessages(prev => [...prev, { role: 'assistant', content: listMessage }]);
+        setIsLoading(false);
+        return;
       }
       
-      setMessages(prev => [...prev, { role: 'assistant', content: listMessage }]);
-      setIsLoading(false);
-      return;
-    }
-    
-    // CASO 2: ANALIZAR EMPRESA EXISTENTE
-    if (intent === 'analyze_existing') {
-      const companyName = extractCompanyName(messageText, intent);
-      console.log('🏢 Buscando empresa existente:', companyName);
-      
-      const foundOpp = allOpportunities.find(opp => 
-        opp.client?.toLowerCase() === companyName.toLowerCase() ||
-        opp.client?.toLowerCase().includes(companyName.toLowerCase()) ||
-        companyName.toLowerCase().includes(opp.client?.toLowerCase())
-      );
-      
-      if (foundOpp) {
-        setAssistantActiveOpportunity(foundOpp);
-        const strategy = generateCompleteStrategy(foundOpp);
-        setMessages(prev => [...prev, { role: 'assistant', content: strategy }]);
-      } else {
-        // No encontrada - ofrecer buscar en web
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: `❌ No encontré "${companyName}" en el CRM.\n\n` +
-                   `**¿Qué quieres hacer?**\n\n` +
-                   `[🔍 Buscar ${companyName} en internet|search:${companyName}]\n` +
-                   `[📋 Ver todas las oportunidades|list:all]\n` +
-                   `[➕ Crear nueva oportunidad|create:new]`
-        }]);
+      // CASO 2: ANALIZAR EMPRESA EXISTENTE
+      if (intent === 'analyze_existing') {
+        const companyName = extractCompanyName(messageText, intent);
+        console.log('🏢 Buscando empresa existente:', companyName);
+        
+        const foundOpp = allOpportunities.find(opp => 
+          opp.client?.toLowerCase() === companyName.toLowerCase() ||
+          opp.client?.toLowerCase().includes(companyName.toLowerCase()) ||
+          companyName.toLowerCase().includes(opp.client?.toLowerCase())
+        );
+        
+        if (foundOpp) {
+          setAssistantActiveOpportunity(foundOpp);
+          const strategy = generateCompleteStrategy(foundOpp);
+          setMessages(prev => [...prev, { role: 'assistant', content: strategy }]);
+        } else {
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: `❌ No encontré "${companyName}" en el CRM.\n\n` +
+                     `**¿Qué quieres hacer?**\n\n` +
+                     `[🔍 Buscar ${companyName} en internet|search:${companyName}]\n` +
+                     `[📋 Ver todas las oportunidades|list:all]\n` +
+                     `[➕ Crear nueva oportunidad|create:new]`
+          }]);
+        }
+        setIsLoading(false);
+        return;
       }
-      setIsLoading(false);
-      return;
-    }
-    
-    // CASO 3: BÚSQUEDA WEB DE EMPRESA NUEVA
-    if (intent === 'web_search') {
-      const companyName = extractCompanyName(messageText, intent);
-      console.log('🔍 Buscando en web:', companyName);
       
-      try {
+      // CASO 3: BÚSQUEDA WEB DE EMPRESA NUEVA
+      if (intent === 'web_search') {
+        const companyName = extractCompanyName(messageText, intent);
+        console.log('🔍 Buscando en web:', companyName);
+        
         setMessages(prev => [...prev, { 
           role: 'assistant', 
           content: `🔍 Buscando información sobre **${companyName}** en internet...` 
         }]);
         
-        // Llamar al API con los parámetros correctos
         const response = await fetch('/api/assistant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -901,7 +894,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         if (response.ok) {
           const data = await response.json();
           
-          // Reemplazar el mensaje de "buscando..." con la respuesta real
           setMessages(prev => {
             const newMessages = [...prev];
             newMessages[newMessages.length - 1] = {
@@ -911,7 +903,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
             return newMessages;
           });
           
-          // Si encontró información, ofrecer crear oportunidad
           if (data.response && !data.response.includes('No pude encontrar')) {
             setMessages(prev => [...prev, { 
               role: 'assistant', 
@@ -921,38 +912,13 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                       `[📋 Ver pipeline actual|list:opportunities]`
             }]);
           }
-        } else {
-          throw new Error('Error en búsqueda web');
         }
-      } catch (error) {
-        console.error('Error en búsqueda web:', error);
-        
-        // Fallback mejorado
-        const fallbackApproach = `⚠️ **No pude buscar online en este momento**\n\n` +
-          `Pero aquí está el approach estándar para ${companyName}:\n\n` +
-          `**📋 CHECKLIST DE INVESTIGACIÓN MANUAL:**\n` +
-          `□ Buscar en Google: "${companyName} Brasil logística"\n` +
-          `□ LinkedIn: Buscar empleados y estructura\n` +
-          `□ Sitio web: Identificar productos/servicios\n` +
-          `□ Noticias: Buscar expansión o problemas recientes\n\n`;
-          
-        setMessages(prev => {
-          const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = {
-            role: 'assistant',
-            content: fallbackApproach
-          };
-          return newMessages;
-        });
-      } finally {
         setIsLoading(false);
+        return;
       }
-      return;
-    }
-    
-    // CASO 4: Plan semanal
-    if (intent === 'weekly_plan') {
-      try {
+      
+      // CASO 4: Plan semanal
+      if (intent === 'weekly_plan') {
         const response = await fetch('/api/assistant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -969,56 +935,26 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         if (response.ok) {
           const data = await response.json();
           setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
-        } else {
-          throw new Error('API error');
         }
-      } catch (error) {
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: '❌ Error generando plan. Intenta de nuevo.' 
-        }]);
-      } finally {
         setIsLoading(false);
+        return;
       }
-      return;
-    }
-    
-    // CASO 5: Intenciones con cliente activo
-    if (intent && activeOpp) {
-      let response = '';
       
-      switch (intent) {
-        case 'strategy':
-          response = generateCompleteStrategy(activeOpp);
-          break;
-        case 'email':
-          response = generateEmail(activeOpp);
-          break;
-        case 'call':
-          response = generateCallScript(activeOpp);
-          break;
-        case 'whatsapp':
-          response = `📱 **MENSAJE WHATSAPP para ${activeOpp.client}:**\n\n`;
-          response += `Hola [nombre]! 👋\n\n`;
-          response += `Calculé que ${activeOpp.client} pierde ~R$ ${Math.round(activeOpp.value * 0.01).toLocaleString('pt-BR')}/mes por violación de cajas 📦\n\n`;
-          response += `${successCases[activeOpp.industry?.toLowerCase()]?.empresa || 'L\'Oréal'} tenía el mismo problema.\n`;
-          response += `Resultado: ${successCases[activeOpp.industry?.toLowerCase()]?.resultado || '100% furtos eliminados'} ✅\n\n`;
-          response += `¿10 minutos mañana para mostrarle cómo eliminar estas pérdidas?\n\n`;
-          response += `Tengo estos horarios:\n`;
-          response += `• 9:00 ⏰\n`;
-          response += `• 14:00 ⏰\n`;
-          response += `• 16:00 ⏰\n\n`;
-          response += `¿Cuál le viene mejor? 🤔`;
-          break;
-        case 'objection':
-          response = `🛡️ **MANEJO DE OBJECIONES - ${activeOpp.client}**\n\n`;
-          Object.values(objectionHandlers).forEach(obj => {
-            response += `**Si dice: "${obj.objecion}"**\n`;
-            response += `✅ Responder: "${obj.respuesta}"\n\n`;
-          });
-          break;
-        case 'roi':
-          try {
+      // CASO 5: Intenciones con cliente activo
+      if (intent && activeOpp) {
+        let response = '';
+        
+        switch (intent) {
+          case 'strategy':
+            response = generateCompleteStrategy(activeOpp);
+            break;
+          case 'email':
+            response = generateEmail(activeOpp);
+            break;
+          case 'call':
+            response = generateCallScript(activeOpp);
+            break;
+          case 'roi':
             const apiResponse = await fetch('/api/assistant', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1032,80 +968,19 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
             if (apiResponse.ok) {
               const data = await apiResponse.json();
               response = data.response;
-            } else {
-              response = `💰 **ROI ESTIMADO - ${activeOpp.client}**\n\n`;
-              response += `• Pérdida mensual: R$ ${Math.round(activeOpp.value * 0.01).toLocaleString('pt-BR')}\n`;
-              response += `• Inversión: R$ ${activeOpp.value.toLocaleString('pt-BR')}\n`;
-              response += `• ROI: ${Math.round(activeOpp.value / (activeOpp.value * 0.01 * 0.95))} meses\n`;
             }
-          } catch (error) {
+            break;
+          default:
             response = generateCompleteStrategy(activeOpp);
-          }
-          break;
-        case 'proposal':
-          response = `📄 **PROPUESTA COMERCIAL - ${activeOpp.client}**\n\n`;
-          response += `**RESUMEN EJECUTIVO:**\n`;
-          response += `${activeOpp.client} pierde aproximadamente R$ ${Math.round(activeOpp.value * 0.01).toLocaleString('pt-BR')}/mes `;
-          response += `por violación de cajas en su operación logística.\n\n`;
-          response += `**NUESTRA SOLUCIÓN:**\n`;
-          response += `• Equipamiento: ${activeOpp.value > 200000 ? 'BP755' : 'BP555e'}\n`;
-          response += `• Consumibles: Fita Gorilla (stock garantizado)\n`;
-          response += `• Implementación: 7 días hábiles\n`;
-          response += `• Capacitación: 2 días en sitio incluidos\n\n`;
-          response += `**INVERSIÓN:**\n`;
-          response += `• Total: R$ ${activeOpp.value.toLocaleString('pt-BR')}\n`;
-          response += `• Forma de pago: 30/60/90 días\n`;
-          response += `• Garantía: 2 años en equipos\n\n`;
-          response += `**ROI GARANTIZADO:**\n`;
-          response += `• Retorno en ${Math.round(activeOpp.value / (activeOpp.value * 0.01 * 0.95))} meses\n`;
-          response += `• Si no cumplimos, devolvemos su dinero\n\n`;
-          response += `**PRÓXIMOS PASOS:**\n`;
-          response += `1. Aprobación de esta propuesta\n`;
-          response += `2. Test day en sus instalaciones\n`;
-          response += `3. Firma de contrato\n`;
-          response += `4. Implementación inmediata`;
-          break;
-        default:
-          response = generateCompleteStrategy(activeOpp);
-      }
-      
-      setMessages(prev => [...prev, { role: 'assistant', content: response }]);
-      setIsLoading(false);
-      return;
-    }
-
-    // CASO 6: Búsqueda simple - verificar si es nombre de empresa
-    const isSimpleSearch = messageText.split(' ').length <= 3 && messageText.length > 1 && !intent;
-    
-    if (isSimpleSearch) {
-      const searchTerm = messageText.trim();
-      const searchResults = allOpportunities.filter(opp => 
-        opp.client?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      
-      if (searchResults.length > 0) {
-        const found = searchResults[0];
-        setAssistantActiveOpportunity(found);
+        }
         
-        const response = generateCompleteStrategy(found);
         setMessages(prev => [...prev, { role: 'assistant', content: response }]);
-      } else {
-        // Si no encuentra en CRM, ofrecer buscar en web
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: `❌ No encontré "${searchTerm}" en el CRM.\n\n` +
-                   `**¿Qué quieres hacer?**\n\n` +
-                   `[🔍 Buscar ${searchTerm} en internet|search:${searchTerm}]\n` +
-                   `[📋 Ver todas las oportunidades|list:all]\n` +
-                   `[➕ Crear nueva oportunidad|create:new]`
-        }]);
+        setIsLoading(false);
+        return;
       }
-      setIsLoading(false);
-      return;
-    }
 
-    // CASO 7: Sin cliente activo - Mensaje de ayuda
-    const helpMessage = `
+      // CASO DEFAULT: Mensaje de ayuda
+      const helpMessage = `
 🤖 **SOY TU ASISTENTE DE VENTAS VENTAPEL**
 
 Para ayudarte mejor, puedo:
@@ -1116,7 +991,7 @@ Ejemplo: "investigar Magazine Luiza"
 Ejemplo: "busca online Intelbras"
 
 **📊 ANALIZAR OPORTUNIDADES EXISTENTES**
-Ejemplo: "MercadoLibre" (si ya está en CRM)
+Ejemplo: "MercadoLible" (si ya está en CRM)
 Ejemplo: "ayudame con MWM"
 Ejemplo: "listar" (ver todas)
 
@@ -1138,8 +1013,16 @@ Ejemplo: "listar" (ver todas)
 
 ¿Con qué quieres empezar?`;
 
-    setMessages(prev => [...prev, { role: 'assistant', content: helpMessage }]);
-    setIsLoading(false);
+      setMessages(prev => [...prev, { role: 'assistant', content: helpMessage }]);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error:', error);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: '❌ Error procesando. Intenta de nuevo.' 
+      }]);
+      setIsLoading(false);
+    }
   };
 
   const handleActionClick = async (actionPayload) => {
@@ -1147,7 +1030,6 @@ Ejemplo: "listar" (ver todas)
 
     const [action, ...params] = actionPayload.split(':');
 
-    // Manejar búsqueda web desde botón
     if (action === 'search') {
       const searchTerm = params.join(':');
       if (searchTerm === 'new') {
@@ -1156,19 +1038,16 @@ Ejemplo: "listar" (ver todas)
           content: '🔍 **¿Qué empresa quieres investigar?**\n\nEscribe: "buscar información de [nombre empresa]"' 
         }]);
       } else {
-        // Buscar empresa específica
         sendMessage(`buscar información de ${searchTerm}`);
       }
       return;
     }
 
-    // Manejar lista
     if (action === 'list') {
       sendMessage('listar');
       return;
     }
 
-    // Manejar selección de oportunidad
     if (action === 'select') {
       const oppId = parseInt(params[0]);
       const selectedOpp = allOpportunities.find(o => o.id === oppId);
@@ -1180,7 +1059,6 @@ Ejemplo: "listar" (ver todas)
       return;
     }
 
-    // Manejar creación de oportunidad
     if (action === 'create') {
       const companyName = params.join(':');
       setMessages(prev => [...prev, { 
@@ -1195,19 +1073,14 @@ Ejemplo: "listar" (ver todas)
       return;
     }
 
-    // Manejar plan semanal
     if (action === 'plan_semanal') {
       sendMessage('plan semanal');
       return;
     }
   };
 
-  const getActiveOpportunity = () => {
-    return assistantActiveOpportunity || currentOpportunity;
-  };
-
   const getQuickActions = () => {
-    const activeOpp = getActiveOpportunity();
+    const activeOpp = assistantActiveOpportunity || currentOpportunity;
     
     if (!activeOpp) {
       return [
@@ -1226,6 +1099,12 @@ Ejemplo: "listar" (ver todas)
     ];
   };
 
+  const getActiveOpportunity = () => {
+    return assistantActiveOpportunity || currentOpportunity;
+  };
+
+  // ============= RENDER DEL COMPONENTE =============
+  
   return (
     <>
       {/* Panel de análisis PPVVCC */}
@@ -1351,9 +1230,14 @@ Ejemplo: "listar" (ver todas)
                 <X size={20} />
               </button>
             </div>
+            {currentUser && (
+              <div className="text-xs opacity-90">
+                Vendedor: {currentUser}
+              </div>
+            )}
             {assistantActiveOpportunity && (
               <div className="text-xs bg-white/20 rounded px-2 py-1 mt-2">
-                🎯 {assistantActiveOpportunity.client} | Etapa {assistantActiveOpportunity.stage}
+                🎯 Analizando: {assistantActiveOpportunity.client} | Etapa {assistantActiveOpportunity.stage}
               </div>
             )}
           </div>
@@ -1473,7 +1357,7 @@ Ejemplo: "listar" (ver todas)
                       }}
                       className="w-full text-left p-3 bg-blue-50 rounded-lg hover:bg-blue-100"
                     >
-                      📋 Estrategia completa
+                      📋 Estrategia completa PPVVCC
                     </button>
                     <button
                       onClick={() => {
@@ -1482,7 +1366,7 @@ Ejemplo: "listar" (ver todas)
                       }}
                       className="w-full text-left p-3 bg-green-50 rounded-lg hover:bg-green-100"
                     >
-                      💰 Calcular ROI
+                      💰 Calcular ROI específico
                     </button>
                     <button
                       onClick={() => {
@@ -1492,6 +1376,15 @@ Ejemplo: "listar" (ver todas)
                       className="w-full text-left p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100"
                     >
                       🛡️ Manejo de objeciones
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('plan semanal');
+                      }}
+                      className="w-full text-left p-3 bg-purple-50 rounded-lg hover:bg-purple-100"
+                    >
+                      📅 Plan semanal optimizado
                     </button>
                   </div>
                 ) : (
@@ -1523,6 +1416,24 @@ Ejemplo: "listar" (ver todas)
                     >
                       📱 Mensaje WhatsApp
                     </button>
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('linkedin');
+                      }}
+                      className="w-full text-left p-3 bg-blue-100 rounded-lg hover:bg-blue-200"
+                    >
+                      💼 Mensaje LinkedIn
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('objeción precio');
+                      }}
+                      className="w-full text-left p-3 bg-red-50 rounded-lg hover:bg-red-100"
+                    >
+                      💸 Responder "Es muy caro"
+                    </button>
                   </div>
                 ) : (
                   <p className="text-gray-500 text-sm">Selecciona un cliente primero</p>
@@ -1532,17 +1443,35 @@ Ejemplo: "listar" (ver todas)
 
             {activeView === 'templates' && (
               <div className="space-y-4">
-                <h4 className="font-bold text-gray-800">📧 Templates</h4>
+                <h4 className="font-bold text-gray-800">📧 Templates de Email</h4>
                 {getActiveOpportunity() ? (
                   <div className="space-y-2">
                     <button
                       onClick={() => {
                         setActiveView('chat');
-                        sendMessage('email');
+                        sendMessage('email primer contacto');
                       }}
                       className="w-full text-left p-3 bg-blue-50 rounded-lg hover:bg-blue-100"
                     >
+                      👋 Primer contacto
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('email seguimiento');
+                      }}
+                      className="w-full text-left p-3 bg-green-50 rounded-lg hover:bg-green-100"
+                    >
                       📧 Email de seguimiento
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('email para compras');
+                      }}
+                      className="w-full text-left p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100"
+                    >
+                      🛒 Email para Compras
                     </button>
                     <button
                       onClick={() => {
@@ -1552,6 +1481,15 @@ Ejemplo: "listar" (ver todas)
                       className="w-full text-left p-3 bg-purple-50 rounded-lg hover:bg-purple-100"
                     >
                       📄 Propuesta comercial
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('email cierre');
+                      }}
+                      className="w-full text-left p-3 bg-red-50 rounded-lg hover:bg-red-100"
+                    >
+                      ✅ Email de cierre
                     </button>
                   </div>
                 ) : (
@@ -1581,6 +1519,9 @@ Ejemplo: "listar" (ver todas)
                 >
                   Enviar
                 </button>
+              </div>
+              <div className="mt-2 text-xs text-gray-500">
+                💡 Tip: Escribe "listar" para ver todas las oportunidades
               </div>
             </div>
           )}
