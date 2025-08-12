@@ -115,9 +115,38 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return scale.score || 0;
   };
 
-  // ============= LLAMADA A CLAUDE API (si está disponible) =============
+  // ============= LLAMADA A CLAUDE API (uso inteligente) =============
   const callClaudeAPI = useCallback(async (prompt, context = {}) => {
+    // OPTIMIZACIÓN: Solo usar Claude para casos que lo requieren
+    const shouldUseClaude = 
+      context.useCase === 'complex_strategy' ||
+      context.useCase === 'creative_solution' ||
+      context.useCase === 'open_question' ||
+      prompt.toLowerCase().includes('estrategia compleja') ||
+      prompt.toLowerCase().includes('ayúdame a pensar') ||
+      prompt.toLowerCase().includes('qué opinas') ||
+      prompt.toLowerCase().includes('consejo');
+
+    if (!shouldUseClaude) {
+      console.log('📊 Usando lógica local (más rápido y consistente)');
+      return null;
+    }
+
     try {
+      console.log('🤖 Consultando Claude para análisis avanzado...');
+      
+      const enrichedPrompt = `
+Eres un experto en ventas consultivas PPVVCC de Ventapel Brasil.
+IMPORTANTE: Sé DIRECTO y ESPECÍFICO. No inventes datos.
+
+CONTEXTO:
+${JSON.stringify(context, null, 2)}
+
+SOLICITUD:
+${prompt}
+
+Da una respuesta ACCIONABLE y BREVE (máximo 5 líneas).`;
+
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -125,10 +154,11 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          max_tokens: 1500,
+          max_tokens: 500, // Reducido para respuestas más concisas
+          temperature: 0.3, // Más determinístico
           messages: [
-            ...claudeContext,
-            { role: "user", content: prompt }
+            ...claudeContext.slice(-2), // Solo últimos 2 mensajes para reducir tokens
+            { role: "user", content: enrichedPrompt }
           ]
         })
       });
@@ -140,9 +170,9 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
       const data = await response.json();
       
-      // Actualizar contexto para mantener conversación
+      // Actualizar contexto mínimo
       setClaudeContext(prev => [
-        ...prev.slice(-4), // Mantener últimos 4 mensajes
+        ...prev.slice(-2),
         { role: "user", content: prompt },
         { role: "assistant", content: data.content[0].text }
       ]);
