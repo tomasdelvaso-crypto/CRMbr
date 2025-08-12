@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, X, AlertTriangle, Target, RefreshCw, TrendingUp, Globe, Calendar, Zap, DollarSign, Database, Search, Mail, Phone, FileText, MessageSquare, Users, Brain, Sparkles, Bot, Send, ChevronDown, Loader2, CheckCircle, XCircle, TrendingDown, Award } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { MessageCircle, X, AlertTriangle, Target, RefreshCw, TrendingUp, Globe, Calendar, Zap, DollarSign, Database, Search, Mail, Phone, FileText, MessageSquare, Users, Brain, Sparkles, Bot, Send, ChevronDown, Loader2, CheckCircle, XCircle, TrendingDown, Award, AlertCircle } from 'lucide-react';
 
 // ============= CASOS REALES DE ÉXITO VENTAPEL =============
 const CASOS_EXITO_REALES = {
@@ -136,12 +136,11 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [allOpportunities, setAllOpportunities] = useState([]);
-  const [claudeContext, setClaudeContext] = useState([]);
   const [activeView, setActiveView] = useState('chat');
   const [isThinking, setIsThinking] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // Cargar oportunidades
+  // Cargar oportunidades al inicio
   useEffect(() => {
     if (supabase) {
       loadOpportunities();
@@ -168,321 +167,12 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ============= LLAMADA A CLAUDE API =============
-  const callClaudeAPI = async (prompt, context = {}) => {
-    try {
-      // Preparar el contexto enriquecido con TODOS los datos del CRM
-      const enrichedPrompt = `
-Eres un experto asesor de ventas de Ventapel Brasil. Tienes acceso a:
-
-CONTEXTO ACTUAL DEL CRM:
-- Cliente: ${context.cliente || 'No seleccionado'}
-- Industria: ${context.industria || 'No especificada'}
-- Valor oportunidad: R$ ${context.valor?.toLocaleString('pt-BR') || '0'}
-- Etapa actual: ${context.etapa || 'Prospección'}
-- Probabilidad: ${context.probabilidad || 0}%
-- Score PPVVCC: ${context.ppvvcc || '0/10'}
-- Última actualización: ${context.ultimaActualizacion || 'No registrada'}
-- Días sin contacto: ${context.diasSinContacto || 'No calculado'}
-- Próxima acción: ${context.proximaAccion || 'No definida'}
-
-SCORES DETALLADOS PPVVCC:
-- DOR (Pain): ${context.scoreDor || 0}/10 - ${context.descripcionDor || 'Sin notas'}
-- PODER (Power): ${context.scorePoder || 0}/10 - ${context.descripcionPoder || 'Sin notas'}
-- VISÃO (Vision): ${context.scoreVisao || 0}/10 - ${context.descripcionVisao || 'Sin notas'}
-- VALOR (Value): ${context.scoreValor || 0}/10 - ${context.descripcionValor || 'Sin notas'}
-- CONTROLE (Control): ${context.scoreControle || 0}/10 - ${context.descripcionControle || 'Sin notas'}
-- COMPRAS (Purchase): ${context.scoreCompras || 0}/10 - ${context.descripcionCompras || 'Sin notas'}
-
-CONTACTOS MAPEADOS:
-- Power Sponsor: ${context.powerSponsor || 'No identificado'}
-- Sponsor: ${context.sponsor || 'No identificado'}
-- Influenciador: ${context.influencer || 'No identificado'}
-- Soporte: ${context.supportContact || 'No identificado'}
-
-PIPELINE CONTEXT:
-- Total oportunidades vendedor: ${context.totalOportunidades || 0}
-- Valor total pipeline: R$ ${context.valorTotalPipeline?.toLocaleString('pt-BR') || '0'}
-- Oportunidades en riesgo: ${context.oportunidadesEnRiesgo || 0}
-- Deals similares ganados: ${context.dealsSimilaresGanados || 'No hay datos'}
-
-CASOS DE ÉXITO REALES (NO inventar otros):
-${JSON.stringify(CASOS_EXITO_REALES, null, 2)}
-
-BENCHMARKS BRASIL 2024:
-${JSON.stringify(BENCHMARKS_BRASIL, null, 2)}
-
-INSTRUCCIONES CRÍTICAS:
-1. SOLO usa los casos de éxito que te proporcioné arriba. NO inventes casos.
-2. Si mencionas ROI, calcula con los datos reales: 10% pérdidas promedio Brasil
-3. Sé directo y sin rodeos. El CEO no quiere pérdida de tiempo.
-4. Usa métricas reales, no genéricas.
-5. Si no sabes algo, di que necesitas más información.
-
-SOLICITUD DEL USUARIO:
-${prompt}
-
-Responde en español directo del Río de la Plata como el CEO espera.`;
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 2000,
-          messages: [
-            ...claudeContext,
-            { role: 'user', content: enrichedPrompt }
-          ]
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Claude API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      // Actualizar contexto de Claude
-      setClaudeContext(prev => [
-        ...prev.slice(-4), // Mantener últimos 4 mensajes
-        { role: 'user', content: prompt },
-        { role: 'assistant', content: data.content[0].text }
-      ]);
-
-      return data.content[0].text;
-    } catch (error) {
-      console.error('Error llamando a Claude:', error);
-      return null;
-    }
-  };
-
-  // ============= ANÁLISIS INTELIGENTE CON CLAUDE =============
-  const analyzeWithClaude = async (opportunity) => {
-    // Calcular contexto adicional
-    const daysSinceUpdate = opportunity.last_update ? 
-      Math.floor((new Date() - new Date(opportunity.last_update)) / (1000 * 60 * 60 * 24)) : 999;
-    
-    // Buscar deals similares ganados
-    const similarWonDeals = allOpportunities.filter(opp => 
-      opp.industry === opportunity.industry && 
-      opp.stage === 6 && 
-      opp.id !== opportunity.id
-    ).slice(0, 3);
-
-    const prompt = `
-Analiza esta oportunidad con TODOS los datos del CRM:
-- Cliente: ${opportunity.client}
-- Industria: ${opportunity.industry || 'General'}
-- Valor: R$ ${opportunity.value}
-- Etapa actual: ${opportunity.stage}
-- Probabilidad actual: ${opportunity.probability}%
-- Días sin contacto: ${daysSinceUpdate}
-- Última acción registrada: ${opportunity.next_action || 'Ninguna'}
-
-SCORES PPVVCC DETALLADOS:
-- Dolor: ${opportunity.scales?.dor?.score || 0}/10 - "${opportunity.scales?.dor?.description || 'Sin notas'}"
-- Poder: ${opportunity.scales?.poder?.score || 0}/10 - "${opportunity.scales?.poder?.description || 'Sin notas'}"
-- Visión: ${opportunity.scales?.visao?.score || 0}/10
-- Valor: ${opportunity.scales?.valor?.score || 0}/10
-- Control: ${opportunity.scales?.controle?.score || 0}/10
-- Compras: ${opportunity.scales?.compras?.score || 0}/10
-
-CONTACTOS IDENTIFICADOS:
-- Power Sponsor: ${opportunity.power_sponsor || 'NO IDENTIFICADO - CRÍTICO!'}
-- Sponsor: ${opportunity.sponsor || 'No identificado'}
-
-${similarWonDeals.length > 0 ? `
-DEALS SIMILARES GANADOS EN ${opportunity.industry}:
-${similarWonDeals.map(d => `- ${d.client}: ROI ${d.scales?.valor?.score || 'N/A'}/10`).join('\n')}
-` : 'No hay deals ganados en esta industria aún'}
-
-ANALIZA Y DAME:
-1. ¿Cuál es el MAYOR RIESGO de perder este deal?
-2. ¿Qué caso de éxito real usar? (SOLO Honda, L'Oréal, Nike, MercadoLibre, Natura o Centauro)
-3. Acción URGENTE para los próximos 2 días
-4. Si hay más de 7 días sin contacto, ¿cómo reactivar?
-5. ¿Qué score PPVVCC es crítico mejorar YA?
-
-Sé DIRECTO y ALARMISTA si hay riesgos.`;
-
-    const response = await callClaudeAPI(prompt, {
-      cliente: opportunity.client,
-      industria: opportunity.industry,
-      valor: opportunity.value,
-      etapa: opportunity.stage,
-      probabilidad: opportunity.probability,
-      ppvvcc: calculateHealthScore(opportunity.scales),
-      diasSinContacto: daysSinceUpdate,
-      ultimaActualizacion: opportunity.last_update,
-      proximaAccion: opportunity.next_action,
-      scoreDor: opportunity.scales?.dor?.score,
-      descripcionDor: opportunity.scales?.dor?.description,
-      scorePoder: opportunity.scales?.poder?.score,
-      descripcionPoder: opportunity.scales?.poder?.description,
-      scoreVisao: opportunity.scales?.visao?.score,
-      scoreValor: opportunity.scales?.valor?.score,
-      scoreControle: opportunity.scales?.controle?.score,
-      scoreCompras: opportunity.scales?.compras?.score,
-      powerSponsor: opportunity.power_sponsor,
-      sponsor: opportunity.sponsor,
-      influencer: opportunity.influencer,
-      supportContact: opportunity.support_contact,
-      totalOportunidades: allOpportunities.filter(o => o.vendor === currentUser).length,
-      valorTotalPipeline: allOpportunities.filter(o => o.vendor === currentUser).reduce((sum, o) => sum + o.value, 0),
-      oportunidadesEnRiesgo: allOpportunities.filter(o => {
-        const health = calculateHealthScore(o.scales);
-        return health < 4 && o.value > 50000;
-      }).length,
-      dealsSimilaresGanados: similarWonDeals.length
-    });
-
-    return response;
-  };
-
-  // ============= BÚSQUEDA WEB INTELIGENTE =============
-  const searchCompanyWeb = async (companyName) => {
-    setIsThinking(true);
-    
-    // Primero buscar en web via API
-    const response = await fetch('/api/assistant', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        specialRequestType: 'web_research',
-        companyName: companyName,
-        vendorName: currentUser
-      })
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      
-      // Ahora pedirle a Claude que analice los resultados
-      const claudePrompt = `
-Basándote en esta información de ${companyName}:
-${data.response}
-
-Crea una estrategia de approach ESPECÍFICA:
-1. ¿Qué problema tienen que Ventapel resuelve?
-2. ¿A quién debo contactar primero? (cargo específico)
-3. ¿Qué caso de éxito usar? (SOLO Honda, L'Oréal, Nike, MercadoLibre, Natura o Centauro)
-4. Mensaje de LinkedIn para primer contacto (máximo 3 líneas)
-5. Estimación de pérdidas mensuales
-
-Sé DIRECTO y ESPECÍFICO.`;
-
-      const claudeAnalysis = await callClaudeAPI(claudePrompt, {
-        cliente: companyName
-      });
-
-      setIsThinking(false);
-      
-      return `${data.response}\n\n🤖 **ANÁLISIS ESTRATÉGICO CLAUDE:**\n${claudeAnalysis}`;
-    }
-    
-    setIsThinking(false);
-    return null;
-  };
-
-  // ============= GENERADORES MEJORADOS =============
-  const generateSmartEmail = async (opp) => {
-    // Calcular días sin contacto
-    const daysSinceUpdate = opp.last_update ? 
-      Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24)) : 0;
-
-    const prompt = `
-Genera un email de venta URGENTE para:
-- Cliente: ${opp.client}
-- Contacto: ${opp.sponsor || 'Gerente'}
-- Power Sponsor: ${opp.power_sponsor || 'NO IDENTIFICADO AÚN'}
-- Industria: ${opp.industry || 'General'}
-- Valor deal: R$ ${opp.value}
-- Etapa: ${opp.stage}
-- Días sin contacto: ${daysSinceUpdate}
-- Última acción: ${opp.next_action || 'Ninguna'}
-- Score Dolor: ${opp.scales?.dor?.score || 0}/10
-- Score Poder: ${opp.scales?.poder?.score || 0}/10
-
-${daysSinceUpdate > 7 ? '⚠️ ALERTA: Más de 7 días sin contacto - REACTIVAR URGENTE' : ''}
-${!opp.power_sponsor ? '⚠️ ALERTA: Power Sponsor no identificado - CRÍTICO' : ''}
-${opp.scales?.dor?.score < 5 ? '⚠️ ALERTA: Dolor no admitido - NO HAY VENTA POSIBLE' : ''}
-
-El email debe:
-1. ${daysSinceUpdate > 7 ? 'Reactivar con urgencia' : 'Mantener momentum'}
-2. ${!opp.power_sponsor ? 'Solicitar acceso al decisor' : 'Involucrar al power sponsor'}
-3. Mencionar UN caso de éxito relevante (de los reales)
-4. Incluir UNA métrica de pérdida específica
-5. Call-to-action para ${opp.stage < 3 ? 'agendar demo' : opp.stage < 5 ? 'hacer prueba' : 'cerrar deal'}
-
-Asunto que genere urgencia. NO uses templates genéricos.`;
-
-    return await callClaudeAPI(prompt, {
-      cliente: opp.client,
-      industria: opp.industry,
-      valor: opp.value,
-      diasSinContacto: daysSinceUpdate,
-      scoreDor: opp.scales?.dor?.score,
-      scorePoder: opp.scales?.poder?.score,
-      powerSponsor: opp.power_sponsor
-    });
-  };
-
-  const generateCallScript = async (opp) => {
-    const prompt = `
-Crea un script de llamada SPIN para:
-- Cliente: ${opp.client}
-- Dolor actual: ${opp.scales?.dor?.score || 0}/10
-- Poder: ${opp.scales?.poder?.score || 0}/10
-
-Dame:
-1. Apertura (máximo 2 líneas)
-2. 3 preguntas de SITUACIÓN específicas
-3. 2 preguntas de PROBLEMA que duelen
-4. 1 pregunta de IMPLICACIÓN financiera
-5. Cierre con próximo paso concreto
-
-Tiempo total: 15 minutos. Sé DIRECTO.`;
-
-    return await callClaudeAPI(prompt, {
-      cliente: opp.client
-    });
-  };
-
-  const generateROIAnalysis = async (opp) => {
-    const prompt = `
-Calcula el ROI REAL para:
-- Cliente: ${opp.client}
-- Industria: ${opp.industry || 'General'}
-- Valor mensual estimado: R$ ${opp.value}
-
-Usa estos datos reales:
-- Pérdidas promedio Brasil: 10% (IBEVAR 2024)
-- Ventapel reduce: 95% de las pérdidas
-
-Necesito:
-1. Pérdidas actuales mensuales en R$
-2. Ahorro mensual con Ventapel
-3. Inversión estimada (basada en casos similares)
-4. ROI en meses
-5. Caso de éxito comparable con métricas
-
-NO inventes números. Usa los casos reales y benchmarks que tienes.`;
-
-    return await callClaudeAPI(prompt, {
-      cliente: opp.client,
-      industria: opp.industry,
-      valor: opp.value
-    });
-  };
-
   // ============= FUNCIONES AUXILIARES =============
   const calculateHealthScore = (scales) => {
     if (!scales) return 0;
-    const values = Object.values(scales).map(s => s?.score || 0);
-    return (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
+    const values = Object.values(scales).map(s => (s?.score || 0));
+    const avg = values.reduce((a, b) => a + b, 0) / (values.length || 1);
+    return avg.toFixed(1);
   };
 
   const getScaleValue = (scale) => {
@@ -490,8 +180,354 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
     return scale.score || 0;
   };
 
-  // ============= PROCESAMIENTO DE MENSAJES =============
-  const sendMessage = async (text = input) => {
+  // ============= LLAMADA A CLAUDE API MEJORADA =============
+  const callClaudeAPI = useCallback(async (prompt, context = {}) => {
+    try {
+      // Preparar contexto completo para Claude
+      const enrichedPrompt = `
+Eres un experto asesor de ventas de Ventapel Brasil. Responde de forma directa y sin rodeos.
+
+CONTEXTO ACTUAL:
+${context.cliente ? `Cliente: ${context.cliente}` : ''}
+${context.industria ? `Industria: ${context.industria}` : ''}
+${context.valor ? `Valor: R$ ${context.valor.toLocaleString('pt-BR')}` : ''}
+${context.etapa ? `Etapa: ${context.etapa}` : ''}
+${context.scoreDor ? `Score DOR: ${context.scoreDor}/10` : ''}
+${context.scorePoder ? `Score PODER: ${context.scorePoder}/10` : ''}
+
+CASOS DE ÉXITO REALES (NO inventes otros):
+- Honda: +40% velocidad, ROI 3 meses
+- L'Oréal: 100% robos eliminados
+- Nike: Cero violaciones
+- MercadoLibre: -40% retrabajo
+- Centauro: R$50M/año recuperados
+
+SOLICITUD: ${prompt}
+
+Responde en español directo y específico.`;
+
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1500,
+          messages: [
+            { role: "user", content: enrichedPrompt }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        console.error('Claude API error:', response.status);
+        return null;
+      }
+
+      const data = await response.json();
+      return data.content[0].text;
+      
+    } catch (error) {
+      console.error('Error llamando a Claude:', error);
+      return null;
+    }
+  }, []);
+
+  // ============= ANÁLISIS LOCAL DE OPORTUNIDADES =============
+  const analyzeOpportunityLocal = useCallback((opp) => {
+    const daysSince = opp.last_update ? 
+      Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24)) : 999;
+    
+    const healthScore = calculateHealthScore(opp.scales);
+    
+    let analysis = `📊 **ANÁLISIS DE ${opp.client}**\n\n`;
+    
+    // Información básica
+    analysis += `💰 **Valor:** R$ ${(opp.value || 0).toLocaleString('pt-BR')}\n`;
+    analysis += `📈 **Etapa:** ${opp.stage} - Probabilidad ${opp.probability}%\n`;
+    analysis += `❤️ **Health Score:** ${healthScore}/10\n`;
+    analysis += `📅 **Días sin contacto:** ${daysSince}\n`;
+    
+    if (opp.next_action) {
+      analysis += `📌 **Próxima acción:** ${opp.next_action}\n`;
+    }
+    
+    analysis += `\n**🎯 SCORES PPVVCC:**\n`;
+    analysis += `• DOR: ${opp.scales?.dor?.score || 0}/10`;
+    if (opp.scales?.dor?.description) {
+      analysis += ` - "${opp.scales.dor.description}"`;
+    }
+    analysis += `\n`;
+    
+    analysis += `• PODER: ${opp.scales?.poder?.score || 0}/10`;
+    if (opp.scales?.poder?.description) {
+      analysis += ` - "${opp.scales.poder.description}"`;
+    }
+    analysis += `\n`;
+    
+    analysis += `• VISIÓN: ${opp.scales?.visao?.score || 0}/10\n`;
+    analysis += `• VALOR: ${opp.scales?.valor?.score || 0}/10\n`;
+    analysis += `• CONTROL: ${opp.scales?.controle?.score || 0}/10\n`;
+    analysis += `• COMPRAS: ${opp.scales?.compras?.score || 0}/10\n\n`;
+    
+    // Alertas y riesgos
+    const alerts = [];
+    
+    if (daysSince > 30) {
+      alerts.push(`🔴 **CRÍTICO:** ${daysSince} días sin contacto - DEAL MUERTO`);
+    } else if (daysSince > 7) {
+      alerts.push(`⚠️ **ALERTA:** ${daysSince} días sin contacto - REACTIVAR URGENTE`);
+    }
+    
+    if (!opp.power_sponsor) {
+      alerts.push(`⚠️ **ALERTA:** Power Sponsor no identificado`);
+    }
+    
+    if (opp.scales?.dor?.score < 5) {
+      alerts.push(`⚠️ **ALERTA:** Dolor no admitido (${opp.scales?.dor?.score}/10) - NO hay venta posible`);
+    }
+    
+    if (opp.stage >= 3 && opp.scales?.visao?.score < 5) {
+      alerts.push(`⚠️ **ALERTA:** En presentación sin visión construida`);
+    }
+    
+    if (alerts.length > 0) {
+      analysis += `**🚨 ALERTAS:**\n`;
+      alerts.forEach(alert => {
+        analysis += `${alert}\n`;
+      });
+      analysis += `\n`;
+    }
+    
+    // Acciones recomendadas
+    analysis += `**✅ PRÓXIMOS PASOS RECOMENDADOS:**\n`;
+    
+    if (daysSince > 7) {
+      analysis += `1. **HOY:** Llamar para reactivar - "Vi que no hablamos hace ${daysSince} días..."\n`;
+    } else {
+      analysis += `1. Mantener momentum con contacto esta semana\n`;
+    }
+    
+    if (opp.scales?.dor?.score < 5) {
+      analysis += `2. **URGENTE:** Recalificar dolor - Sin dolor admitido no hay venta\n`;
+    } else if (opp.scales?.dor?.score < 8) {
+      analysis += `2. Profundizar en el dolor - Llevar de ${opp.scales?.dor?.score} a 8+\n`;
+    }
+    
+    if (!opp.power_sponsor) {
+      analysis += `3. **CRÍTICO:** Identificar Power Sponsor - "¿Quién firma el contrato?"\n`;
+    } else if (opp.scales?.poder?.score < 7) {
+      analysis += `3. Conseguir acceso directo al Power Sponsor: ${opp.power_sponsor}\n`;
+    }
+    
+    // Caso de éxito relevante
+    analysis += `\n**💡 CASO DE ÉXITO A USAR:**\n`;
+    
+    if (opp.industry?.toLowerCase().includes('cosmé') || opp.industry?.toLowerCase().includes('beleza')) {
+      analysis += `L'Oréal Brasil: 100% robos eliminados, ROI 3 meses, R$2.5M ahorro anual\n`;
+    } else if (opp.industry?.toLowerCase().includes('commerce')) {
+      analysis += `MercadoLibre: 40% reducción retrabajo, ROI 2 meses\n`;
+    } else if (opp.industry?.toLowerCase().includes('auto')) {
+      analysis += `Honda Argentina: +40% velocidad, 100% pérdidas eliminadas\n`;
+    } else {
+      analysis += `Nike Brasil: Cero violaciones, +30% eficiencia, ROI 2 meses\n`;
+    }
+    
+    return analysis;
+  }, []);
+
+  // ============= GENERADORES DE CONTENIDO =============
+  const generateEmail = useCallback((opp) => {
+    const daysSince = opp.last_update ? 
+      Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24)) : 0;
+    
+    let email = `📧 **EMAIL PARA ${opp.client}**\n\n`;
+    
+    // Asunto
+    if (daysSince > 7) {
+      email += `**Asunto:** ${opp.client} - Actualización urgente sobre pérdidas detectadas\n\n`;
+    } else if (opp.scales?.dor?.score >= 7) {
+      email += `**Asunto:** ${opp.client} - Solución para eliminar R$ ${Math.round(opp.value * 0.1).toLocaleString('pt-BR')}/mes en pérdidas\n\n`;
+    } else {
+      email += `**Asunto:** Caso ${opp.industry === 'e-commerce' ? 'MercadoLibre' : 'L\'Oréal'} - ROI 3 meses garantizado\n\n`;
+    }
+    
+    email += `**Para:** ${opp.sponsor || opp.power_sponsor || 'Gerente de Operaciones'}\n\n`;
+    
+    email += `---\n\n`;
+    
+    // Cuerpo del email
+    email += `Hola ${opp.sponsor?.split(' ')[0] || 'equipo'},\n\n`;
+    
+    if (daysSince > 7) {
+      email += `Hace ${daysSince} días que no conversamos y quería compartir algo importante.\n\n`;
+    }
+    
+    // Dolor y datos
+    if (opp.scales?.dor?.score >= 5) {
+      email += `Entiendo que están perdiendo aproximadamente R$ ${Math.round(opp.value * 0.1).toLocaleString('pt-BR')}/mes en violaciones de cajas`;
+      email += ` (basado en el promedio de ${(BENCHMARKS_BRASIL[opp.industry?.toLowerCase()] || BENCHMARKS_BRASIL['e-commerce']).perdidas_promedio * 100}% del sector).\n\n`;
+    } else {
+      email += `Empresas como la suya en ${opp.industry || 'el sector'} pierden en promedio `;
+      email += `${(BENCHMARKS_BRASIL[opp.industry?.toLowerCase()] || BENCHMARKS_BRASIL['e-commerce']).perdidas_promedio * 100}% `;
+      email += `por violación de cajas (fuente: ${(BENCHMARKS_BRASIL[opp.industry?.toLowerCase()] || BENCHMARKS_BRASIL['e-commerce']).fuente}).\n\n`;
+    }
+    
+    // Caso de éxito
+    const casoRelevante = opp.industry?.toLowerCase().includes('commerce') ? 'mercadolibre' : 
+                          opp.industry?.toLowerCase().includes('cosmé') ? 'loreal' : 'nike';
+    const caso = CASOS_EXITO_REALES[casoRelevante];
+    
+    email += `${caso.empresa} tenía el mismo problema. `;
+    email += `Con nuestra solución ${caso.solucion}, lograron:\n`;
+    email += `• ${caso.resultados.perdidas === '100% eliminadas' ? 'Eliminar 100% de las pérdidas' : caso.resultados.furtos || caso.resultados.retrabajo}\n`;
+    email += `• ROI en ${caso.resultados.roi_meses} meses\n`;
+    email += `• Ahorro de R$ ${(caso.resultados.ahorro_anual || caso.resultados.ahorro_mensual * 12).toLocaleString('pt-BR')}/año\n\n`;
+    
+    // Call to action
+    if (opp.stage < 3) {
+      email += `¿Podemos agendar 30 minutos esta semana para mostrarles exactamente cómo funciona?\n\n`;
+      email += `Tengo disponible:\n`;
+      email += `• Martes 14:00-17:00\n`;
+      email += `• Miércoles 10:00-12:00\n`;
+      email += `• Jueves todo el día\n\n`;
+    } else if (opp.stage < 5) {
+      email += `¿Cuándo podríamos hacer una prueba en su operación? `;
+      email += `Garantizamos resultados o devolvemos el dinero.\n\n`;
+    } else {
+      email += `¿Hay algo pendiente para avanzar con la implementación?\n\n`;
+    }
+    
+    email += `Saludos,\n${currentUser || 'Equipo Ventapel'}\n`;
+    email += `📱 WhatsApp: +55 11 9xxxx-xxxx`;
+    
+    return email;
+  }, [currentUser]);
+
+  const generateCallScript = useCallback((opp) => {
+    let script = `📞 **SCRIPT DE LLAMADA SPIN - ${opp.client}**\n\n`;
+    
+    script += `⏱️ **Duración objetivo:** 15 minutos\n\n`;
+    
+    script += `**1️⃣ APERTURA (30 segundos):**\n`;
+    script += `"Hola ${opp.sponsor?.split(' ')[0] || '[NOMBRE]'}, soy ${currentUser} de Ventapel. `;
+    script += `¿Tienes 15 minutos? Quiero compartir cómo ${opp.industry === 'e-commerce' ? 'MercadoLibre' : 'L\'Oréal'} `;
+    script += `eliminó R$ ${opp.industry === 'e-commerce' ? '180.000' : '250.000'}/mes en pérdidas."\n\n`;
+    
+    script += `**2️⃣ SITUACIÓN (3 minutos):**\n`;
+    script += `• "¿Cuántas cajas procesan por mes actualmente?"\n`;
+    script += `• "¿Qué sistema de sellado usan hoy?"\n`;
+    script += `• "¿Cómo miden las violaciones de cajas?"\n\n`;
+    
+    script += `**3️⃣ PROBLEMA (4 minutos):**\n`;
+    script += `• "¿Qué porcentaje de cajas llegan violadas al cliente final?"\n`;
+    script += `• "¿Cuánto tiempo pierden en retrabajo por cajas violadas?"\n`;
+    
+    if (!opp.power_sponsor) {
+      script += `• "¿Quién en la empresa ve estos números de pérdidas?"\n\n`;
+    } else {
+      script += `• "¿${opp.power_sponsor} ve estos números mensualmente?"\n\n`;
+    }
+    
+    script += `**4️⃣ IMPLICACIÓN (3 minutos):**\n`;
+    script += `• "Si pierden ${(BENCHMARKS_BRASIL[opp.industry?.toLowerCase()] || BENCHMARKS_BRASIL['e-commerce']).perdidas_promedio * 100}% (promedio Brasil), `;
+    script += `serían R$ ${Math.round(opp.value * 0.1).toLocaleString('pt-BR')}/mes. ¿Es correcto?"\n`;
+    script += `• "¿Qué impacto tiene esto en la satisfacción del cliente?"\n`;
+    script += `• "¿Han calculado el costo anual de este problema?"\n\n`;
+    
+    script += `**5️⃣ NECESIDAD-BENEFICIO (4 minutos):**\n`;
+    script += `• "Si pudieran eliminar 95% de esas pérdidas, ¿qué significaría para ustedes?"\n`;
+    script += `• "¿Cuánto valorarían una solución con ROI en 3 meses?"\n`;
+    script += `• "¿Les interesaría ver cómo ${opp.industry === 'e-commerce' ? 'MercadoLibre' : 'Nike'} lo logró?"\n\n`;
+    
+    script += `**6️⃣ CIERRE (1 minuto):**\n`;
+    
+    if (opp.stage < 3) {
+      script += `"Perfecto. Te propongo hacer una demo de 30 minutos donde te muestro:\n`;
+      script += `1. El caso completo de ${opp.industry === 'e-commerce' ? 'MercadoLibre' : 'L\'Oréal'}\n`;
+      script += `2. ROI específico para su volumen\n`;
+      script += `3. Video de la solución funcionando\n\n`;
+      script += `¿Martes o jueves te viene mejor?"\n`;
+    } else {
+      script += `"Excelente. El siguiente paso es hacer una prueba en su operación.\n`;
+      script += `Traemos el equipo, lo probamos 1 día, y si no ven resultados, no hay compromiso.\n`;
+      script += `¿Cuándo podríamos coordinar?"\n`;
+    }
+    
+    script += `\n**⚠️ OBJECIONES COMUNES:**\n`;
+    script += `• "No tenemos presupuesto" → "Por eso el ROI es en 3 meses, se paga solo"\n`;
+    script += `• "Ya tenemos sistema" → "¿Está eliminando 95% de violaciones? Podemos mejorar eso"\n`;
+    script += `• "No es prioridad" → "R$ ${Math.round(opp.value * 0.1 * 12).toLocaleString('pt-BR')}/año en pérdidas, ¿no es prioridad?"\n`;
+    
+    return script;
+  }, [currentUser]);
+
+  const generateROI = useCallback((opp) => {
+    const benchmark = BENCHMARKS_BRASIL[opp.industry?.toLowerCase()] || BENCHMARKS_BRASIL['e-commerce'];
+    const monthlyBoxes = Math.round(opp.value / 100);
+    const monthlyLoss = Math.round(monthlyBoxes * benchmark.perdidas_promedio * benchmark.costo_retrabajo);
+    const investment = monthlyBoxes < 5000 ? 45000 : 
+                      monthlyBoxes < 20000 ? 95000 : 
+                      monthlyBoxes < 50000 ? 180000 : 350000;
+    const monthlySavings = Math.round(monthlyLoss * 0.95);
+    const paybackMonths = Math.ceil(investment / monthlySavings);
+    
+    let roi = `💰 **ANÁLISIS ROI - ${opp.client}**\n\n`;
+    
+    roi += `**📊 SITUACIÓN ACTUAL:**\n`;
+    roi += `• Industria: ${opp.industry || 'General'}\n`;
+    roi += `• Cajas/mes: ${monthlyBoxes.toLocaleString('pt-BR')}\n`;
+    roi += `• Tasa violación Brasil: ${(benchmark.perdidas_promedio * 100).toFixed(1)}% (${benchmark.fuente})\n`;
+    roi += `• Cajas violadas/mes: ${Math.round(monthlyBoxes * benchmark.perdidas_promedio).toLocaleString('pt-BR')}\n`;
+    roi += `• Costo retrabajo: R$ ${benchmark.costo_retrabajo}/caja\n`;
+    roi += `• **Pérdida mensual: R$ ${monthlyLoss.toLocaleString('pt-BR')}**\n`;
+    roi += `• **Pérdida anual: R$ ${(monthlyLoss * 12).toLocaleString('pt-BR')}**\n\n`;
+    
+    roi += `**🎯 SOLUCIÓN VENTAPEL:**\n`;
+    
+    if (monthlyBoxes < 5000) {
+      roi += `• Equipo: BP222 Curby (compacto)\n`;
+      roi += `• Consumible: Fita Gorilla 300m\n`;
+    } else if (monthlyBoxes < 20000) {
+      roi += `• Equipo: BP555e (alta eficiencia)\n`;
+      roi += `• Consumible: Fita VENOM reinforced\n`;
+    } else if (monthlyBoxes < 50000) {
+      roi += `• Equipo: BP755 (alto volumen)\n`;
+      roi += `• Consumible: Fita Gorilla 700m\n`;
+    } else {
+      roi += `• Equipo: RSA (Random Sealer Automated)\n`;
+      roi += `• Consumible: Fita Gorilla 700m + VENOM\n`;
+    }
+    
+    roi += `• Inversión total: R$ ${investment.toLocaleString('pt-BR')}\n`;
+    roi += `• Instalación: 1-3 días\n`;
+    roi += `• Garantía: 2 años\n\n`;
+    
+    roi += `**✅ RESULTADOS GARANTIZADOS:**\n`;
+    roi += `• Reducción violaciones: 95%\n`;
+    roi += `• Mejora velocidad: +40%\n`;
+    roi += `• Ahorro mensual: R$ ${monthlySavings.toLocaleString('pt-BR')}\n`;
+    roi += `• Ahorro anual: R$ ${(monthlySavings * 12).toLocaleString('pt-BR')}\n`;
+    roi += `• **RETORNO DE INVERSIÓN: ${paybackMonths} MESES**\n`;
+    roi += `• ROI primer año: ${Math.round(((monthlySavings * 12 - investment) / investment) * 100)}%\n`;
+    roi += `• ROI 3 años: ${Math.round(((monthlySavings * 36 - investment) / investment) * 100)}%\n\n`;
+    
+    roi += `**📈 CASO SIMILAR:**\n`;
+    const casoSimilar = opp.industry?.toLowerCase().includes('commerce') ? CASOS_EXITO_REALES.mercadolibre :
+                        opp.industry?.toLowerCase().includes('cosmé') ? CASOS_EXITO_REALES.loreal :
+                        CASOS_EXITO_REALES.nike;
+    
+    roi += `${casoSimilar.empresa}:\n`;
+    roi += `• Inversión: R$ ${casoSimilar.resultados.inversion.toLocaleString('pt-BR')}\n`;
+    roi += `• ROI: ${casoSimilar.resultados.roi_meses} meses\n`;
+    roi += `• Ahorro anual: R$ ${(casoSimilar.resultados.ahorro_anual || casoSimilar.resultados.ahorro_mensual * 12).toLocaleString('pt-BR')}\n`;
+    
+    return roi;
+  }, []);
+
+  // ============= PROCESAMIENTO DE MENSAJES PRINCIPAL =============
+  const sendMessage = useCallback(async (text = input) => {
     if (!text.trim()) return;
 
     const userMessage = { 
@@ -508,180 +544,169 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
 
     try {
       let response = '';
+      let useClaudeAPI = false;
 
-      // Primero verificar si menciona una empresa del CRM
+      // 1. Buscar si mencionó una empresa del CRM
       const foundOpp = allOpportunities.find(opp => {
         const clientLower = opp.client?.toLowerCase() || '';
-        return clientLower === lowerText ||
-               clientLower.includes(lowerText) ||
-               lowerText.includes(clientLower) ||
-               lowerText.split(' ').some(word => word.length > 3 && clientLower.includes(word));
+        return lowerText.includes(clientLower) || clientLower.includes(lowerText);
       });
 
+      // 2. Procesar según el tipo de comando
       if (foundOpp) {
-        // Usuario mencionó una empresa existente
-        setIsThinking(true);
-        response = await analyzeWithClaude(foundOpp);
+        // Análisis de oportunidad existente
+        response = analyzeOpportunityLocal(foundOpp);
         
-        // Si Claude no responde o responde null, generar respuesta local
-        if (!response || response === 'null') {
-          const healthScore = calculateHealthScore(foundOpp.scales);
-          const daysSince = foundOpp.last_update ? 
-            Math.floor((new Date() - new Date(foundOpp.last_update)) / (1000 * 60 * 60 * 24)) : 999;
+        // Intentar enriquecer con Claude si está disponible
+        if (lowerText.includes('estrategia') || lowerText.includes('completo')) {
+          setIsThinking(true);
+          const claudeResponse = await callClaudeAPI(
+            `Analiza ${foundOpp.client} y dame 3 acciones específicas para cerrar el deal`,
+            {
+              cliente: foundOpp.client,
+              industria: foundOpp.industry,
+              valor: foundOpp.value,
+              scoreDor: foundOpp.scales?.dor?.score,
+              scorePoder: foundOpp.scales?.poder?.score
+            }
+          );
           
-          response = `📊 **ANÁLISIS DE ${foundOpp.client}**\n\n`;
-          response += `💰 **Valor:** R$ ${foundOpp.value?.toLocaleString('pt-BR')}\n`;
-          response += `📈 **Etapa:** ${foundOpp.stage} - Probabilidad ${foundOpp.probability}%\n`;
-          response += `❤️ **Health Score:** ${healthScore}/10\n`;
-          response += `📅 **Días sin contacto:** ${daysSince}\n\n`;
-          
-          response += `**🎯 SCORES PPVVCC:**\n`;
-          response += `• DOR: ${foundOpp.scales?.dor?.score || 0}/10\n`;
-          response += `• PODER: ${foundOpp.scales?.poder?.score || 0}/10\n`;
-          response += `• VISIÓN: ${foundOpp.scales?.visao?.score || 0}/10\n`;
-          response += `• VALOR: ${foundOpp.scales?.valor?.score || 0}/10\n`;
-          response += `• CONTROL: ${foundOpp.scales?.controle?.score || 0}/10\n`;
-          response += `• COMPRAS: ${foundOpp.scales?.compras?.score || 0}/10\n\n`;
-          
-          // Análisis de riesgos
-          if (daysSince > 7) {
-            response += `⚠️ **ALERTA:** ${daysSince} días sin contacto - REACTIVAR URGENTE\n`;
+          if (claudeResponse) {
+            response += `\n\n🤖 **ANÁLISIS CLAUDE AI:**\n${claudeResponse}`;
           }
-          if (!foundOpp.power_sponsor) {
-            response += `⚠️ **ALERTA:** Power Sponsor no identificado\n`;
-          }
-          if (foundOpp.scales?.dor?.score < 5) {
-            response += `⚠️ **ALERTA:** Dolor no admitido - NO hay venta posible\n`;
-          }
-          
-          response += `\n**Próximos pasos sugeridos:**\n`;
-          response += `1. ${daysSince > 7 ? 'Llamar HOY para reactivar' : 'Mantener momentum'}\n`;
-          response += `2. ${foundOpp.scales?.dor?.score < 5 ? 'Volver a calificar dolor' : 'Avanzar en pipeline'}\n`;
-          response += `3. ${!foundOpp.power_sponsor ? 'Identificar decisor real' : 'Involucrar al power sponsor'}\n`;
+          setIsThinking(false);
         }
-        setIsThinking(false);
         
-      } else if (lowerText === 'hola' || lowerText === 'ola' || lowerText === 'hey' || lowerText === 'hi') {
-        response = `👋 Hola ${currentUser}! ¿En qué puedo ayudarte?\n\n`;
-        response += `Tengo cargadas ${allOpportunities.length} oportunidades.\n`;
-        response += `Puedes escribir:\n`;
-        response += `• El nombre de cualquier cliente (ej: "MWM")\n`;
-        response += `• "listar" para ver todas\n`;
-        response += `• "busca [empresa]" para investigar nuevas\n`;
-        response += `• "email", "script", "roi", "estrategia" para el cliente actual\n\n`;
+      } else if (lowerText === 'hola' || lowerText === 'hey' || lowerText === 'hi') {
+        response = `👋 ¡Hola ${currentUser}! Soy tu asistente Ventapel.\n\n`;
+        response += `Tengo ${allOpportunities.length} oportunidades cargadas.\n\n`;
+        response += `**Puedo ayudarte con:**\n`;
+        response += `• Escribir el nombre de cualquier cliente para análisis\n`;
+        response += `• "email" - Generar email de venta\n`;
+        response += `• "script" - Script de llamada SPIN\n`;
+        response += `• "roi" - Calcular retorno de inversión\n`;
+        response += `• "listar" - Ver todas las oportunidades\n`;
+        response += `• "ayuda" - Ver todos los comandos\n`;
+        
         if (currentOpportunity) {
-          response += `📌 Cliente actual: ${currentOpportunity.client}`;
+          response += `\n📌 **Cliente actual:** ${currentOpportunity.client}`;
         }
         
       } else if (lowerText === 'ayuda' || lowerText === 'help' || lowerText === '?') {
         response = `📚 **COMANDOS DISPONIBLES:**\n\n`;
-        response += `**Para analizar clientes del CRM:**\n`;
-        response += `• Escribe el nombre directo: "MWM", "Centauro", etc.\n\n`;
-        response += `**Para investigar empresas nuevas:**\n`;
-        response += `• "busca [empresa]" - Investigación web + análisis\n\n`;
-        response += `**Para el cliente actual:**\n`;
-        response += `• "email" - Email personalizado\n`;
+        response += `**ANÁLISIS DE CLIENTES:**\n`;
+        allOpportunities.slice(0, 5).forEach(opp => {
+          response += `• "${opp.client}" - Análisis completo\n`;
+        });
+        response += `\n**GENERACIÓN DE CONTENIDO:**\n`;
+        response += `• "email" - Email personalizado para venta\n`;
         response += `• "script" - Script de llamada SPIN\n`;
-        response += `• "roi" - Cálculo de retorno\n`;
-        response += `• "estrategia" - Plan de acción\n\n`;
-        response += `**Otros:**\n`;
+        response += `• "roi" - Cálculo de ROI con datos reales\n`;
+        response += `• "estrategia" - Plan de acción completo\n`;
+        response += `\n**OTROS COMANDOS:**\n`;
         response += `• "listar" - Ver todas las oportunidades\n`;
-        response += `• "ayuda" - Ver estos comandos\n`;
-        
-      } else if (lowerText.includes('busca') || lowerText.includes('investiga') || lowerText.includes('buscar')) {
-        // Verificar si es una pregunta sobre buscar o realmente quiere buscar
-        if (lowerText.includes('?') || lowerText.includes('podemos') || lowerText.includes('puedo')) {
-          response = "¡Claro que sí! Puedo buscar cualquier empresa online.\n\n";
-          response += "Escribe: **busca [nombre de la empresa]**\n\n";
-          response += "Ejemplos:\n";
-          response += "• busca Natura\n";
-          response += "• busca Magazine Luiza\n";
-          response += "• busca Intelbras\n\n";
-          response += "Te daré información completa + estrategia de approach Ventapel.";
-        } else {
-          const company = text.replace(/busca|buscar|buscá|investiga|investigar|información de|sobre/gi, '').trim();
-          if (company && company.length > 2) {
-            response = await searchCompanyWeb(company);
-            if (!response || response === 'null') {
-              response = `❌ No pude encontrar información sobre "${company}".\n\n`;
-              response += `Intenta con el nombre completo o verifica la ortografía.`;
-            }
-          } else {
-            response = "¿Qué empresa quieres que investigue? Ejemplo: 'busca Natura'";
-          }
-        }
+        response += `• "casos" - Ver casos de éxito reales\n`;
+        response += `• "ayuda" - Ver esta lista\n`;
         
       } else if (lowerText.includes('email')) {
-        if (currentOpportunity) {
-          response = await generateSmartEmail(currentOpportunity);
-        } else if (foundOpp) {
-          response = await generateSmartEmail(foundOpp);
+        const targetOpp = currentOpportunity || allOpportunities[0];
+        if (targetOpp) {
+          response = generateEmail(targetOpp);
         } else {
-          response = "❌ Selecciona un cliente primero. Puedes escribir el nombre de cualquier cliente del CRM.";
+          response = "❌ No hay oportunidades para generar email. Carga datos primero.";
         }
         
-      } else if (lowerText.includes('llamada') || lowerText.includes('script')) {
-        if (currentOpportunity) {
-          response = await generateCallScript(currentOpportunity);
-        } else if (foundOpp) {
-          response = await generateCallScript(foundOpp);
+      } else if (lowerText.includes('script') || lowerText.includes('llamada')) {
+        const targetOpp = currentOpportunity || allOpportunities[0];
+        if (targetOpp) {
+          response = generateCallScript(targetOpp);
         } else {
-          response = "❌ Selecciona un cliente primero. Puedes escribir el nombre de cualquier cliente del CRM.";
+          response = "❌ No hay oportunidades para generar script.";
         }
         
       } else if (lowerText.includes('roi') || lowerText.includes('retorno')) {
-        if (currentOpportunity) {
-          response = await generateROIAnalysis(currentOpportunity);
-        } else if (foundOpp) {
-          response = await generateROIAnalysis(foundOpp);
+        const targetOpp = currentOpportunity || allOpportunities[0];
+        if (targetOpp) {
+          response = generateROI(targetOpp);
         } else {
-          response = "❌ Selecciona un cliente primero. Puedes escribir el nombre de cualquier cliente del CRM.";
+          response = "❌ No hay oportunidades para calcular ROI.";
         }
         
-      } else if (lowerText.includes('estrategia') || lowerText.includes('plan')) {
-        if (currentOpportunity) {
-          response = await analyzeWithClaude(currentOpportunity);
-        } else if (foundOpp) {
-          response = await analyzeWithClaude(foundOpp);
+      } else if (lowerText === 'listar' || lowerText === 'lista') {
+        if (allOpportunities.length === 0) {
+          response = "📭 No hay oportunidades en el pipeline.";
         } else {
-          response = "❌ Selecciona un cliente primero. Puedes escribir el nombre de cualquier cliente del CRM.";
+          response = "📋 **OPORTUNIDADES EN PIPELINE:**\n\n";
+          allOpportunities.slice(0, 10).forEach(opp => {
+            const score = calculateHealthScore(opp.scales);
+            const emoji = score > 7 ? '🟢' : score > 4 ? '🟡' : '🔴';
+            response += `${emoji} **${opp.client}** - R$ ${(opp.value || 0).toLocaleString('pt-BR')}\n`;
+            response += `   Etapa: ${opp.stage} | Score: ${score}/10 | ${opp.vendor}\n\n`;
+          });
         }
         
-      } else if (lowerText === 'listar' || lowerText === 'lista' || lowerText === 'ver todas') {
-        response = generateOpportunitiesList();
+      } else if (lowerText === 'casos' || lowerText.includes('casos de éxito')) {
+        response = "🏆 **CASOS DE ÉXITO REALES VENTAPEL:**\n\n";
+        Object.values(CASOS_EXITO_REALES).forEach(caso => {
+          response += `**${caso.empresa}** (${caso.sector}):\n`;
+          response += `• Problema: ${caso.problema}\n`;
+          response += `• Solución: ${caso.solucion}\n`;
+          response += `• ROI: ${caso.resultados.roi_meses} meses\n`;
+          response += `• Ahorro: R$ ${(caso.resultados.ahorro_anual || caso.resultados.ahorro_mensual * 12).toLocaleString('pt-BR')}/año\n\n`;
+        });
+        
+      } else if (lowerText.includes('estrategia')) {
+        // Para estrategia, intentar usar Claude si hay una oportunidad seleccionada
+        const targetOpp = currentOpportunity || allOpportunities[0];
+        if (targetOpp) {
+          response = analyzeOpportunityLocal(targetOpp);
+          
+          // Intentar enriquecer con Claude
+          setIsThinking(true);
+          const claudeResponse = await callClaudeAPI(
+            `Dame una estrategia de 5 pasos para cerrar ${targetOpp.client}. Sé específico y directo.`,
+            {
+              cliente: targetOpp.client,
+              industria: targetOpp.industry,
+              valor: targetOpp.value
+            }
+          );
+          
+          if (claudeResponse) {
+            response += `\n\n🎯 **ESTRATEGIA PERSONALIZADA:**\n${claudeResponse}`;
+          }
+          setIsThinking(false);
+        } else {
+          response = "❌ Selecciona un cliente primero.";
+        }
         
       } else {
-        // Si no es un comando conocido, intentar con Claude para pregunta general
-        setIsThinking(true);
-        response = await callClaudeAPI(text, {
-          cliente: currentOpportunity?.client,
-          industria: currentOpportunity?.industry,
-          valor: currentOpportunity?.value,
-          oportunidadesDisponibles: allOpportunities.map(o => o.client).slice(0, 10).join(', ')
-        });
-        setIsThinking(false);
+        // Para cualquier otra pregunta, intentar interpretarla
+        // Primero buscar si es una pregunta sobre algún cliente
+        const possibleClient = allOpportunities.find(opp => 
+          lowerText.includes(opp.client.toLowerCase())
+        );
         
-        // Si Claude no responde o retorna null, dar ayuda contextual
-        if (!response || response === 'null' || response.toLowerCase().includes('no pude procesar')) {
-          response = `🤔 Interpreto que quieres: "${text}"\n\n`;
+        if (possibleClient) {
+          response = analyzeOpportunityLocal(possibleClient);
+        } else {
+          // Pregunta general - intentar con Claude
+          setIsThinking(true);
+          const claudeResponse = await callClaudeAPI(text, {
+            oportunidadesDisponibles: allOpportunities.slice(0, 5).map(o => o.client).join(', ')
+          });
           
-          // Intentar ser más inteligente con la respuesta
-          if (lowerText.includes('?')) {
-            // Es una pregunta
-            response += `Para responder mejor, puedo:\n`;
-            response += `• Analizar cualquier cliente: ${allOpportunities.slice(0, 3).map(o => o.client).join(', ')}\n`;
-            response += `• Buscar empresas nuevas: "busca [nombre]"\n`;
-            response += `• Generar contenido: email, script, roi, estrategia\n\n`;
-            response += `¿Qué necesitas específicamente?`;
+          if (claudeResponse) {
+            response = claudeResponse;
           } else {
-            // Es una afirmación o comando no reconocido
-            response += `Comandos disponibles:\n`;
-            response += `• **Clientes del CRM:** ${allOpportunities.slice(0, 5).map(o => o.client).join(', ')}\n`;
-            response += `• **Buscar online:** "busca [empresa]"\n`;
-            response += `• **Generar:** email, script, roi, estrategia\n`;
-            response += `• **Ver todo:** listar\n`;
-            response += `• **Ayuda:** ayuda`;
+            // Fallback si Claude no responde
+            response = `🤔 No entendí bien "${text}".\n\n`;
+            response += `**Prueba con:**\n`;
+            response += `• Nombre de un cliente: ${allOpportunities.slice(0, 3).map(o => o.client).join(', ')}\n`;
+            response += `• Comandos: email, script, roi, listar, casos\n`;
+            response += `• "ayuda" para ver todo\n`;
           }
+          setIsThinking(false);
         }
       }
 
@@ -697,62 +722,38 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
       console.error('Error:', error);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: '❌ Error procesando. Intenta de nuevo.',
+        content: '❌ Error procesando. Por favor intenta de nuevo.',
         timestamp: new Date().toISOString()
       }]);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const generateOpportunitiesList = () => {
-    if (allOpportunities.length === 0) {
-      return "📭 No hay oportunidades en el pipeline.";
-    }
-
-    let list = "📋 **OPORTUNIDADES EN PIPELINE:**\n\n";
-    
-    allOpportunities.slice(0, 10).forEach(opp => {
-      const score = calculateHealthScore(opp.scales);
-      const emoji = score > 7 ? '🟢' : score > 4 ? '🟡' : '🔴';
-      
-      list += `${emoji} **${opp.client}** - R$ ${opp.value?.toLocaleString('pt-BR')}\n`;
-      list += `   Etapa: ${opp.stage} | Score: ${score}/10 | ${opp.vendor}\n\n`;
-    });
-
-    return list;
-  };
+  }, [input, allOpportunities, currentOpportunity, currentUser, analyzeOpportunityLocal, callClaudeAPI, generateEmail, generateCallScript, generateROI]);
 
   // ============= QUICK ACTIONS =============
   const quickActions = [
     {
-      icon: <Search className="w-4 h-4" />,
-      label: 'Buscar Empresa',
-      action: () => setInput('busca información de '),
-      color: 'bg-blue-500'
-    },
-    {
       icon: <Mail className="w-4 h-4" />,
       label: 'Email',
-      action: () => sendMessage('genera email de venta'),
+      action: () => sendMessage('email'),
       color: 'bg-green-500'
     },
     {
       icon: <Phone className="w-4 h-4" />,
       label: 'Script',
-      action: () => sendMessage('script de llamada SPIN'),
+      action: () => sendMessage('script'),
       color: 'bg-purple-500'
     },
     {
       icon: <DollarSign className="w-4 h-4" />,
       label: 'ROI',
-      action: () => sendMessage('calcula ROI'),
+      action: () => sendMessage('roi'),
       color: 'bg-yellow-500'
     },
     {
       icon: <Target className="w-4 h-4" />,
       label: 'Estrategia',
-      action: () => sendMessage('estrategia completa'),
+      action: () => sendMessage('estrategia'),
       color: 'bg-red-500'
     },
     {
@@ -760,13 +761,19 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
       label: 'Listar',
       action: () => sendMessage('listar'),
       color: 'bg-gray-500'
+    },
+    {
+      icon: <Award className="w-4 h-4" />,
+      label: 'Casos',
+      action: () => sendMessage('casos'),
+      color: 'bg-blue-500'
     }
   ];
 
   // ============= RENDER PRINCIPAL =============
   return (
     <>
-      {/* Botón flotante mejorado */}
+      {/* Botón flotante */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="fixed bottom-6 right-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all z-50 group"
@@ -774,7 +781,7 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
         <Bot className="w-6 h-6" />
         <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-yellow-300 animate-pulse" />
         <span className="absolute -top-8 right-0 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-          Claude AI Assistant
+          Asistente AI Ventapel
         </span>
       </button>
 
@@ -788,8 +795,8 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
               <div className="flex items-center gap-2">
                 <Bot className="w-5 h-5" />
                 <div>
-                  <h3 className="font-bold">Asistente Claude AI</h3>
-                  <p className="text-xs opacity-90">Powered by Claude Opus 4.1</p>
+                  <h3 className="font-bold">Asistente Ventapel AI</h3>
+                  <p className="text-xs opacity-90">Powered by Claude AI</p>
                 </div>
               </div>
               <button 
@@ -833,7 +840,7 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
             {messages.length === 0 && (
               <div className="bg-gradient-to-br from-purple-50 to-blue-50 p-4 rounded-xl">
                 <p className="font-bold text-purple-700 mb-2">
-                  👋 Hola {currentUser}! Soy tu asesor potenciado con Claude AI
+                  👋 ¡Hola {currentUser}! Soy tu asesor Ventapel AI
                 </p>
                 <p className="text-sm text-gray-600 mb-3">
                   Tengo acceso a casos reales y datos de Brasil 2024:
@@ -846,7 +853,7 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
                   <li>✅ Centauro: R$50M/año recuperados</li>
                 </ul>
                 <p className="text-xs font-bold text-purple-700 mt-3">
-                  Preguntame lo que necesites. Seré directo y específico.
+                  Escribe el nombre de cualquier cliente o "ayuda" para ver comandos.
                 </p>
               </div>
             )}
@@ -864,7 +871,7 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
                   {msg.role === 'assistant' && (
                     <div className="flex items-center gap-1 mb-1">
                       <Bot className="w-3 h-3 text-purple-500" />
-                      <span className="text-xs text-purple-500 font-medium">Claude AI</span>
+                      <span className="text-xs text-purple-500 font-medium">Ventapel AI</span>
                     </div>
                   )}
                   <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
@@ -884,7 +891,7 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
                     <span className="text-sm text-gray-600">
-                      {isThinking ? 'Claude está analizando...' : 'Escribiendo...'}
+                      {isThinking ? 'Analizando con Claude AI...' : 'Procesando...'}
                     </span>
                   </div>
                 </div>
@@ -902,7 +909,7 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
-                placeholder="Pregunta o comando..."
+                placeholder="Cliente, comando o pregunta..."
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
                 disabled={isLoading}
               />
@@ -922,7 +929,7 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
             <div className="mt-2 flex items-center justify-between">
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-xs text-gray-500">Claude AI activo</span>
+                <span className="text-xs text-gray-500">AI activo • {allOpportunities.length} oportunidades</span>
               </div>
               <span className="text-xs text-gray-400">
                 Casos reales • Datos Brasil 2024
