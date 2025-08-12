@@ -759,14 +759,44 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 const sendMessage = async (messageText = input) => {
   if (!messageText.trim()) return;
 
-  // ... código existente ...
+  // Plan semanal especial
+  if (messageText === 'plan_semanal') {
+    const userMessage = { role: 'user', content: "Plan para la semana" };
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          specialRequestType: 'weekly_plan',
+          pipelineData: {
+            allOpportunities: allOpportunities.filter(o => o.vendor === currentUser),
+            vendorName: currentUser
+          }
+        })
+      });
+      
+      const data = await response.json();
+      setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+    } catch (error) {
+      console.error('Error:', error);
+      setMessages(prev => [...prev, { role: 'assistant', content: '❌ Error generando plan' }]);
+    } finally {
+      setIsLoading(false);
+      setInput('');
+    }
+    return;
+  }
+
+  const userMessage = { role: 'user', content: messageText };
+  setMessages(prev => [...prev, userMessage]);
+  setInput('');
+  setIsLoading(true);
 
   try {
-    // BÚSQUEDA MEJORADA - Detectar si quiere buscar una oportunidad
-    let searchedOpportunity = null;
-    let searchResults = [];
-    
-    // Buscar directamente si el mensaje es simple (ej: "intelbras", "mwm")
+    // BÚSQUEDA LOCAL RÁPIDA - Sin API
     const isSimpleSearch = messageText.split(' ').length <= 2 && 
                           !messageText.includes('?') && 
                           messageText.length > 2;
@@ -774,38 +804,38 @@ const sendMessage = async (messageText = input) => {
     if (isSimpleSearch || messageText.toLowerCase().includes('buscar')) {
       const searchTerm = messageText.replace(/buscar|encontrar|ver|mostrar/gi, '').trim();
       
-      if (searchTerm && supabase) {
-        console.log('Buscando:', searchTerm);
-        
-        // Buscar en todas las oportunidades cargadas primero (más rápido)
-        searchResults = allOpportunities.filter(opp => 
+      if (searchTerm && allOpportunities.length > 0) {
+        const searchResults = allOpportunities.filter(opp => 
           opp.client?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           opp.name?.toLowerCase().includes(searchTerm.toLowerCase())
         );
         
         if (searchResults.length > 0) {
-          searchedOpportunity = searchResults[0];
-          setAssistantActiveOpportunity(searchedOpportunity);
+          const found = searchResults[0];
+          setAssistantActiveOpportunity(found);
           
-          // Generar respuesta local sin llamar al API
-          const analysis = analyzeOpportunityWithContext(searchedOpportunity);
+          // Analizar localmente
+          await findSimilarDeals(found);
+          analyzeOpportunityWithContext(found);
           
-          let response = `🎯 **${searchedOpportunity.client}**\n\n`;
-          response += `**Valor:** R$ ${searchedOpportunity.value?.toLocaleString('pt-BR')}\n`;
-          response += `**Etapa:** ${searchedOpportunity.stage}\n`;
-          response += `**Score PPVVCC:** ${calculateHealthScore(searchedOpportunity.scales || {}).toFixed(1)}/10\n\n`;
+          const score = calculateHealthScore(found.scales || {});
           
-          if (searchedOpportunity.scales) {
+          let response = `🎯 **${found.client}**\n\n`;
+          response += `**Valor:** R$ ${found.value?.toLocaleString('pt-BR')}\n`;
+          response += `**Etapa:** ${found.stage}\n`;
+          response += `**Score PPVVCC:** ${score.toFixed(1)}/10\n\n`;
+          
+          if (found.scales) {
             response += `**Escalas:**\n`;
-            response += `• DOR: ${getScaleValue(searchedOpportunity.scales.dor)}/10\n`;
-            response += `• PODER: ${getScaleValue(searchedOpportunity.scales.poder)}/10\n`;
-            response += `• VISÃO: ${getScaleValue(searchedOpportunity.scales.visao)}/10\n`;
-            response += `• VALOR: ${getScaleValue(searchedOpportunity.scales.valor)}/10\n`;
-            response += `• CONTROLE: ${getScaleValue(searchedOpportunity.scales.controle)}/10\n`;
-            response += `• COMPRAS: ${getScaleValue(searchedOpportunity.scales.compras)}/10\n\n`;
+            response += `• DOR: ${getScaleValue(found.scales.dor)}/10\n`;
+            response += `• PODER: ${getScaleValue(found.scales.poder)}/10\n`;
+            response += `• VISÃO: ${getScaleValue(found.scales.visao)}/10\n`;
+            response += `• VALOR: ${getScaleValue(found.scales.valor)}/10\n`;
+            response += `• CONTROLE: ${getScaleValue(found.scales.controle)}/10\n`;
+            response += `• COMPRAS: ${getScaleValue(found.scales.compras)}/10\n\n`;
           }
           
-          // Agregar análisis
+          // Agregar problemas detectados
           if (analysis?.inconsistencies?.length > 0) {
             response += `**⚠️ Problemas detectados:**\n`;
             analysis.inconsistencies.forEach(inc => {
@@ -814,6 +844,7 @@ const sendMessage = async (messageText = input) => {
             response += `\n`;
           }
           
+          // Agregar próxima acción
           if (analysis?.nextAction) {
             response += `**➡️ Próxima acción:**\n`;
             response += `${analysis.nextAction.action}\n`;
@@ -824,12 +855,11 @@ const sendMessage = async (messageText = input) => {
             content: response 
           }]);
           setIsLoading(false);
-          return; // Salir sin llamar al API
+          return;
         } else {
-          // No se encontró localmente
           setMessages(prev => [...prev, { 
             role: 'assistant', 
-            content: `❌ No encontré "${searchTerm}" en las oportunidades.\n\n¿Querés ver todas las disponibles? Escribí "listar"` 
+            content: `❌ No encontré "${searchTerm}".\n\nEscribí "listar" para ver todas las oportunidades.` 
           }]);
           setIsLoading(false);
           return;
@@ -837,126 +867,95 @@ const sendMessage = async (messageText = input) => {
       }
     }
 
-    // Listar oportunidades (tu código existente funciona bien)
+    // LISTAR OPORTUNIDADES
     if (messageText.toLowerCase().includes('listar')) {
-      // ... tu código de listar existente ...
+      let listMessage = `📋 **Oportunidades con Análisis:**\n\n`;
+      
+      allOpportunities.slice(0, 10).forEach(opp => {
+        const context = getIntelligentContext(opp);
+        const score = calculateHealthScore(opp.scales || {});
+        
+        listMessage += `**${opp.client}** - R$${opp.value?.toLocaleString()}\n`;
+        listMessage += `  Score: ${score.toFixed(1)}/10 | Fuente: ${context.dataSource}\n`;
+        
+        if (context.priority2_similarDeals?.hasData) {
+          listMessage += `  📊 ${context.priority2_similarDeals.count} deals similares\n`;
+        }
+        
+        listMessage += '\n';
+      });
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: listMessage }]);
+      setIsLoading(false);
       return;
     }
 
-    const userMessage = { role: 'user', content: messageText };
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsLoading(true);
-
-    try {
-      // Detectar búsqueda
-      const possibleClient = detectOpportunityQuery(messageText);
-      let searchedOpportunity = null;
-      
-      if (possibleClient && supabase) {
-        const searchResults = await searchOpportunity(possibleClient);
-        if (searchResults && searchResults.length > 0) {
-          searchedOpportunity = searchResults[0];
-          setAssistantActiveOpportunity(searchedOpportunity);
-          await findSimilarDeals(searchedOpportunity);
-          analyzeOpportunityWithContext(searchedOpportunity);
-        }
-      }
-      
-      // Listar oportunidades con contexto
-      if (messageText.toLowerCase().includes('listar')) {
-        let listMessage = `📋 **Oportunidades con Análisis Inteligente:**\n\n`;
+    // MOSTRAR DEALS SIMILARES
+    if (messageText.toLowerCase().includes('similar')) {
+      const activeOpp = assistantActiveOpportunity || currentOpportunity;
+      if (activeOpp && similarDeals.length > 0) {
+        let similarMessage = `📊 **Deals Similares a ${activeOpp.client}:**\n\n`;
         
-        for (const opp of allOpportunities.slice(0, 10)) {
-          const context = getIntelligentContext(opp);
-          const score = calculateHealthScore(opp.scales || {});
-          
-          listMessage += `**${opp.client}** - R$${opp.value.toLocaleString()}\n`;
-          listMessage += `  Score: ${score.toFixed(1)}/10 | Fuente: ${context.dataSource}\n`;
-          
-          if (context.priority2_similarDeals.hasData) {
-            listMessage += `  📊 ${context.priority2_similarDeals.count} deals similares encontrados\n`;
-          }
-          
-          listMessage += '\n';
-        }
+        similarDeals.slice(0, 5).forEach((deal, idx) => {
+          const score = calculateHealthScore(deal.scales || {});
+          similarMessage += `${idx + 1}. **${deal.client}**\n`;
+          similarMessage += `   Valor: R$${deal.value?.toLocaleString()}\n`;
+          similarMessage += `   Score: ${score.toFixed(1)}/10\n\n`;
+        });
         
-        setMessages(prev => [...prev, { role: 'assistant', content: listMessage }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: similarMessage }]);
         setIsLoading(false);
         return;
       }
-
-      // Mostrar deals similares
-      if (messageText.toLowerCase().includes('similar')) {
-        const activeOpp = assistantActiveOpportunity || currentOpportunity;
-        if (activeOpp && similarDeals.length > 0) {
-          let similarMessage = `📊 **Deals Similares a ${activeOpp.client}:**\n\n`;
-          
-          similarDeals.slice(0, 5).forEach((deal, idx) => {
-            const score = calculateHealthScore(deal.scales || {});
-            similarMessage += `${idx + 1}. **${deal.client}** - ${deal.product || 'N/A'}\n`;
-            similarMessage += `   Valor: R$${deal.value.toLocaleString()} | Score: ${score.toFixed(1)}/10\n`;
-            similarMessage += `   Etapa: ${deal.stage} | Vendedor: ${deal.vendor}\n`;
-            
-            if (deal.next_action) {
-              similarMessage += `   Lección: "${deal.next_action}"\n`;
-            }
-            similarMessage += '\n';
-          });
-          
-          similarMessage += `💡 **Insight:** Usa estas referencias en tu pitch con ${activeOpp.client}`;
-          
-          setMessages(prev => [...prev, { role: 'assistant', content: similarMessage }]);
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      // Preparar contexto completo para API
-      const opportunityToAnalyze = searchedOpportunity || assistantActiveOpportunity || currentOpportunity;
-      const intelligentContext = opportunityToAnalyze ? getIntelligentContext(opportunityToAnalyze) : null;
-      
-      const response = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: messageText,
-          currentOpportunity: opportunityToAnalyze,
-          intelligentContext,
-          similarDeals: similarDeals.slice(0, 3),
-          vendorName: currentUser,
-          pipelineData: {
-            allOpportunities,
-            pipelineHealth
-          }
-        })
-      });
-
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-      const data = await response.json();
-      
-      // Agregar indicador de fuente de datos
-      let finalResponse = data.response;
-      if (intelligentContext?.dataSource) {
-        finalResponse += `\n\n📊 *Fuente: ${intelligentContext.dataSource}*`;
-      }
-      
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: finalResponse
-      }]);
-      
-    } catch (error) {
-      console.error('Error:', error);
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: '❌ Error procesando. Intente nuevamente.' 
-      }]);
-    } finally {
-      setIsLoading(false);
     }
-  };
+
+    // LLAMADA AL API PARA OTROS CASOS
+    const opportunityToAnalyze = assistantActiveOpportunity || currentOpportunity;
+    const intelligentContext = opportunityToAnalyze ? getIntelligentContext(opportunityToAnalyze) : null;
+    
+    const response = await fetch('/api/assistant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        context: messageText,
+        opportunityData: opportunityToAnalyze,
+        intelligentContext,
+        similarDeals: similarDeals.slice(0, 3),
+        vendorName: currentUser,
+        pipelineData: {
+          allOpportunities: allOpportunities.filter(o => o.vendor === currentUser),
+          pipelineHealth,
+          vendorName: currentUser
+        }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    let finalResponse = data.response;
+    if (intelligentContext?.dataSource) {
+      finalResponse += `\n\n📊 *Fuente: ${intelligentContext.dataSource}*`;
+    }
+    
+    setMessages(prev => [...prev, { 
+      role: 'assistant', 
+      content: finalResponse
+    }]);
+    
+  } catch (error) {
+    console.error('Error completo:', error);
+    setMessages(prev => [...prev, { 
+      role: 'assistant', 
+      content: '❌ Error procesando. Verifique la conexión.' 
+    }]);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const getActiveOpportunity = () => {
     return assistantActiveOpportunity || currentOpportunity;
