@@ -958,7 +958,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   };
 
-  const sendMessage = async (messageText = input) => {
+const sendMessage = async (messageText = input) => {
     if (!messageText.trim()) return;
 
     const userMessage = { role: 'user', content: messageText };
@@ -970,10 +970,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     const intent = detectUserIntent(messageText);
     const activeOpp = assistantActiveOpportunity || currentOpportunity;
     
-    // CASO 1: Búsqueda web de empresa nueva
+    // CASO 1: Búsqueda web de empresa nueva - CORREGIDO
     if (intent === 'web_search') {
       // Extraer nombre de empresa del mensaje
-      const companyMatch = messageText.match(/(?:buscar|investigar|información de|info de|busca sobre)\s+(.+?)(?:\s|$)/i);
+      const companyMatch = messageText.match(/(?:buscar|investigar|información de|info de|busca sobre|buscar información de)\s+(.+?)(?:\s|$)/i);
       const companyName = companyMatch ? companyMatch[1].trim() : messageText.split(' ').slice(-1)[0];
       
       try {
@@ -982,14 +982,13 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
           content: `🔍 Buscando información sobre **${companyName}** en internet...` 
         }]);
         
-        // Llamar al API con búsqueda web
+        // CORRECCIÓN: Llamar al API con los parámetros correctos
         const response = await fetch('/api/assistant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            specialRequestType: 'web_research',
-            companyName: companyName,
-            searchQuery: `${companyName} Brasil logística e-commerce embalaje`,
+            specialRequestType: 'web_research', // IMPORTANTE: Debe coincidir con el backend
+            companyName: companyName,           // IMPORTANTE: Pasar el nombre de la empresa
             vendorName: currentUser,
             context: 'prospecting'
           })
@@ -998,51 +997,65 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         if (response.ok) {
           const data = await response.json();
           
-          // Generar approach basado en la investigación
-          const approach = generateApproachFromResearch(companyName, data.response);
-          
+          // Mostrar la respuesta del API con información real
           setMessages(prev => [...prev, { 
             role: 'assistant', 
-            content: approach 
+            content: data.response  // La respuesta ya viene formateada del backend
           }]);
           
-          // Crear oportunidad en stage 1 si no existe
+          // Verificar si la empresa ya existe en el CRM
           const existingOpp = allOpportunities.find(o => 
             o.client.toLowerCase().includes(companyName.toLowerCase())
           );
           
-          if (!existingOpp) {
+          if (!existingOpp && data.response && !data.response.includes('No pude encontrar')) {
+            // Solo ofrecer crear oportunidad si se encontró información
             setMessages(prev => [...prev, { 
               role: 'assistant', 
-              content: `\n💡 **¿Quieres crear esta oportunidad?**\n[Crear oportunidad ${companyName}|create:${companyName}]` 
+              content: `\n💡 **¿Quieres crear esta oportunidad?**\n\n` +
+                      `[✅ Crear oportunidad ${companyName}|create:${companyName}]\n` +
+                      `[🔍 Buscar otra empresa|search:new]\n` +
+                      `[📋 Ver pipeline actual|list:opportunities]`
             }]);
           }
         } else {
           throw new Error('Error en búsqueda web');
         }
       } catch (error) {
-        // Fallback sin datos web
-        const fallbackApproach = `🔍 **ESTRATEGIA DE APPROACH - ${companyName}**\n\n`;
-        const approach = fallbackApproach + `⚠️ No pude buscar online, pero aquí está el approach estándar:\n\n` +
-          `**1. INVESTIGACIÓN MANUAL:**\n` +
-          `• Buscar en Google: "${companyName} Brasil"\n` +
-          `• LinkedIn: Empleados y estructura\n` +
-          `• Sitio web: Productos y servicios\n` +
-          `• Noticias recientes: Expansión, problemas\n\n` +
-          `**2. APPROACH GENÉRICO EFECTIVO:**\n` +
+        console.error('Error en búsqueda web:', error);
+        
+        // Fallback mejorado sin datos web
+        const fallbackApproach = `⚠️ **No pude buscar online en este momento**\n\n` +
+          `Pero aquí está el approach estándar para ${companyName}:\n\n` +
+          `**📋 CHECKLIST DE INVESTIGACIÓN MANUAL:**\n` +
+          `□ Buscar en Google: "${companyName} Brasil logística"\n` +
+          `□ LinkedIn: Buscar empleados y estructura\n` +
+          `□ Sitio web: Identificar productos/servicios\n` +
+          `□ Noticias: Buscar expansión o problemas recientes\n\n` +
+          
+          `**📧 TEMPLATE DE PRIMER CONTACTO:**\n` +
           `"Hola [Nombre],\n\n` +
           `Vi que ${companyName} está creciendo en [sector]. ` +
-          `El 10% de las empresas brasileñas pierden mercadería por violación (IBEVAR 2024).\n\n` +
-          `L'Oréal y MercadoLibre eliminaron este problema con nuestra solución.\n\n` +
+          `Empresas similares pierden 10% en violación de cajas (IBEVAR 2024).\n\n` +
+          `L'Oréal eliminó 100% sus pérdidas con nuestra solución.\n` +
+          `MercadoLibre redujo 40% el retrabajo.\n\n` +
           `¿15 minutos para mostrarle cuánto podría ahorrar ${companyName}?"\n\n` +
-          `**3. PRÓXIMOS PASOS:**\n` +
-          `□ Buscar en LinkedIn: "Gerente Operaciones ${companyName}"\n` +
-          `□ Identificar volumen estimado de envíos\n` +
-          `□ Preparar caso similar de la industria\n`;
+          
+          `**👥 CONTACTOS A BUSCAR:**\n` +
+          `• Gerente de Operaciones\n` +
+          `• Director de Logística\n` +
+          `• Gerente de Supply Chain\n` +
+          `• CFO (si facturan > R$ 10M/año)\n\n` +
+          
+          `**💡 PRÓXIMOS PASOS:**\n` +
+          `1. Identificar volumen de envíos mensuales\n` +
+          `2. Detectar si usan e-commerce o 3PL\n` +
+          `3. Buscar quejas de clientes por daños\n` +
+          `4. Preparar ROI estimado basado en sector`;
           
         setMessages(prev => [...prev, { 
           role: 'assistant', 
-          content: approach 
+          content: fallbackApproach 
         }]);
       } finally {
         setIsLoading(false);
@@ -1111,6 +1124,29 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
             response = generateCompleteStrategy(activeOpp);
           }
           break;
+        case 'proposal':
+          response = `📄 **PROPUESTA COMERCIAL - ${activeOpp.client}**\n\n`;
+          response += `**RESUMEN EJECUTIVO:**\n`;
+          response += `${activeOpp.client} pierde aproximadamente R$ ${Math.round(activeOpp.value * 0.01).toLocaleString('pt-BR')}/mes `;
+          response += `por violación de cajas en su operación logística.\n\n`;
+          response += `**NUESTRA SOLUCIÓN:**\n`;
+          response += `• Equipamiento: ${activeOpp.value > 200000 ? 'BP755' : 'BP555e'}\n`;
+          response += `• Consumibles: Fita Gorilla (stock garantizado)\n`;
+          response += `• Implementación: 7 días hábiles\n`;
+          response += `• Capacitación: 2 días en sitio incluidos\n\n`;
+          response += `**INVERSIÓN:**\n`;
+          response += `• Total: R$ ${activeOpp.value.toLocaleString('pt-BR')}\n`;
+          response += `• Forma de pago: 30/60/90 días\n`;
+          response += `• Garantía: 2 años en equipos\n\n`;
+          response += `**ROI GARANTIZADO:**\n`;
+          response += `• Retorno en ${Math.round(activeOpp.value / (activeOpp.value * 0.01 * 0.95))} meses\n`;
+          response += `• Si no cumplimos, devolvemos su dinero\n\n`;
+          response += `**PRÓXIMOS PASOS:**\n`;
+          response += `1. Aprobación de esta propuesta\n`;
+          response += `2. Test day en sus instalaciones\n`;
+          response += `3. Firma de contrato\n`;
+          response += `4. Implementación inmediata`;
+          break;
         default:
           response = `Analizando ${activeOpp.client}...`;
       }
@@ -1120,7 +1156,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       return;
     }
 
-    // CASO 2: Plan semanal especial
+    // CASO 3: Plan semanal especial
     if (messageText.toLowerCase().includes('plan semanal') || messageText === 'plan_semanal') {
       try {
         const response = await fetch('/api/assistant', {
@@ -1131,7 +1167,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
             pipelineData: {
               allOpportunities: allOpportunities.filter(o => o.vendor === currentUser),
               vendorName: currentUser
-            }
+            },
+            vendorName: currentUser
           })
         });
         
@@ -1152,7 +1189,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       return;
     }
 
-    // CASO 3: Búsqueda simple de cliente
+    // CASO 4: Búsqueda simple de cliente existente
     const isSimpleSearch = messageText.split(' ').length <= 2 && messageText.length > 2;
     
     if (isSimpleSearch) {
@@ -1168,33 +1205,48 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         const response = generateCompleteStrategy(found);
         setMessages(prev => [...prev, { role: 'assistant', content: response }]);
       } else {
+        // Si no encuentra en CRM, ofrecer buscar en web
         setMessages(prev => [...prev, { 
           role: 'assistant', 
-          content: `❌ No encontré "${searchTerm}".\n\nEscribe "listar" para ver todas las oportunidades.` 
+          content: `❌ No encontré "${searchTerm}" en el CRM.\n\n` +
+                   `**¿Qué quieres hacer?**\n\n` +
+                   `[🔍 Buscar ${searchTerm} en internet|search:${searchTerm}]\n` +
+                   `[📋 Ver todas las oportunidades|list:all]\n` +
+                   `[➕ Crear nueva oportunidad|create:new]`
         }]);
       }
       setIsLoading(false);
       return;
     }
 
-    // CASO 4: Listar oportunidades
-    if (messageText.toLowerCase().includes('listar')) {
+    // CASO 5: Listar oportunidades
+    if (messageText.toLowerCase().includes('listar') || messageText.toLowerCase().includes('list')) {
       let listMessage = `📋 **TODAS LAS OPORTUNIDADES:**\n\n`;
       
-      allOpportunities.slice(0, 10).forEach(opp => {
-        const score = calculateHealthScore(opp.scales || {});
-        listMessage += `**${opp.client}** - R${opp.value?.toLocaleString('pt-BR')}\n`;
-        listMessage += `  Etapa: ${opp.stage} | Score: ${score.toFixed(1)}/10\n`;
-        listMessage += `  Vendedor: ${opp.vendor}\n\n`;
-      });
+      if (allOpportunities.length === 0) {
+        listMessage = `📭 **No hay oportunidades en el pipeline**\n\n`;
+        listMessage += `¿Quieres buscar una empresa nueva?\n`;
+        listMessage += `Escribe: "buscar información de [nombre empresa]"`;
+      } else {
+        allOpportunities.slice(0, 10).forEach(opp => {
+          const score = calculateHealthScore(opp.scales || {});
+          listMessage += `**${opp.client}** - R$ ${opp.value?.toLocaleString('pt-BR')}\n`;
+          listMessage += `  Etapa: ${opp.stage} | Score: ${score.toFixed(1)}/10\n`;
+          listMessage += `  Vendedor: ${opp.vendor}\n`;
+          listMessage += `  [Ver estrategia|select:${opp.id}]\n\n`;
+        });
+        
+        if (allOpportunities.length > 10) {
+          listMessage += `\n... y ${allOpportunities.length - 10} oportunidades más`;
+        }
+      }
       
       setMessages(prev => [...prev, { role: 'assistant', content: listMessage }]);
       setIsLoading(false);
       return;
     }
 
-    // CASO 5: Preguntas complejas - LLAMAR A CLAUDE API
-    // Para cualquier pregunta que no encaje en los casos anteriores
+    // CASO 6: Preguntas complejas - LLAMAR A CLAUDE API (si está disponible)
     if (activeOpp && !intent) {
       try {
         // Preparar contexto completo para Claude
@@ -1271,37 +1323,156 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       return;
     }
 
-    // CASO 6: Sin cliente activo - Mensaje de ayuda
+    // CASO 7: Sin cliente activo - Mensaje de ayuda mejorado
     const helpMessage = `
 🤖 **SOY TU ASISTENTE DE VENTAS VENTAPEL**
 
-Para ayudarte mejor, primero **busca un cliente**:
-Ejemplo: "intelbras" o "mwm"
+Para ayudarte mejor, puedo:
 
-Luego puedo ayudarte con:
-📋 **"estrategia"** - Plan completo de acción
-📧 **"email"** - Email personalizado
-📞 **"script llamada"** - Script SPIN para llamar
-📱 **"whatsapp"** - Mensaje para WhatsApp
-💰 **"calcular roi"** - Análisis de ROI con Claude
-🛡️ **"objeciones"** - Cómo manejar objeciones
-🤖 **Preguntas abiertas** - Claude te ayuda con cualquier situación
+**🔍 BUSCAR EMPRESAS EN INTERNET**
+Ejemplo: "buscar información de Natura"
+Ejemplo: "investigar Magazine Luiza"
 
-También puedo:
-• "listar" - Ver todas las oportunidades
-• "plan semanal" - Tu agenda optimizada con IA
-• Cualquier pregunta sobre ventas
+**📊 ANALIZAR OPORTUNIDADES EXISTENTES**
+Ejemplo: "MercadoLibre" (si ya está en CRM)
+Ejemplo: "listar" (ver todas)
+
+**🎯 GENERAR CONTENIDO DE VENTAS**
+• "estrategia" - Plan completo de acción
+• "email" - Email personalizado
+• "script llamada" - Script SPIN
+• "whatsapp" - Mensaje para WhatsApp
+• "propuesta" - Propuesta comercial
+• "calcular roi" - Análisis de ROI
+
+**📅 ORGANIZAR TU SEMANA**
+• "plan semanal" - Tu agenda optimizada
 
 **Comandos rápidos:**
-[🎯 Ver estrategia|estrategia]
-[📧 Generar email|email]
-[📞 Script llamada|llamada]
-[💰 Calcular ROI|roi]
+[🔍 Buscar empresa nueva|search:new]
+[📋 Ver pipeline|list:opportunities]
+[📅 Plan semanal|plan_semanal]
+[💡 Ayuda|help]
 
-¿Con qué cliente quieres empezar?`;
+¿Con qué quieres empezar?`;
 
     setMessages(prev => [...prev, { role: 'assistant', content: helpMessage }]);
     setIsLoading(false);
+  };
+
+  const handleActionClick = async (actionPayload) => {
+    if (!actionPayload) return;
+
+    const [action, ...params] = actionPayload.split(':');
+
+    // Manejar búsqueda web desde botón
+    if (action === 'search') {
+      const searchTerm = params.join(':');
+      if (searchTerm === 'new') {
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: '🔍 **¿Qué empresa quieres investigar?**\n\nEscribe: "buscar información de [nombre empresa]"' 
+        }]);
+      } else {
+        // Buscar empresa específica
+        sendMessage(`buscar información de ${searchTerm}`);
+      }
+      return;
+    }
+
+    // Manejar creación de oportunidad
+    if (action === 'create') {
+      const companyName = params.join(':');
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: `➕ **Creando oportunidad para ${companyName}**\n\n` +
+                 `Por favor, abre el formulario de nueva oportunidad y completa:\n` +
+                 `• Cliente: ${companyName}\n` +
+                 `• Etapa: 1 - Prospección\n` +
+                 `• Valor estimado: Basado en la investigación\n\n` +
+                 `[Formulario no disponible desde el chat - usa el botón principal del CRM]`
+      }]);
+      return;
+    }
+
+    // Manejar selección de oportunidad
+    if (action === 'select') {
+      const oppId = parseInt(params[0]);
+      const selectedOpp = allOpportunities.find(o => o.id === oppId);
+      if (selectedOpp) {
+        setAssistantActiveOpportunity(selectedOpp);
+        const strategy = generateCompleteStrategy(selectedOpp);
+        setMessages(prev => [...prev, { role: 'assistant', content: strategy }]);
+      }
+      return;
+    }
+
+    // Manejar lista
+    if (action === 'list') {
+      sendMessage('listar');
+      return;
+    }
+
+    // Manejar plan semanal
+    if (action === 'plan_semanal') {
+      sendMessage('plan semanal');
+      return;
+    }
+
+    // Manejar ayuda
+    if (action === 'help') {
+      sendMessage('ayuda');
+      return;
+    }
+
+    // Manejar actualización de scales (mantener código existente)
+    if (action === 'update' && params.length >= 2) {
+      const [scale, newValue, oppId] = params;
+      const opportunityToUpdateId = oppId || getActiveOpportunity()?.id;
+      
+      if (!opportunityToUpdateId) {
+        setMessages(prev => [...prev, { role: 'assistant', content: '❌ Error: No sé qué oportunidad actualizar.' }]);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const currentOpp = allOpportunities.find(o => o.id === opportunityToUpdateId);
+        const updatedScales = {
+          ...(currentOpp?.scales || {}),
+          [scale]: { 
+            ...(currentOpp?.scales?.[scale] || {}),
+            score: parseInt(newValue) 
+          }
+        };
+
+        const { data, error } = await supabase
+          .from('opportunities')
+          .update({ 
+            scales: updatedScales,
+            last_update: new Date().toISOString()
+          })
+          .eq('id', opportunityToUpdateId)
+          .select();
+
+        if (error) throw error;
+
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `✅ Actualizado! ${scale.toUpperCase()} = ${newValue}/10 para ${data[0].client}` 
+        }]);
+
+        await loadPipelineData();
+      } catch (error) {
+        console.error('Error:', error);
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `❌ Error: ${error.message}` 
+        }]);
+      } finally {
+        setIsLoading(false);
+      }
+    }
   };
 
   const getActiveOpportunity = () => {
@@ -1313,8 +1484,8 @@ También puedo:
     
     if (!activeOpp) {
       return [
+        { icon: <Globe size={18} />, label: 'Buscar Empresa', prompt: 'buscar información de ' },
         { icon: <Database size={18} />, label: 'Ver Pipeline', prompt: 'listar' },
-        { icon: <Search size={18} />, label: 'Buscar Deal', prompt: 'buscar oportunidad' },
         { icon: <Calendar size={18} />, label: 'Plan Semanal', prompt: 'plan_semanal' },
         { icon: <Brain size={18} />, label: 'Ayuda', prompt: 'ayuda' }
       ];
@@ -1460,96 +1631,232 @@ También puedo:
             )}
           </div>
 
-          {/* Quick Actions */}
-          <div className="p-3 bg-gray-50 border-b">
-            <div className="grid grid-cols-2 gap-2">
-              {getQuickActions().map((action, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => sendMessage(action.prompt)}
-                  className="bg-white border-2 border-gray-300 rounded-lg px-3 py-2 text-xs hover:bg-blue-50 hover:border-blue-400 transition flex items-center gap-2"
-                  disabled={isLoading}
-                >
-                  {action.icon}
-                  <span>{action.label}</span>
-                </button>
-              ))}
-            </div>
+          {/* Tabs de vista */}
+          <div className="flex border-b bg-gray-50">
+            <button
+              onClick={() => setActiveView('chat')}
+              className={`flex-1 py-2 text-xs font-medium ${activeView === 'chat' ? 'bg-white border-b-2 border-blue-500' : ''}`}
+            >
+              💬 Chat
+            </button>
+            <button
+              onClick={() => setActiveView('strategy')}
+              className={`flex-1 py-2 text-xs font-medium ${activeView === 'strategy' ? 'bg-white border-b-2 border-blue-500' : ''}`}
+            >
+              🎯 Estrategia
+            </button>
+            <button
+              onClick={() => setActiveView('scripts')}
+              className={`flex-1 py-2 text-xs font-medium ${activeView === 'scripts' ? 'bg-white border-b-2 border-blue-500' : ''}`}
+            >
+              📝 Scripts
+            </button>
+            <button
+              onClick={() => setActiveView('templates')}
+              className={`flex-1 py-2 text-xs font-medium ${activeView === 'templates' ? 'bg-white border-b-2 border-blue-500' : ''}`}
+            >
+              📧 Templates
+            </button>
           </div>
 
-          {/* Messages */}
+          {/* Quick Actions */}
+          {activeView === 'chat' && (
+            <div className="p-3 bg-gray-50 border-b">
+              <div className="grid grid-cols-2 gap-2">
+                {getQuickActions().map((action, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => sendMessage(action.prompt)}
+                    className="bg-white border-2 border-gray-300 rounded-lg px-3 py-2 text-xs hover:bg-blue-50 hover:border-blue-400 transition flex items-center gap-2"
+                    disabled={isLoading}
+                  >
+                    {action.icon}
+                    <span>{action.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Content Area */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {messages.length === 0 && (
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <p className="font-bold text-sm text-blue-700 mb-2">
-                  👋 Hola {currentUser}! Soy tu coach de ventas
-                </p>
-                <div className="text-xs text-gray-600">
-                  <p className="mb-2">Puedo ayudarte con:</p>
-                  <ul className="ml-4 space-y-1">
-                    <li>📋 Estrategias completas de venta</li>
-                    <li>📧 Emails persuasivos</li>
-                    <li>📞 Scripts de llamadas SPIN</li>
-                    <li>💰 Cálculos de ROI</li>
-                    <li>🛡️ Manejo de objeciones</li>
-                  </ul>
-                  <p className="mt-3 font-semibold">
-                    💡 Escribe el nombre del cliente para empezar
-                  </p>
-                </div>
+            {activeView === 'chat' && (
+              <>
+                {messages.length === 0 && (
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <p className="font-bold text-sm text-blue-700 mb-2">
+                      👋 Hola {currentUser}! Soy tu coach de ventas
+                    </p>
+                    <div className="text-xs text-gray-600">
+                      <p className="mb-2">Puedo ayudarte con:</p>
+                      <ul className="ml-4 space-y-1">
+                        <li>🔍 Buscar empresas en internet</li>
+                        <li>📋 Estrategias completas de venta</li>
+                        <li>📧 Emails persuasivos</li>
+                        <li>📞 Scripts de llamadas SPIN</li>
+                        <li>💰 Cálculos de ROI</li>
+                        <li>🛡️ Manejo de objeciones</li>
+                      </ul>
+                      <p className="mt-3 font-semibold">
+                        💡 Escribe "buscar información de [empresa]" para empezar
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                {messages.map((msg, idx) => (
+                  <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] p-3 rounded-lg ${
+                      msg.role === 'user' 
+                        ? 'bg-blue-500 text-white' 
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {msg.role === 'assistant' ? (
+                        <MessageRenderer content={msg.content} onButtonClick={handleActionClick} />
+                      ) : (
+                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-gray-100 p-3 rounded-lg">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {activeView === 'strategy' && (
+              <div className="space-y-4">
+                <h4 className="font-bold text-gray-800">🎯 Estrategias Rápidas</h4>
+                {getActiveOpportunity() ? (
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('estrategia');
+                      }}
+                      className="w-full text-left p-3 bg-blue-50 rounded-lg hover:bg-blue-100"
+                    >
+                      📋 Estrategia completa
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('calcular roi');
+                      }}
+                      className="w-full text-left p-3 bg-green-50 rounded-lg hover:bg-green-100"
+                    >
+                      💰 Calcular ROI
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('objeciones');
+                      }}
+                      className="w-full text-left p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100"
+                    >
+                      🛡️ Manejo de objeciones
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm">Selecciona un cliente primero</p>
+                )}
               </div>
             )}
-            
-            {messages.map((msg, idx) => (
-              <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-lg ${
-                  msg.role === 'user' 
-                    ? 'bg-blue-500 text-white' 
-                    : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {msg.role === 'assistant' ? (
-                    <MessageRenderer content={msg.content} onButtonClick={handleActionClick} />
-                  ) : (
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-            
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-gray-100 p-3 rounded-lg">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+
+            {activeView === 'scripts' && (
+              <div className="space-y-4">
+                <h4 className="font-bold text-gray-800">📝 Scripts de Venta</h4>
+                {getActiveOpportunity() ? (
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('script llamada');
+                      }}
+                      className="w-full text-left p-3 bg-blue-50 rounded-lg hover:bg-blue-100"
+                    >
+                      📞 Script de llamada SPIN
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('whatsapp');
+                      }}
+                      className="w-full text-left p-3 bg-green-50 rounded-lg hover:bg-green-100"
+                    >
+                      📱 Mensaje WhatsApp
+                    </button>
                   </div>
-                </div>
+                ) : (
+                  <p className="text-gray-500 text-sm">Selecciona un cliente primero</p>
+                )}
+              </div>
+            )}
+
+            {activeView === 'templates' && (
+              <div className="space-y-4">
+                <h4 className="font-bold text-gray-800">📧 Templates</h4>
+                {getActiveOpportunity() ? (
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('email');
+                      }}
+                      className="w-full text-left p-3 bg-blue-50 rounded-lg hover:bg-blue-100"
+                    >
+                      📧 Email de seguimiento
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveView('chat');
+                        sendMessage('propuesta');
+                      }}
+                      className="w-full text-left p-3 bg-purple-50 rounded-lg hover:bg-purple-100"
+                    >
+                      📄 Propuesta comercial
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm">Selecciona un cliente primero</p>
+                )}
               </div>
             )}
           </div>
 
           {/* Input */}
-          <div className="p-4 border-t">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
-                placeholder="Cliente, estrategia, email, llamada..."
-                className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={isLoading}
-              />
-              <button
-                onClick={() => sendMessage()}
-                disabled={isLoading || !input.trim()}
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50"
-              >
-                Enviar
-              </button>
+          {activeView === 'chat' && (
+            <div className="p-4 border-t">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
+                  placeholder="Buscar empresa o escribir pregunta..."
+                  className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isLoading}
+                />
+                <button
+                  onClick={() => sendMessage()}
+                  disabled={isLoading || !input.trim()}
+                  className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50"
+                >
+                  Enviar
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </>
