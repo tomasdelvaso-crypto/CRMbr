@@ -756,46 +756,91 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   };
 
-  const sendMessage = async (messageText = input) => {
-    if (!messageText.trim()) return;
+const sendMessage = async (messageText = input) => {
+  if (!messageText.trim()) return;
 
-    // Plan semanal especial
-    if (messageText === 'plan_semanal') {
-      const userMessage = { role: 'user', content: "Plan para la semana" };
-      setMessages(prev => [...prev, userMessage]);
-      setIsLoading(true);
+  // ... código existente ...
 
-      try {
-        // Generar plan basado en datos reales del CRM
-        const urgentDeals = allOpportunities
-          .filter(o => o.vendor === currentUser)
-          .sort((a, b) => {
-            const scoreA = calculateHealthScore(a.scales || {});
-            const scoreB = calculateHealthScore(b.scales || {});
-            return scoreA - scoreB;
-          })
-          .slice(0, 5);
-
-        let plan = `📅 **PLAN SEMANAL - ${currentUser}**\n\n`;
-        plan += `**Basado en: ${allOpportunities.length} oportunidades en CRM**\n\n`;
+  try {
+    // BÚSQUEDA MEJORADA - Detectar si quiere buscar una oportunidad
+    let searchedOpportunity = null;
+    let searchResults = [];
+    
+    // Buscar directamente si el mensaje es simple (ej: "intelbras", "mwm")
+    const isSimpleSearch = messageText.split(' ').length <= 2 && 
+                          !messageText.includes('?') && 
+                          messageText.length > 2;
+    
+    if (isSimpleSearch || messageText.toLowerCase().includes('buscar')) {
+      const searchTerm = messageText.replace(/buscar|encontrar|ver|mostrar/gi, '').trim();
+      
+      if (searchTerm && supabase) {
+        console.log('Buscando:', searchTerm);
         
-        plan += `🔴 **PRIORIDAD 1 - Rescatar estos deals:**\n`;
-        urgentDeals.forEach((deal, idx) => {
-          const score = calculateHealthScore(deal.scales || {});
-          const daysSince = Math.floor((new Date() - new Date(deal.last_update)) / (1000 * 60 * 60 * 24));
-          plan += `${idx + 1}. ${deal.client} - Score: ${score.toFixed(1)}/10 - ${daysSince} días sin contacto\n`;
-          plan += `   Acción: ${generateSmartNextAction(deal, {}, [], getIntelligentContext(deal)).action}\n\n`;
-        });
-
-        setMessages(prev => [...prev, { role: 'assistant', content: plan }]);
-      } catch (error) {
-        console.error('Error:', error);
-        setMessages(prev => [...prev, { role: 'assistant', content: '❌ Error generando plan' }]);
-      } finally {
-        setIsLoading(false);
-        setInput('');
-        return;
+        // Buscar en todas las oportunidades cargadas primero (más rápido)
+        searchResults = allOpportunities.filter(opp => 
+          opp.client?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          opp.name?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        
+        if (searchResults.length > 0) {
+          searchedOpportunity = searchResults[0];
+          setAssistantActiveOpportunity(searchedOpportunity);
+          
+          // Generar respuesta local sin llamar al API
+          const analysis = analyzeOpportunityWithContext(searchedOpportunity);
+          
+          let response = `🎯 **${searchedOpportunity.client}**\n\n`;
+          response += `**Valor:** R$ ${searchedOpportunity.value?.toLocaleString('pt-BR')}\n`;
+          response += `**Etapa:** ${searchedOpportunity.stage}\n`;
+          response += `**Score PPVVCC:** ${calculateHealthScore(searchedOpportunity.scales || {}).toFixed(1)}/10\n\n`;
+          
+          if (searchedOpportunity.scales) {
+            response += `**Escalas:**\n`;
+            response += `• DOR: ${getScaleValue(searchedOpportunity.scales.dor)}/10\n`;
+            response += `• PODER: ${getScaleValue(searchedOpportunity.scales.poder)}/10\n`;
+            response += `• VISÃO: ${getScaleValue(searchedOpportunity.scales.visao)}/10\n`;
+            response += `• VALOR: ${getScaleValue(searchedOpportunity.scales.valor)}/10\n`;
+            response += `• CONTROLE: ${getScaleValue(searchedOpportunity.scales.controle)}/10\n`;
+            response += `• COMPRAS: ${getScaleValue(searchedOpportunity.scales.compras)}/10\n\n`;
+          }
+          
+          // Agregar análisis
+          if (analysis?.inconsistencies?.length > 0) {
+            response += `**⚠️ Problemas detectados:**\n`;
+            analysis.inconsistencies.forEach(inc => {
+              response += `• ${inc.message}\n`;
+            });
+            response += `\n`;
+          }
+          
+          if (analysis?.nextAction) {
+            response += `**➡️ Próxima acción:**\n`;
+            response += `${analysis.nextAction.action}\n`;
+          }
+          
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: response 
+          }]);
+          setIsLoading(false);
+          return; // Salir sin llamar al API
+        } else {
+          // No se encontró localmente
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: `❌ No encontré "${searchTerm}" en las oportunidades.\n\n¿Querés ver todas las disponibles? Escribí "listar"` 
+          }]);
+          setIsLoading(false);
+          return;
+        }
       }
+    }
+
+    // Listar oportunidades (tu código existente funciona bien)
+    if (messageText.toLowerCase().includes('listar')) {
+      // ... tu código de listar existente ...
+      return;
     }
 
     const userMessage = { role: 'user', content: messageText };
