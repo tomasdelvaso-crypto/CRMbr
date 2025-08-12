@@ -457,25 +457,44 @@ export default async function handler(req) {
 
     let response = '';
 
-    // Primero intentar con Claude si hay input complejo
-    if (userInput && opportunityData && 
-        !['analizar', 'dolor', 'roi', 'email', 'llamada', 'estrategia'].includes(action)) {
+    // CAMBIO CLAVE: Si hay userInput con texto libre, SIEMPRE intentar Claude primero
+    if (userInput && opportunityData) {
+      const lowerInput = userInput.toLowerCase();
       
-      const claudeResponse = await callClaudeAPI(
-        opportunityData,
-        userInput,
-        { casos: CASOS_EXITO_REALES }
-      );
+      // Detectar si es una pregunta compleja que requiere Claude
+      const needsClaude = 
+        lowerInput.includes('ayuda') ||
+        lowerInput.includes('pens') ||
+        lowerInput.includes('caro') ||
+        lowerInput.includes('objeción') ||
+        lowerInput.includes('precio') ||
+        lowerInput.includes('claude') ||
+        lowerInput.includes('?') ||
+        lowerInput.length > 20 || // Textos más largos probablemente necesitan análisis
+        !['analizar', 'dolor', 'roi', 'email', 'llamada', 'estrategia'].some(cmd => lowerInput.includes(cmd));
       
-      if (claudeResponse) {
-        return new Response(
-          JSON.stringify({ response: claudeResponse }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
+      if (needsClaude || action === 'chat') { // 'chat' para mensajes libres
+        console.log('🤖 Intentando Claude para:', userInput);
+        
+        const claudeResponse = await callClaudeAPI(
+          opportunityData,
+          userInput,
+          { casos: CASOS_EXITO_REALES }
         );
+        
+        if (claudeResponse) {
+          console.log('✅ Claude respondió');
+          return new Response(
+            JSON.stringify({ response: claudeResponse }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        } else {
+          console.log('⚠️ Claude no disponible, usando lógica local');
+        }
       }
     }
 
-    // Lógica local según acción
+    // Lógica local según acción (como fallback o para botones rápidos)
     switch(action) {
       case 'analizar':
         response = analyzeOpportunityLocal(opportunityData);
@@ -501,37 +520,48 @@ export default async function handler(req) {
         response = generateCompleteStrategy(opportunityData);
         break;
         
+      case 'chat': // Para mensajes de chat libre
       default:
-        // Para cualquier texto libre, intentar procesarlo
+        // Si llegamos aquí y hay userInput, procesar con lógica local mejorada
         if (userInput && opportunityData) {
-          // Detectar intención
           const lowerInput = userInput.toLowerCase();
           
-          if (lowerInput.includes('dolor') || lowerInput.includes('recalif')) {
-            response = generatePainStrategy(opportunityData);
-          } else if (lowerInput.includes('roi') || lowerInput.includes('retorno')) {
-            response = calculateROI(opportunityData);
-          } else if (lowerInput.includes('email') || lowerInput.includes('correo')) {
-            response = generateEmail(opportunityData);
-          } else if (lowerInput.includes('llamada') || lowerInput.includes('llamar') || lowerInput.includes('script')) {
-            response = generateCallScript(opportunityData);
-          } else if (lowerInput.includes('estrategia') || lowerInput.includes('plan')) {
-            response = generateCompleteStrategy(opportunityData);
+          // Manejo de objeciones comunes
+          if (lowerInput.includes('caro') || lowerInput.includes('precio')) {
+            response = `💰 **MANEJO DE OBJECIÓN: "ES MUY CARO"**\n\n`;
+            response += `**RESPUESTA TÁCTICA:**\n`;
+            response += `"Entiendo tu preocupación. Déjame mostrarte algo:\n\n`;
+            response += `• Pérdida actual: R$ ${Math.round(opportunityData.value * 0.1).toLocaleString('pt-BR')}/mes\n`;
+            response += `• En 12 meses: R$ ${Math.round(opportunityData.value * 1.2).toLocaleString('pt-BR')}\n`;
+            response += `• Nuestra solución: R$ 45.000 (única vez)\n`;
+            response += `• ROI: 3-6 meses\n\n`;
+            response += `No es un gasto, es dejar de perder dinero.\n`;
+            response += `¿Qué es más caro: invertir R$ 45k o seguir perdiendo R$ 240k/año?"\n\n`;
+            response += `**PREGUNTA DE CIERRE:**\n`;
+            response += `"Si te muestro cómo recuperas la inversión en 3 meses, ¿lo considerarías?"`;
+            
+          } else if (lowerInput.includes('ayuda') || lowerInput.includes('pens')) {
+            response = `🤔 **ANÁLISIS ESTRATÉGICO - ${opportunityData.client}**\n\n`;
+            response += `**SITUACIÓN ACTUAL:**\n`;
+            response += `• Dolor bajo (${getScaleValue(opportunityData.scales?.dor)}/10) = Sin urgencia\n`;
+            response += `• Poder bajo (${getScaleValue(opportunityData.scales?.poder)}/10) = Sin decisor\n\n`;
+            response += `**ESTRATEGIA RECOMENDADA:**\n`;
+            response += `1. **HOY:** Llamada SPIN agresiva sobre pérdidas\n`;
+            response += `2. **MAÑANA:** Email con caso Nike/MercadoLibre\n`;
+            response += `3. **PASADO:** Pedir reunión con decisor real\n\n`;
+            response += `**MENSAJE CLAVE:**\n`;
+            response += `"Cada día sin actuar = R$ 667 perdidos"`;
+            
           } else {
+            // Fallback a análisis estándar
             response = analyzeOpportunityLocal(opportunityData);
           }
         } else if (!opportunityData) {
           response = `❌ **No hay cliente seleccionado**\n\n`;
-          response += `Selecciona un cliente del CRM para que pueda ayudarte con:\n`;
-          response += `• 📊 Análisis PPVVCC\n`;
-          response += `• 🎯 Estrategias para elevar dolor\n`;
-          response += `• 💰 Cálculo de ROI\n`;
-          response += `• 📧 Scripts de email\n`;
-          response += `• 📞 Scripts de llamada\n`;
+          response += `Selecciona un cliente del CRM para análisis completo.`;
         } else {
           response = `👋 Hola ${vendorName || 'vendedor'}!\n\n`;
-          response += `Soy tu Coach de Ventas PPVVCC.\n`;
-          response += `Escribe tu pregunta o usa los botones de acción rápida.`;
+          response += `Soy tu Coach PPVVCC. ¿En qué puedo ayudarte?`;
         }
     }
 
