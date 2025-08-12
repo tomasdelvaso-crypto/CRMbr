@@ -1,726 +1,554 @@
-// api/assistant.js
-// Configuración para Edge Runtime - MÁS RÁPIDO, sin timeout de 10s
+// api/assistant.js - BACKEND INTELIGENTE - EL CEREBRO
 export const config = {
   runtime: 'edge',
   maxDuration: 30,
 };
 
-// ============= SERPER API INTEGRATION =============
-async function searchWithSerper(query) {
-  const SERPER_API_KEY = process.env.SERPER_API_KEY;
-  
-  if (!SERPER_API_KEY) {
-    console.error('❌ SERPER_API_KEY no configurada');
-    return null;
-  }
-
-  try {
-    const response = await fetch('https://google.serper.dev/search', {
-      method: 'POST',
-      headers: {
-        'X-API-KEY': SERPER_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        q: query,
-        gl: 'br',
-        hl: 'pt',
-        num: 10,
-        page: 1
-      })
-    });
-
-    if (!response.ok) {
-      console.error('Error Serper API:', response.status);
-      return null;
+// ============= CASOS DE ÉXITO REALES VENTAPEL =============
+const CASOS_EXITO_REALES = {
+  'honda': {
+    empresa: 'Honda Argentina',
+    sector: 'Automotriz',
+    problema: 'Velocidad limitada, 1% pérdidas, problemas ergonómicos',
+    solucion: 'BP555 + Fita Gorilla 300m',
+    resultados: {
+      velocidad: '+40%',
+      perdidas: '100% eliminadas',
+      roi_meses: 3,
+      inversion: 150000,
+      ahorro_anual: 600000
     }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error llamando a Serper:', error);
-    return null;
-  }
-}
-
-// ============= FUNCIÓN DE BÚSQUEDA WEB DE EMPRESA =============
-async function researchCompany(companyName) {
-  console.log(`🔍 Buscando información sobre ${companyName}...`);
-  
-  // Realizar 3 búsquedas especializadas
-  const searches = [
-    {
-      type: 'general',
-      query: `${companyName} Brasil empresa sede operaciones`,
-      focus: 'información general'
-    },
-    {
-      type: 'logistics',
-      query: `${companyName} logística e-commerce embalaje problemas`,
-      focus: 'problemas logísticos'
-    },
-    {
-      type: 'news',
-      query: `${companyName} Brasil expansão investimento notícias 2024 2025`,
-      focus: 'noticias recientes'
+  },
+  'loreal': {
+    empresa: "L'Oréal Brasil",
+    sector: 'Cosmética',
+    problema: '+10% pérdidas por robo, cuellos de botella',
+    solucion: 'RSA + Fita Gorilla 700m',
+    resultados: {
+      robos: '100% eliminados',
+      eficiencia: '+50%',
+      roi_meses: 3,
+      inversion: 280000,
+      ahorro_anual: 2500000
     }
-  ];
-
-  const results = {
-    companyInfo: {},
-    opportunities: [],
-    news: [],
-    problems: [],
-    contacts: []
-  };
-
-  for (const search of searches) {
-    const serperData = await searchWithSerper(search.query);
-    
-    if (!serperData) continue;
-
-    // Procesar resultados según el tipo de búsqueda
-    if (search.type === 'general' && serperData.organic) {
-      // Extraer información general
-      const topResults = serperData.organic.slice(0, 3);
-      results.companyInfo = {
-        description: topResults[0]?.snippet || '',
-        website: topResults[0]?.link || '',
-        additionalInfo: topResults.map(r => r.snippet).join(' ')
-      };
-
-      // Buscar información en knowledge graph si existe
-      if (serperData.knowledgeGraph) {
-        results.companyInfo.sector = serperData.knowledgeGraph.type || '';
-        results.companyInfo.headquarters = serperData.knowledgeGraph.headquarters || '';
-        results.companyInfo.employees = serperData.knowledgeGraph.employees || '';
-      }
+  },
+  'nike': {
+    empresa: 'Nike Brasil',
+    sector: 'Calzado/Textil',
+    problema: '10% pérdidas en transporte',
+    solucion: 'BP755 + Fita Gorilla 300m',
+    resultados: {
+      perdidas: '100% eliminadas',
+      eficiencia: '+30%',
+      roi_meses: 2,
+      inversion: 200000,
+      ahorro_anual: 1200000
     }
-
-    if (search.type === 'logistics' && serperData.organic) {
-      // Buscar indicadores de problemas logísticos
-      serperData.organic.forEach(result => {
-        const snippet = result.snippet?.toLowerCase() || '';
-        const title = result.title?.toLowerCase() || '';
-        const combined = snippet + ' ' + title;
-
-        // Detectar problemas relevantes para Ventapel
-        if (combined.includes('violação') || combined.includes('furto') || 
-            combined.includes('roubo') || combined.includes('perda')) {
-          results.problems.push({
-            type: 'seguridad',
-            evidence: result.snippet,
-            source: result.link
-          });
-        }
-        
-        if (combined.includes('e-commerce') || combined.includes('fulfillment') || 
-            combined.includes('entrega') || combined.includes('distribuição')) {
-          results.opportunities.push({
-            type: 'e-commerce',
-            detail: result.snippet,
-            source: result.link
-          });
-        }
-
-        if (combined.includes('embalagem') || combined.includes('packaging') || 
-            combined.includes('caixa') || combined.includes('selagem')) {
-          results.problems.push({
-            type: 'embalaje',
-            evidence: result.snippet,
-            source: result.link
-          });
-        }
-      });
-    }
-
-    if (search.type === 'news' && serperData.news) {
-      // Extraer noticias recientes
-      results.news = serperData.news.slice(0, 3).map(item => ({
-        title: item.title,
-        snippet: item.snippet,
-        date: item.date,
-        source: item.source,
-        link: item.link
-      }));
+  },
+  'mercadolibre': {
+    empresa: 'MercadoLibre',
+    sector: 'E-commerce',
+    problema: 'Alto retrabajo, pérdidas en fulfillment',
+    solucion: 'BP555e + Fita VENOM',
+    resultados: {
+      retrabajo: '-40%',
+      ahorro_mensual: 180000,
+      roi_meses: 2,
+      inversion: 360000
     }
   }
+};
 
-  // Analizar y generar insights de Ventapel
-  const ventapelAnalysis = analyzeForVentapel(companyName, results);
-  
-  return {
-    company: companyName,
-    searchResults: results,
-    ventapelAnalysis: ventapelAnalysis
-  };
-}
-
-// ============= ANÁLISIS VENTAPEL =============
-function analyzeForVentapel(companyName, searchResults) {
-  const analysis = {
-    potentialLoss: 0,
-    recommendedSolution: '',
-    relevantCase: '',
-    approachStrategy: '',
-    contactsToFind: []
-  };
-
-  // Estimar pérdidas basado en señales encontradas
-  let riskSignals = 0;
-  
-  if (searchResults.opportunities.some(o => o.type === 'e-commerce')) {
-    riskSignals += 3;
-    analysis.potentialLoss = 50000; // Base para e-commerce
-  }
-  
-  if (searchResults.problems.some(p => p.type === 'seguridad')) {
-    riskSignals += 5;
-    analysis.potentialLoss += 100000;
-  }
-
-  if (searchResults.problems.some(p => p.type === 'embalaje')) {
-    riskSignals += 4;
-    analysis.potentialLoss += 75000;
-  }
-
-  // Seleccionar caso de éxito relevante
-  if (searchResults.companyInfo.additionalInfo?.includes('cosmética') || 
-      searchResults.companyInfo.additionalInfo?.includes('beleza')) {
-    analysis.relevantCase = "L'Oréal: 100% furtos eliminados, ROI 3 meses";
-    analysis.recommendedSolution = 'RSA (Random Sealer Automated)';
-  } else if (searchResults.opportunities.some(o => o.type === 'e-commerce')) {
-    analysis.relevantCase = "MercadoLibre: 40% redução retrabajo, ROI 2 meses";
-    analysis.recommendedSolution = 'BP555e + Fita Gorilla';
-  } else {
-    analysis.relevantCase = "Nike: Furtos zero, +30% eficiência";
-    analysis.recommendedSolution = 'BP755 + Fita Gorilla 700m';
-  }
-
-  // Estrategia de approach
-  if (riskSignals >= 7) {
-    analysis.approachStrategy = 'URGENTE: Alto riesgo identificado. Approach directo con ROI.';
-  } else if (riskSignals >= 4) {
-    analysis.approachStrategy = 'CALIENTE: Problemas evidentes. Proponer test day.';
-  } else {
-    analysis.approachStrategy = 'TIBIO: Educar sobre pérdidas del sector.';
-  }
-
-  // Contactos a buscar
-  analysis.contactsToFind = [
-    'Gerente de Operaciones',
-    'Director de Logística',
-    'Gerente de Supply Chain',
-    'CFO (si pérdidas > R$ 100k/mes)'
-  ];
-
-  return analysis;
-}
-
-// ============= ROI CALCULATOR =============
-function calculateVentapelROI(opportunity, monthlyVolume = null) {
-  const industryBenchmarks = {
-    'e-commerce': { 
-      violationRate: 0.10,
-      reworkCost: 30,
-      laborHours: 0.15,
-      customerComplaints: 0.05,
-      source: 'IBEVAR 2024 - 10% pérdidas en Brasil'
-    },
-    'logística': { 
-      violationRate: 0.06,
-      reworkCost: 35,
-      laborHours: 0.20,
-      customerComplaints: 0.03,
-      source: 'NTC&Logística - 3PL Brasil'
-    },
-    'cosmética': {
-      violationRate: 0.08,
-      reworkCost: 50,
-      laborHours: 0.25,
-      customerComplaints: 0.04,
-      source: 'Casos L\'Oréal y Natura'
-    },
-    'farmacéutica': {
-      violationRate: 0.09,
-      reworkCost: 70,
-      laborHours: 0.30,
-      customerComplaints: 0.05,
-      source: 'ANVISA + cadena fría'
-    },
-    'automotriz': {
-      violationRate: 0.04,
-      reworkCost: 90,
-      laborHours: 0.35,
-      customerComplaints: 0.02,
-      source: 'Caso Honda Argentina'
-    },
-    'alimentos': {
-      violationRate: 0.07,
-      reworkCost: 25,
-      laborHours: 0.18,
-      customerComplaints: 0.04,
-      source: 'Cadena fría Brasil'
-    },
-    'default': {
-      violationRate: 0.10,
-      reworkCost: 35,
-      laborHours: 0.20,
-      customerComplaints: 0.03,
-      source: 'Promedio mercado Brasil'
-    }
-  };
-
-  const industry = opportunity?.industry?.toLowerCase() || 'default';
-  const benchmark = industryBenchmarks[industry] || industryBenchmarks.default;
-  
-  const estimatedMonthlyVolume = monthlyVolume || Math.round(opportunity.value / 100);
-  
-  const currentLosses = {
-    violatedBoxes: Math.round(estimatedMonthlyVolume * benchmark.violationRate),
-    reworkCostMonthly: Math.round(estimatedMonthlyVolume * benchmark.violationRate * benchmark.reworkCost),
-    laborCostMonthly: Math.round(estimatedMonthlyVolume * benchmark.violationRate * benchmark.laborHours * 120),
-    complaintsMonthly: Math.round(estimatedMonthlyVolume * benchmark.customerComplaints),
-    totalMonthlyLoss: 0
-  };
-  
-  currentLosses.totalMonthlyLoss = currentLosses.reworkCostMonthly + currentLosses.laborCostMonthly;
-  
-  const ventapelSolution = {
-    violationReduction: 0.95,
-    efficiencyGain: 0.40,
-    implementation: getSolutionRecommendation(estimatedMonthlyVolume),
-    investment: calculateInvestment(estimatedMonthlyVolume)
-  };
-  
-  const projectedSavings = {
-    monthlyViolationSavings: Math.round(currentLosses.reworkCostMonthly * ventapelSolution.violationReduction),
-    monthlyLaborSavings: Math.round(currentLosses.laborCostMonthly * ventapelSolution.violationReduction),
-    monthlyEfficiencySavings: Math.round(currentLosses.laborCostMonthly * ventapelSolution.efficiencyGain),
-    totalMonthlySavings: 0,
-    annualSavings: 0
-  };
-  
-  projectedSavings.totalMonthlySavings = 
-    projectedSavings.monthlyViolationSavings + 
-    projectedSavings.monthlyLaborSavings + 
-    projectedSavings.monthlyEfficiencySavings;
-    
-  projectedSavings.annualSavings = projectedSavings.totalMonthlySavings * 12;
-  
-  const roi = {
-    paybackMonths: Math.ceil(ventapelSolution.investment / projectedSavings.totalMonthlySavings),
-    firstYearROI: Math.round(((projectedSavings.annualSavings - ventapelSolution.investment) / ventapelSolution.investment) * 100),
-    threeYearROI: Math.round((((projectedSavings.annualSavings * 3) - ventapelSolution.investment) / ventapelSolution.investment) * 100)
-  };
-  
-  return {
-    currentLosses,
-    ventapelSolution,
-    projectedSavings,
-    roi,
-    benchmark,
-    summary: generateROISummary(opportunity, currentLosses, projectedSavings, roi, ventapelSolution, benchmark)
-  };
-}
-
-function getSolutionRecommendation(monthlyVolume) {
-  if (monthlyVolume < 5000) {
-    return {
-      equipment: 'BP222 Curby',
-      tape: 'Gorilla 300m',
-      stations: 1,
-      description: 'Solução compacta para operações pequenas'
-    };
-  } else if (monthlyVolume < 20000) {
-    return {
-      equipment: 'BP555e',
-      tape: 'VENOM reinforced',
-      stations: 2,
-      description: 'Solução padrão de alta eficiência'
-    };
-  } else if (monthlyVolume < 50000) {
-    return {
-      equipment: 'BP755',
-      tape: 'Gorilla 700m',
-      stations: 3,
-      description: 'Solução de alto volume'
-    };
-  } else {
-    return {
-      equipment: 'RSA (Random Sealer Automated)',
-      tape: 'Gorilla 700m + VENOM',
-      stations: '4+',
-      description: 'Solução automatizada para operações enterprise'
-    };
-  }
-}
-
-function calculateInvestment(monthlyVolume) {
-  if (monthlyVolume < 5000) return 45000;
-  if (monthlyVolume < 20000) return 95000;
-  if (monthlyVolume < 50000) return 180000;
-  return 350000;
-}
-
-function generateROISummary(opportunity, losses, savings, roi, solution, benchmark) {
-  return `
-💰 **ANÁLISE ROI PERSONALIZADO - ${opportunity.client}**
-
-📊 **SITUAÇÃO ATUAL (Dados reais Brasil):**
-• Indústria: ${opportunity.industry || 'Geral'}
-• Taxa de violação: ${(benchmark.violationRate * 100).toFixed(1)}% (Fonte: ${benchmark.source})
-• Caixas processadas/mês: ${Math.round(opportunity.value / 100).toLocaleString('pt-BR')}
-• Caixas violadas/mês: ${losses.violatedBoxes.toLocaleString('pt-BR')}
-• Perda mensal: R$ ${losses.totalMonthlyLoss.toLocaleString('pt-BR')}
-• Perda anual: R$ ${(losses.totalMonthlyLoss * 12).toLocaleString('pt-BR')}
-
-🎯 **SOLUÇÃO RECOMENDADA:**
-• Equipamento: ${solution.implementation.equipment}
-• Consumível: ${solution.implementation.tape}
-• Estações: ${solution.implementation.stations}
-• Investimento: R$ ${solution.investment.toLocaleString('pt-BR')}
-
-✅ **RESULTADOS PROJETADOS:**
-• Redução violações: 95% (garantido ou devolvemos)
-• Melhoria eficiência: +40%
-• Economia mensal: R$ ${savings.totalMonthlySavings.toLocaleString('pt-BR')}
-• Economia anual: R$ ${savings.annualSavings.toLocaleString('pt-BR')}
-• **ROI: ${roi.paybackMonths} meses**
-• Retorno primeiro ano: ${roi.firstYearROI}%
-• Retorno 3 anos: ${roi.threeYearROI}%`;
-}
-
-// ============= PLAN SEMANAL =============
-function generateWeeklyPlan(opportunities, vendorName = "Vendedor") {
-  if (!opportunities || opportunities.length === 0) {
-    return "📋 Não há oportunidades no pipeline para planejar a semana.";
-  }
-
-  const today = new Date();
-  const weekEnd = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-  const urgent = [];
-  const critical = [];
-  const followUp = [];
-  const closing = [];
-  const atRisk = [];
-
-  opportunities.forEach(opp => {
-    const daysSinceContact = opp.last_update ? 
-      Math.floor((today - new Date(opp.last_update)) / (1000 * 60 * 60 * 24)) : 999;
-    
-    const healthScore = calculateHealthScore(opp.scales || {});
-    const expectedClose = opp.expected_close ? new Date(opp.expected_close) : null;
-    
-    if (daysSinceContact > 7) {
-      urgent.push({
-        ...opp,
-        reason: `🔴 ${daysSinceContact} dias sem contato - VAI PERDER!`,
-        action: `Ligar HOJE para ${opp.power_sponsor || opp.sponsor || 'contato'}`,
-        priority: 1
-      });
-    }
-    
-    if (opp.stage >= 3 && getScaleValue(opp.scales?.dor) < 5) {
-      critical.push({
-        ...opp,
-        reason: '⛔ Apresentando sem DOR confirmada',
-        action: 'Voltar para qualificação URGENTE',
-        priority: 2
-      });
-    }
-    
-    if (opp.value > 100000 && healthScore < 4) {
-      atRisk.push({
-        ...opp,
-        reason: `💣 R$${opp.value.toLocaleString('pt-BR')} com score ${healthScore.toFixed(1)}/10`,
-        action: 'Reunião de resgate esta semana',
-        priority: 3
-      });
-    }
-    
-    if (expectedClose && expectedClose <= weekEnd && opp.stage >= 4) {
-      closing.push({
-        ...opp,
-        reason: `💰 Fecha prevista: ${expectedClose.toLocaleDateString('pt-BR')}`,
-        action: 'Finalizar negociação e fechar',
-        priority: 4
-      });
-    }
-    
-    if (daysSinceContact >= 3 && daysSinceContact <= 7) {
-      followUp.push({
-        ...opp,
-        reason: `📅 ${daysSinceContact} dias - manter momentum`,
-        action: 'Email ou WhatsApp de follow-up',
-        priority: 5
-      });
-    }
-  });
-
-  let plan = `📋 **PLANO SEMANAL - ${vendorName}**\n`;
-  plan += `📅 Semana: ${today.toLocaleDateString('pt-BR')} - ${weekEnd.toLocaleDateString('pt-BR')}\n\n`;
-  
-  const totalPipeline = opportunities.reduce((sum, opp) => sum + opp.value, 0);
-  const totalClosing = closing.reduce((sum, opp) => sum + opp.value, 0);
-  const totalAtRisk = atRisk.reduce((sum, opp) => sum + opp.value, 0);
-  
-  plan += `**📊 MÉTRICAS DA SEMANA:**\n`;
-  plan += `• Pipeline Total: R$ ${totalPipeline.toLocaleString('pt-BR')}\n`;
-  plan += `• Para Fechar: R$ ${totalClosing.toLocaleString('pt-BR')}\n`;
-  plan += `• Em Risco: R$ ${totalAtRisk.toLocaleString('pt-BR')}\n\n`;
-  
-  // Agregar tareas detalladas aquí...
-  
-  return plan;
-}
-
+// ============= HELPERS =============
 function getScaleValue(scale) {
   if (!scale) return 0;
-  if (typeof scale === 'object' && scale.score !== undefined) {
-    return scale.score;
-  }
-  if (typeof scale === 'number') {
-    return scale;
-  }
+  if (typeof scale === 'object' && scale.score !== undefined) return scale.score;
+  if (typeof scale === 'number') return scale;
   return 0;
 }
 
 function calculateHealthScore(scales) {
   if (!scales) return 0;
-  
   const values = [
-    getScaleValue(scales.dor || scales.pain),
-    getScaleValue(scales.poder || scales.power),
-    getScaleValue(scales.visao || scales.vision),
-    getScaleValue(scales.valor || scales.value),
-    getScaleValue(scales.controle || scales.control),
-    getScaleValue(scales.compras || scales.purchase)
+    getScaleValue(scales.dor),
+    getScaleValue(scales.poder),
+    getScaleValue(scales.visao),
+    getScaleValue(scales.valor),
+    getScaleValue(scales.controle),
+    getScaleValue(scales.compras)
   ];
-  
   const sum = values.reduce((acc, val) => acc + val, 0);
-  return values.length > 0 ? sum / values.length : 0;
+  return values.length > 0 ? (sum / values.length).toFixed(1) : 0;
 }
 
-// ============= HANDLER PRINCIPAL - EDGE RUNTIME =============
+// ============= LLAMADA A CLAUDE API - COACH DE VENTAS =============
+async function callClaudeAPI(opportunityData, userInput, ventapelContext) {
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+  
+  if (!ANTHROPIC_API_KEY) {
+    console.log('⚠️ Claude API no configurada, usando análisis local');
+    return null;
+  }
+
+  try {
+    const promptTemplate = `Eres "Ventus", un coach de ventas de clase mundial y experto absoluto en la metodología de Ventas Consultivas PPVVCC de Ventapel Brasil. Tu único objetivo es ayudar a los vendedores a CERRAR MÁS VENTAS analizando oportunidades específicas y proporcionando ESTRATEGIAS y ACCIONES CONCRETAS para avanzar en el funil.
+
+**REGLAS FUNDAMENTALES:**
+1. **FOCO EN LA ACCIÓN:** Cada respuesta debe ser un paso tangible. No des consejos genéricos. Tu meta es ayudar a subir el score en las escalas PPVVCC y pasar a la siguiente etapa del funil.
+2. **BASADO EN DATOS:** Basa tu análisis ESTRICTAMENTE en los datos proporcionados en el CONTEXTO. No inventes información.
+3. **METODOLOGÍA ES REY:** Tu cerebro funciona 100% sobre la metodología PPVVCC (DOR, PODER, VISÃO, VALOR, CONTROLE, COMPRAS).
+4. **CONCISO Y DIRECTO:** Usa Markdown (negritas, listas) para que la respuesta sea fácil de leer. Máximo 150 palabras a menos que se pida análisis profundo.
+
+---
+
+**CONTEXTO DE LA OPORTUNIDAD:**
+
+**1. Oportunidad Actual:**
+${JSON.stringify(opportunityData, null, 2)}
+
+**2. Contexto Ventapel:**
+{
+  "casosExito": ${JSON.stringify(ventapelContext.casos, null, 2)},
+  "metodologia": "PPVVCC - Dor, Poder, Visão, Valor, Controle, Compras"
+}
+
+**3. Solicitud del Vendedor:**
+"${userInput}"
+
+**TAREA:**
+Basado en TODO el contexto anterior, responde siguiendo este formato de 3 pasos:
+
+1. **Diagnóstico Rápido:** En una frase, identifica el principal cuello de botella según PPVVCC.
+
+2. **Estrategia PPVVCC:** Plan de acción claro (2-3 puntos) para resolver el cuello de botella.
+
+3. **Acción Inmediata:** Proporciona UNA herramienta lista para usar:
+   - Un borrador de email corto y directo, O
+   - Un script de apertura para llamada (2-3 líneas), O
+   - 3 preguntas SPIN para la próxima reunión
+
+Comienza tu respuesta directamente, sin saludos.`;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-3-sonnet-20240229",
+        max_tokens: 500,
+        temperature: 0.3,
+        messages: [
+          { role: "user", content: promptTemplate }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      console.log('Claude API no disponible, usando lógica local');
+      return null;
+    }
+
+    const data = await response.json();
+    return data.content[0].text;
+    
+  } catch (error) {
+    console.log('Error llamando a Claude:', error);
+    return null;
+  }
+}
+
+// ============= ANÁLISIS LOCAL PPVVCC =============
+function analyzeOpportunityLocal(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada. Selecciona un cliente del CRM.";
+  
+  const daysSince = opp.last_update ? 
+    Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24)) : 999;
+  
+  const healthScore = calculateHealthScore(opp.scales);
+  const dorScore = getScaleValue(opp.scales?.dor);
+  const poderScore = getScaleValue(opp.scales?.poder);
+  
+  let analysis = `📊 **ANÁLISIS DE ${opp.client}**\n\n`;
+  
+  analysis += `💰 **Valor:** R$ ${(opp.value || 0).toLocaleString('pt-BR')}\n`;
+  analysis += `📈 **Etapa:** ${opp.stage} | Prob: ${opp.probability}%\n`;
+  analysis += `❤️ **Health:** ${healthScore}/10\n`;
+  analysis += `📅 **Último contacto:** ${daysSince} días\n\n`;
+  
+  // Diagnóstico principal
+  if (daysSince > 30) {
+    analysis += `🔴 **DIAGNÓSTICO: DEAL MUERTO**\n`;
+    analysis += `${daysSince} días sin contacto. Requiere reactivación urgente.\n\n`;
+  } else if (dorScore < 5) {
+    analysis += `⚠️ **DIAGNÓSTICO: SIN DOLOR = SIN VENTA**\n`;
+    analysis += `Dolor en ${dorScore}/10. Cliente no admite problema.\n\n`;
+  } else if (poderScore < 5) {
+    analysis += `⚠️ **DIAGNÓSTICO: SIN ACCESO AL DECISOR**\n`;
+    analysis += `Poder en ${poderScore}/10. No llegas a quien firma.\n\n`;
+  } else {
+    analysis += `✅ **DIAGNÓSTICO: OPORTUNIDAD VIABLE**\n\n`;
+  }
+  
+  // Acción inmediata
+  analysis += `**🎯 ACCIÓN INMEDIATA:**\n`;
+  if (daysSince > 7) {
+    analysis += `☎️ **Llamar HOY** para reactivar\n`;
+  } else if (dorScore < 5) {
+    analysis += `📞 **Aplicar técnica SPIN** para elevar dolor\n`;
+  } else if (!opp.power_sponsor) {
+    analysis += `🎯 **Identificar Power Sponsor** esta semana\n`;
+  } else {
+    analysis += `✅ **Avanzar a siguiente etapa** del pipeline\n`;
+  }
+  
+  return analysis;
+}
+
+// ============= ESTRATEGIA DE DOLOR (SPIN) =============
+function generatePainStrategy(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada";
+  
+  const painScore = getScaleValue(opp.scales?.dor) || 0;
+  const monthlyBoxes = Math.round(opp.value / 100);
+  const monthlyLoss = Math.round(opp.value * 0.1);
+  const annualLoss = monthlyLoss * 12;
+  
+  let strategy = `🎯 **ESTRATEGIA SPIN PARA ${opp.client}**\n\n`;
+  strategy += `**Dolor actual:** ${painScore}/10 → **Meta:** 8+/10\n\n`;
+  
+  strategy += `**📞 SCRIPT DE LLAMADA (10 minutos):**\n\n`;
+  
+  strategy += `**1. SITUACIÓN (1 min):**\n`;
+  strategy += `"${opp.sponsor || 'Hola'}, vi que procesan ${monthlyBoxes.toLocaleString('pt-BR')} cajas/mes. ¿Correcto?"\n\n`;
+  
+  strategy += `**2. PROBLEMA (3 min):**\n`;
+  strategy += `• "¿Qué % de cajas llegan violadas al cliente?"\n`;
+  strategy += `• "¿Cuánto tiempo dedican a re-embalar?"\n`;
+  strategy += `• "¿Cuántos reclamos reciben por mes?"\n\n`;
+  
+  strategy += `**3. IMPLICACIÓN (4 min) - CREAR DOLOR:**\n`;
+  strategy += `• "Con 10% de violación, son ${Math.round(monthlyBoxes * 0.1).toLocaleString('pt-BR')} cajas/mes"\n`;
+  strategy += `• "A R$35 por retrabajo = R$ ${monthlyLoss.toLocaleString('pt-BR')}/mes"\n`;
+  strategy += `• "Eso es R$ ${annualLoss.toLocaleString('pt-BR')}/año tirados a la basura"\n`;
+  strategy += `• "¿Tu competencia tiene este problema?"\n\n`;
+  
+  strategy += `**4. NECESIDAD (2 min):**\n`;
+  strategy += `• "Si eliminaran 95% de violaciones, ¿qué impacto tendría?"\n`;
+  strategy += `• "¿Vale la pena invertir 3 meses de pérdidas para eliminarlo para siempre?"\n\n`;
+  
+  // Caso de éxito relevante
+  const caso = opp.industry?.toLowerCase().includes('commerce') ? 'MercadoLibre' : 'Nike';
+  strategy += `**💡 MENCIONAR:** "${caso} tenía el mismo problema, hoy ahorra R$ ${caso === 'MercadoLibre' ? '180.000' : '100.000'}/mes"`;
+  
+  return strategy;
+}
+
+// ============= CALCULAR ROI ESPECÍFICO =============
+function calculateROI(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada";
+  
+  const monthlyBoxes = Math.round(opp.value / 100);
+  const violationRate = 0.10; // 10% estándar Brasil
+  const reworkCost = 35; // R$ por caja
+  const monthlyLoss = Math.round(monthlyBoxes * violationRate * reworkCost);
+  
+  // Inversión según volumen
+  let investment, solution;
+  if (monthlyBoxes < 5000) {
+    investment = 45000;
+    solution = "BP222 + Gorilla 300m";
+  } else if (monthlyBoxes < 20000) {
+    investment = 95000;
+    solution = "BP555e + VENOM";
+  } else {
+    investment = 180000;
+    solution = "BP755 + Gorilla 700m";
+  }
+  
+  const monthlySavings = Math.round(monthlyLoss * 0.95); // 95% reducción
+  const paybackMonths = Math.ceil(investment / monthlySavings);
+  const annualROI = Math.round(((monthlySavings * 12 - investment) / investment) * 100);
+  
+  let roi = `💰 **ROI PERSONALIZADO - ${opp.client}**\n\n`;
+  
+  roi += `**📊 NÚMEROS ACTUALES:**\n`;
+  roi += `• Volumen: ${monthlyBoxes.toLocaleString('pt-BR')} cajas/mes\n`;
+  roi += `• Violadas (10%): ${Math.round(monthlyBoxes * violationRate).toLocaleString('pt-BR')} cajas\n`;
+  roi += `• Pérdida mensual: R$ ${monthlyLoss.toLocaleString('pt-BR')}\n`;
+  roi += `• Pérdida anual: R$ ${(monthlyLoss * 12).toLocaleString('pt-BR')}\n\n`;
+  
+  roi += `**✅ SOLUCIÓN VENTAPEL:**\n`;
+  roi += `• Equipamiento: ${solution}\n`;
+  roi += `• Inversión: R$ ${investment.toLocaleString('pt-BR')}\n`;
+  roi += `• Reducción violaciones: 95%\n\n`;
+  
+  roi += `**📈 RESULTADOS:**\n`;
+  roi += `• Ahorro mensual: R$ ${monthlySavings.toLocaleString('pt-BR')}\n`;
+  roi += `• Ahorro anual: R$ ${(monthlySavings * 12).toLocaleString('pt-BR')}\n`;
+  roi += `• **PAYBACK: ${paybackMonths} MESES**\n`;
+  roi += `• ROI primer año: ${annualROI}%\n\n`;
+  
+  // Caso similar
+  const caso = monthlyBoxes < 5000 ? CASOS_EXITO_REALES.mercadolibre : 
+               monthlyBoxes < 20000 ? CASOS_EXITO_REALES.nike : 
+               CASOS_EXITO_REALES.loreal;
+  
+  roi += `**📊 CASO SIMILAR:**\n`;
+  roi += `${caso.empresa}: ROI en ${caso.resultados.roi_meses} meses`;
+  
+  return roi;
+}
+
+// ============= GENERAR EMAIL DE VENTA =============
+function generateEmail(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada";
+  
+  const daysSince = opp.last_update ? 
+    Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24)) : 0;
+  
+  const monthlyLoss = Math.round(opp.value * 0.1);
+  const caso = opp.industry?.toLowerCase().includes('commerce') ? 'MercadoLibre' : 'Nike';
+  
+  let email = `📧 **EMAIL PARA ${opp.client}**\n\n`;
+  email += `**Para:** ${opp.sponsor || opp.power_sponsor || 'Contacto'}\n`;
+  
+  if (daysSince > 7) {
+    email += `**Asunto:** ${opp.client} - R$ ${(monthlyLoss * 12).toLocaleString('pt-BR')}/año en pérdidas evitables\n\n`;
+    email += `Hola ${opp.sponsor?.split(' ')[0] || 'equipo'},\n\n`;
+    email += `Hace ${daysSince} días que no hablamos.\n\n`;
+    email += `Mientras tanto, están perdiendo R$ ${monthlyLoss.toLocaleString('pt-BR')}/mes en violación de cajas.\n\n`;
+  } else {
+    email += `**Asunto:** Caso ${caso} - Cómo eliminaron 95% de violaciones\n\n`;
+    email += `Hola ${opp.sponsor?.split(' ')[0] || 'equipo'},\n\n`;
+  }
+  
+  email += `Datos rápidos:\n`;
+  email += `• Pérdida típica del sector: 10% de cajas violadas\n`;
+  email += `• Para ustedes: R$ ${monthlyLoss.toLocaleString('pt-BR')}/mes\n`;
+  email += `• ${caso} tenía el mismo problema\n`;
+  email += `• Hoy ahorran R$ ${caso === 'MercadoLibre' ? '180.000' : '100.000'}/mes\n\n`;
+  
+  email += `¿15 minutos esta semana para ver los números específicos?\n\n`;
+  email += `PD: Cada mes sin actuar = R$ ${monthlyLoss.toLocaleString('pt-BR')} perdidos.\n\n`;
+  email += `Saludos,\n[Tu nombre]`;
+  
+  return email;
+}
+
+// ============= GENERAR SCRIPT DE LLAMADA =============
+function generateCallScript(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada";
+  
+  const monthlyBoxes = Math.round(opp.value / 100);
+  const monthlyLoss = Math.round(opp.value * 0.1);
+  
+  let script = `📞 **SCRIPT PARA ${opp.client}**\n\n`;
+  
+  script += `**APERTURA (30 seg):**\n`;
+  script += `"Hola ${opp.sponsor || '[nombre]'}, soy [TU NOMBRE] de Ventapel.\n`;
+  script += `Vi que procesan ${monthlyBoxes.toLocaleString('pt-BR')} cajas/mes.\n`;
+  script += `MercadoLibre procesaba volumen similar y perdía R$ ${monthlyLoss.toLocaleString('pt-BR')}/mes.\n`;
+  script += `Hoy ahorran 95% de eso. ¿15 minutos para mostrarle cómo?"\n\n`;
+  
+  script += `**SI DICE "NO TENGO TIEMPO":**\n`;
+  script += `"Entiendo. Solo una pregunta rápida:\n`;
+  script += `¿Cuántas cajas violadas tienen por mes?\n`;
+  script += `[Esperar respuesta]\n`;
+  script += `Eso son R$ [calcular] al año. ¿No vale 15 minutos?"\n\n`;
+  
+  script += `**SI DICE "YA TENEMOS SOLUCIÓN":**\n`;
+  script += `"Excelente. ¿Qué % de efectividad tiene?\n`;
+  script += `[Esperar respuesta]\n`;
+  script += `Nosotros garantizamos 95% o devolvemos el dinero.\n`;
+  script += `¿Vale la pena comparar?"\n\n`;
+  
+  script += `**SI DICE "NO ES PRIORIDAD":**\n`;
+  script += `"¿R$ ${(monthlyLoss * 12).toLocaleString('pt-BR')}/año no es prioridad?\n`;
+  script += `Con ROI en 3 meses, ¿qué podría ser más prioritario?"\n\n`;
+  
+  script += `**CIERRE:**\n`;
+  script += `"¿Martes 10am o jueves 3pm le viene mejor?"`;
+  
+  return script;
+}
+
+// ============= ESTRATEGIA COMPLETA =============
+function generateCompleteStrategy(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada";
+  
+  const healthScore = calculateHealthScore(opp.scales);
+  const dorScore = getScaleValue(opp.scales?.dor);
+  const poderScore = getScaleValue(opp.scales?.poder);
+  const visaoScore = getScaleValue(opp.scales?.visao);
+  
+  let strategy = `🎯 **ESTRATEGIA COMPLETA - ${opp.client}**\n\n`;
+  
+  strategy += `**📊 DIAGNÓSTICO PPVVCC:**\n`;
+  strategy += `• DOR: ${dorScore}/10 ${dorScore < 5 ? '🔴 CRÍTICO' : dorScore < 8 ? '🟡 MEJORAR' : '🟢 OK'}\n`;
+  strategy += `• PODER: ${poderScore}/10 ${poderScore < 5 ? '🔴 SIN ACCESO' : poderScore < 8 ? '🟡 PARCIAL' : '🟢 TOTAL'}\n`;
+  strategy += `• VISÃO: ${visaoScore}/10\n`;
+  strategy += `• Health Total: ${healthScore}/10\n\n`;
+  
+  // Identificar prioridad
+  let priority = '';
+  let action = '';
+  
+  if (dorScore < 5) {
+    priority = '🔴 PRIORIDAD 1: ELEVAR DOLOR';
+    action = 'Sin dolor admitido NO HAY VENTA. Aplicar SPIN inmediatamente.';
+  } else if (poderScore < 5) {
+    priority = '🟡 PRIORIDAD 2: ACCEDER AL DECISOR';
+    action = 'Identificar y acceder al Power Sponsor esta semana.';
+  } else if (visaoScore < 5) {
+    priority = '🔵 PRIORIDAD 3: CONSTRUIR VISIÓN';
+    action = 'Demo con caso de éxito y ROI específico.';
+  } else {
+    priority = '✅ LISTO PARA CERRAR';
+    action = 'Proponer prueba piloto o contrato.';
+  }
+  
+  strategy += `**${priority}**\n`;
+  strategy += `${action}\n\n`;
+  
+  strategy += `**📋 PLAN DE ACCIÓN (5 DÍAS):**\n\n`;
+  
+  strategy += `**DÍA 1-2:** ${dorScore < 5 ? 'Llamada SPIN para elevar dolor' : 'Mantener momentum'}\n`;
+  strategy += `**DÍA 3:** ${poderScore < 5 ? 'Email pidiendo acceso al decisor' : 'Confirmar próximos pasos'}\n`;
+  strategy += `**DÍA 4:** ${visaoScore < 5 ? 'Demo con ROI calculado' : 'Enviar propuesta'}\n`;
+  strategy += `**DÍA 5:** Follow-up y definir fecha de decisión\n\n`;
+  
+  // Script de apertura
+  strategy += `**📞 SCRIPT DE HOY:**\n`;
+  strategy += `"${opp.sponsor || 'Hola'}, `;
+  
+  if (dorScore < 5) {
+    strategy += `necesito validar algo: ¿cuántas cajas violadas tienen por mes?"`;
+  } else if (poderScore < 5) {
+    strategy += `para avanzar necesito 15 min con quien aprueba inversiones. ¿Quién sería?"`;
+  } else {
+    strategy += `ya tenemos todo listo. ¿Empezamos con prueba piloto o vamos directo al contrato?"`;
+  }
+  
+  return strategy;
+}
+
+// ============= HANDLER PRINCIPAL - EL CEREBRO =============
 export default async function handler(req) {
-  // Solo POST permitido
   if (req.method !== 'POST') {
     return new Response(
       JSON.stringify({ error: 'Method not allowed' }),
-      { 
-        status: 405,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      { status: 405, headers: { 'Content-Type': 'application/json' } }
     );
   }
 
   try {
     const body = await req.json();
     const { 
-      context, 
-      opportunityData, 
-      specialRequestType,
-      pipelineData,
-      vendorName,
-      intelligentContext,
-      similarDeals,
-      companyName,
-      searchQuery 
+      action,
+      userInput,
+      opportunityData,
+      vendorName
     } = body;
 
-    console.log('📌 Request recibido:', { specialRequestType, companyName, context });
+    console.log('🧠 Backend recibió:', { action, userInput, hasOpportunity: !!opportunityData });
 
-    // CASO 1: Búsqueda web de empresa
-    if (specialRequestType === 'web_research' && companyName) {
-      console.log(`📌 Procesando búsqueda web para: ${companyName}`);
+    let response = '';
+
+    // Primero intentar con Claude si hay input complejo
+    if (userInput && opportunityData && 
+        !['analizar', 'dolor', 'roi', 'email', 'llamada', 'estrategia'].includes(action)) {
       
-      const researchData = await researchCompany(companyName);
+      const claudeResponse = await callClaudeAPI(
+        opportunityData,
+        userInput,
+        { casos: CASOS_EXITO_REALES }
+      );
       
-      if (!researchData || !researchData.searchResults) {
+      if (claudeResponse) {
         return new Response(
-          JSON.stringify({ 
-            response: `⚠️ No pude encontrar información sobre ${companyName}. Intenta con otro nombre o verifica la ortografía.` 
-          }),
-          { 
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-          }
-        );
-      }
-
-      // Formatear respuesta con datos reales
-      let response = `🔍 **INVESTIGACIÓN COMPLETA - ${companyName}**\n\n`;
-      
-      // Información general
-      if (researchData.searchResults.companyInfo.description) {
-        response += `📊 **INFORMACIÓN GENERAL:**\n`;
-        response += `${researchData.searchResults.companyInfo.description}\n`;
-        if (researchData.searchResults.companyInfo.website) {
-          response += `🌐 Website: ${researchData.searchResults.companyInfo.website}\n`;
-        }
-        if (researchData.searchResults.companyInfo.sector) {
-          response += `🏭 Sector: ${researchData.searchResults.companyInfo.sector}\n`;
-        }
-        response += `\n`;
-      }
-
-      // Problemas detectados
-      if (researchData.searchResults.problems.length > 0) {
-        response += `⚠️ **PROBLEMAS DETECTADOS (Oportunidades Ventapel):**\n`;
-        const uniqueProblems = [...new Set(researchData.searchResults.problems.map(p => p.type))];
-        uniqueProblems.forEach(type => {
-          const problem = researchData.searchResults.problems.find(p => p.type === type);
-          response += `• ${type.toUpperCase()}: ${problem.evidence.substring(0, 150)}...\n`;
-        });
-        response += `\n`;
-      }
-
-      // Noticias recientes
-      if (researchData.searchResults.news.length > 0) {
-        response += `📰 **NOTICIAS RECIENTES:**\n`;
-        researchData.searchResults.news.forEach(news => {
-          response += `• ${news.title} (${news.date || news.source})\n`;
-          if (news.snippet) {
-            response += `  "${news.snippet.substring(0, 100)}..."\n`;
-          }
-        });
-        response += `\n`;
-      }
-
-      // Análisis Ventapel
-      if (researchData.ventapelAnalysis) {
-        const analysis = researchData.ventapelAnalysis;
-        
-        response += `💡 **ANÁLISIS VENTAPEL:**\n\n`;
-        
-        response += `📈 **Pérdida Potencial Estimada:**\n`;
-        response += `• R$ ${analysis.potentialLoss.toLocaleString('pt-BR')}/mes en violación de cajas\n`;
-        response += `• R$ ${(analysis.potentialLoss * 12).toLocaleString('pt-BR')}/año\n\n`;
-        
-        response += `🎯 **Solución Recomendada:**\n`;
-        response += `• ${analysis.recommendedSolution}\n`;
-        response += `• Caso similar: ${analysis.relevantCase}\n\n`;
-        
-        response += `🔥 **Estrategia de Approach:**\n`;
-        response += `${analysis.approachStrategy}\n\n`;
-        
-        response += `👥 **Contactos a Buscar en LinkedIn:**\n`;
-        analysis.contactsToFind.forEach(contact => {
-          response += `• ${contact}\n`;
-        });
-      }
-
-      return new Response(
-        JSON.stringify({ response }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
-    // CASO 2: Plan Semanal
-    if (specialRequestType === 'weekly_plan') {
-      const plan = generateWeeklyPlan(
-        pipelineData?.allOpportunities || [],
-        vendorName || 'Vendedor'
-      );
-      
-      return new Response(
-        JSON.stringify({ response: plan }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
-    // CASO 3: Calcular ROI
-    if (context?.toLowerCase().includes('roi') || context?.toLowerCase().includes('calcular')) {
-      if (opportunityData) {
-        const roiAnalysis = calculateVentapelROI(opportunityData);
-        
-        return new Response(
-          JSON.stringify({ response: roiAnalysis.summary }),
-          { 
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-          }
+          JSON.stringify({ response: claudeResponse }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
         );
       }
     }
 
-    // CASO 4: Análisis de oportunidad con contexto inteligente
-    if (opportunityData && intelligentContext) {
-      let response = `📊 **Análisis Inteligente - ${opportunityData.client}**\n\n`;
-      
-      response += `📌 **Fuente de datos: ${intelligentContext.dataSource}**\n\n`;
-      
-      if (intelligentContext.priority1_clientNotes?.hasData) {
-        response += `**📝 Basado en lo que el cliente dijo:**\n`;
-        intelligentContext.priority1_clientNotes.notes.forEach(note => {
-          response += `• ${note}\n`;
-        });
-        response += `\n`;
-      }
-      
-      if (intelligentContext.priority2_similarDeals?.hasData) {
-        response += `**🔄 Patrones de ${intelligentContext.priority2_similarDeals.count} deals similares:**\n`;
-        response += `• Valor promedio: R$ ${intelligentContext.priority2_similarDeals.avgValue.toLocaleString('pt-BR')}\n`;
+    // Lógica local según acción
+    switch(action) {
+      case 'analizar':
+        response = analyzeOpportunityLocal(opportunityData);
+        break;
         
-        if (intelligentContext.priority2_similarDeals.commonPatterns) {
-          intelligentContext.priority2_similarDeals.commonPatterns.forEach(pattern => {
-            response += `• ${pattern}\n`;
-          });
+      case 'dolor':
+        response = generatePainStrategy(opportunityData);
+        break;
+        
+      case 'roi':
+        response = calculateROI(opportunityData);
+        break;
+        
+      case 'email':
+        response = generateEmail(opportunityData);
+        break;
+        
+      case 'llamada':
+        response = generateCallScript(opportunityData);
+        break;
+        
+      case 'estrategia':
+        response = generateCompleteStrategy(opportunityData);
+        break;
+        
+      default:
+        // Para cualquier texto libre, intentar procesarlo
+        if (userInput && opportunityData) {
+          // Detectar intención
+          const lowerInput = userInput.toLowerCase();
+          
+          if (lowerInput.includes('dolor') || lowerInput.includes('recalif')) {
+            response = generatePainStrategy(opportunityData);
+          } else if (lowerInput.includes('roi') || lowerInput.includes('retorno')) {
+            response = calculateROI(opportunityData);
+          } else if (lowerInput.includes('email') || lowerInput.includes('correo')) {
+            response = generateEmail(opportunityData);
+          } else if (lowerInput.includes('llamada') || lowerInput.includes('llamar') || lowerInput.includes('script')) {
+            response = generateCallScript(opportunityData);
+          } else if (lowerInput.includes('estrategia') || lowerInput.includes('plan')) {
+            response = generateCompleteStrategy(opportunityData);
+          } else {
+            response = analyzeOpportunityLocal(opportunityData);
+          }
+        } else if (!opportunityData) {
+          response = `❌ **No hay cliente seleccionado**\n\n`;
+          response += `Selecciona un cliente del CRM para que pueda ayudarte con:\n`;
+          response += `• 📊 Análisis PPVVCC\n`;
+          response += `• 🎯 Estrategias para elevar dolor\n`;
+          response += `• 💰 Cálculo de ROI\n`;
+          response += `• 📧 Scripts de email\n`;
+          response += `• 📞 Scripts de llamada\n`;
+        } else {
+          response = `👋 Hola ${vendorName || 'vendedor'}!\n\n`;
+          response += `Soy tu Coach de Ventas PPVVCC.\n`;
+          response += `Escribe tu pregunta o usa los botones de acción rápida.`;
         }
-        response += `\n`;
-      }
-      
-      const healthScore = calculateHealthScore(opportunityData.scales || {});
-      response += `**🎯 Estado PPVVCC:**\n`;
-      response += `• Score general: ${healthScore.toFixed(1)}/10\n`;
-      
-      return new Response(
-        JSON.stringify({ response }),
-        { 
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
     }
 
-    // CASO 5: Respuesta genérica
-    let genericResponse = "👋 Hola! Soy tu asistente Ventapel con datos reales de Brasil.\n\n";
-    genericResponse += "**Puedo ayudarte con:**\n";
-    genericResponse += "• 🔍 Búsqueda web de empresas nuevas\n";
-    genericResponse += "• 📊 Análisis PPVVCC de oportunidades\n";
-    genericResponse += "• 💰 Cálculo de ROI con datos reales\n";
-    genericResponse += "• 📅 Plan semanal personalizado\n";
-    genericResponse += "• 🎯 Scripts de venta basados en casos de éxito\n\n";
-    genericResponse += "Escribe el nombre de un cliente o 'buscar información de [empresa]' para empezar.";
-    
     return new Response(
-      JSON.stringify({ response: genericResponse }),
-      { 
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ response }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Error en API assistant:', error);
+    console.error('❌ Error en backend:', error);
     
     return new Response(
       JSON.stringify({ 
-        response: '❌ Error procesando la solicitud. Usando modo local.',
+        response: '❌ Error procesando. Intenta de nuevo.',
         error: error.message 
       }),
-      { 
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      }
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   }
 }
