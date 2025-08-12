@@ -697,64 +697,146 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return actions.slice(0, 4);
   };
 
-  const handleActionClick = async (actionPayload) => {
-    if (!actionPayload) return;
+const handleActionClick = async (actionPayload) => {
+  if (!actionPayload) return;
 
-    const [action, ...params] = actionPayload.split(':');
+  const [action, ...params] = actionPayload.split(':');
 
-    if (action === 'cancel') {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Ação cancelada.' }]);
+  // Manejar cancelación
+  if (action === 'cancel') {
+    setMessages(prev => [...prev, { role: 'assistant', content: 'Ação cancelada.' }]);
+    return;
+  }
+
+  // Manejar actualización de escalas
+  if (action === 'update' && params.length >= 2) {
+    const [scale, newValue, oppId] = params;
+    const opportunityToUpdateId = oppId || getActiveOpportunity()?.id;
+    
+    if (!opportunityToUpdateId) {
+      setMessages(prev => [...prev, { role: 'assistant', content: '❌ Erro: Não sei qual oportunidade atualizar.' }]);
       return;
     }
 
-    if (action === 'update' && params.length >= 2) {
-      const [scale, newValue, oppId] = params;
-      const opportunityToUpdateId = oppId || (assistantActiveOpportunity || currentOpportunity)?.id;
-      
-      if (!opportunityToUpdateId) {
-        setMessages(prev => [...prev, { role: 'assistant', content: '❌ Erro: Não sei qual oportunidade atualizar.' }]);
-        return;
-      }
+    setIsLoading(true);
+    try {
+      const currentOpp = allOpportunities.find(o => o.id === opportunityToUpdateId);
+      const updatedScales = {
+        ...(currentOpp?.scales || {}),
+        [scale]: { 
+          ...(currentOpp?.scales?.[scale] || {}),
+          score: parseInt(newValue) 
+        }
+      };
 
-      setIsLoading(true);
-      try {
-        const currentOpp = allOpportunities.find(o => o.id === opportunityToUpdateId);
-        const updatedScales = {
-          ...(currentOpp?.scales || {}),
-          [scale]: { 
-            ...(currentOpp?.scales?.[scale] || {}),
-            score: parseInt(newValue) 
-          }
-        };
+      const { data, error } = await supabase
+        .from('opportunities')
+        .update({ 
+          scales: updatedScales,
+          last_update: new Date().toISOString()
+        })
+        .eq('id', opportunityToUpdateId)
+        .select();
 
-        const { data, error } = await supabase
-          .from('opportunities')
-          .update({ 
-            scales: updatedScales,
-            last_update: new Date().toISOString()
-          })
-          .eq('id', opportunityToUpdateId)
-          .select();
+      if (error) throw error;
 
-        if (error) throw error;
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: `✅ Atualizado! ${scale.toUpperCase()} = ${newValue}/10 para ${data[0].client}` 
+      }]);
 
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: `✅ Atualizado! ${scale.toUpperCase()} = ${newValue}/10 para ${data[0].client}` 
-        }]);
-
-        await loadPipelineData();
-      } catch (error) {
-        console.error('Error actualizando:', error);
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: `❌ Erro: ${error.message}` 
-        }]);
-      } finally {
-        setIsLoading(false);
-      }
+      await loadPipelineData();
+    } catch (error) {
+      console.error('Error actualizando:', error);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: `❌ Erro: ${error.message}` 
+      }]);
+    } finally {
+      setIsLoading(false);
     }
-  };
+    return;
+  }
+
+  // NUEVO: Manejar otros tipos de acciones sin llamar al API
+  setIsLoading(true);
+  
+  try {
+    // En lugar de llamar al API, manejar localmente
+    const activeOpp = getActiveOpportunity();
+    
+    if (!activeOpp) {
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: '❌ No hay oportunidad activa para analizar.' 
+      }]);
+      setIsLoading(false);
+      return;
+    }
+
+    // Generar respuesta basada en el actionPayload
+    let response = '';
+    
+    // Si el payload contiene el prompt completo, usarlo
+    if (actionPayload.includes('Generar estrategia')) {
+      const context = getIntelligentContext(activeOpp);
+      
+      response = `📋 **Estrategia para ${activeOpp.client}**\n\n`;
+      
+      // Basarse en datos del cliente
+      if (context.priority1_clientNotes?.hasData) {
+        response += `**Basado en lo que ya dijeron:**\n`;
+        context.priority1_clientNotes.notes.forEach(note => {
+          response += `• ${note}\n`;
+        });
+        response += `\n`;
+      }
+      
+      // Análisis PPVVCC
+      response += `**Estado actual PPVVCC:**\n`;
+      response += `• DOR: ${getScaleValue(activeOpp.scales?.dor)}/10\n`;
+      response += `• PODER: ${getScaleValue(activeOpp.scales?.poder)}/10\n`;
+      response += `• VISÃO: ${getScaleValue(activeOpp.scales?.visao)}/10\n`;
+      response += `• VALOR: ${getScaleValue(activeOpp.scales?.valor)}/10\n`;
+      response += `• CONTROLE: ${getScaleValue(activeOpp.scales?.controle)}/10\n`;
+      response += `• COMPRAS: ${getScaleValue(activeOpp.scales?.compras)}/10\n\n`;
+      
+      // Próximas acciones
+      const analysis = analyzeOpportunityWithContext(activeOpp);
+      if (analysis?.nextAction) {
+        response += `**➡️ Acción inmediata:**\n`;
+        response += `${analysis.nextAction.action}\n\n`;
+        response += `**Script sugerido:**\n`;
+        response += `"${analysis.nextAction.script}"\n`;
+      }
+      
+      // Agregar datos de ROI
+      response += `\n**💰 ROI estimado:**\n`;
+      response += `• Pérdida mensual actual: R$ ${Math.round(activeOpp.value * 0.01).toLocaleString()}\n`;
+      response += `• Ahorro con Ventapel: 95% de reducción\n`;
+      response += `• ROI: 2-3 meses garantizado\n`;
+      
+    } else {
+      // Respuesta genérica para otras acciones
+      response = `Procesando acción: ${action}\n`;
+      response += `Para ${activeOpp.client}\n`;
+    }
+    
+    setMessages(prev => [...prev, { 
+      role: 'assistant', 
+      content: response 
+    }]);
+    
+  } catch (error) {
+    console.error('Error en handleActionClick:', error);
+    setMessages(prev => [...prev, { 
+      role: 'assistant', 
+      content: '❌ Error procesando la acción.' 
+    }]);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
 const sendMessage = async (messageText = input) => {
   if (!messageText.trim()) return;
