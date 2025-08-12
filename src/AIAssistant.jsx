@@ -504,57 +504,113 @@ NO inventes números. Usa los casos reales y benchmarks que tienes.`;
     setInput('');
     setIsLoading(true);
 
-    const lowerText = text.toLowerCase();
+    const lowerText = text.toLowerCase().trim();
 
     try {
       let response = '';
 
-      // Detectar intención
-      if (lowerText.includes('busca') || lowerText.includes('investiga')) {
+      // Primero verificar si es un nombre de empresa del CRM
+      const foundOpp = allOpportunities.find(opp => 
+        opp.client?.toLowerCase() === lowerText ||
+        opp.client?.toLowerCase().includes(lowerText) ||
+        lowerText.includes(opp.client?.toLowerCase())
+      );
+
+      if (foundOpp) {
+        // Usuario escribió el nombre de una empresa existente
+        response = await analyzeWithClaude(foundOpp);
+        
+      } else if (lowerText === 'hola' || lowerText === 'ola' || lowerText === 'hey' || lowerText === 'hi') {
+        response = `👋 Hola ${currentUser}! ¿En qué puedo ayudarte?\n\n`;
+        response += `Tengo cargadas ${allOpportunities.length} oportunidades.\n`;
+        response += `Puedes escribir:\n`;
+        response += `• El nombre de cualquier cliente (ej: "MWM")\n`;
+        response += `• "listar" para ver todas\n`;
+        response += `• "busca [empresa]" para investigar nuevas\n`;
+        response += `• "email", "script", "roi", "estrategia" para el cliente actual\n\n`;
+        if (currentOpportunity) {
+          response += `📌 Cliente actual: ${currentOpportunity.client}`;
+        }
+        
+      } else if (lowerText === 'ayuda' || lowerText === 'help' || lowerText === '?') {
+        response = `📚 **COMANDOS DISPONIBLES:**\n\n`;
+        response += `**Para analizar clientes del CRM:**\n`;
+        response += `• Escribe el nombre directo: "MWM", "Centauro", etc.\n\n`;
+        response += `**Para investigar empresas nuevas:**\n`;
+        response += `• "busca [empresa]" - Investigación web + análisis\n\n`;
+        response += `**Para el cliente actual:**\n`;
+        response += `• "email" - Email personalizado\n`;
+        response += `• "script" - Script de llamada SPIN\n`;
+        response += `• "roi" - Cálculo de retorno\n`;
+        response += `• "estrategia" - Plan de acción\n\n`;
+        response += `**Otros:**\n`;
+        response += `• "listar" - Ver todas las oportunidades\n`;
+        response += `• "ayuda" - Ver estos comandos\n`;
+        
+      } else if (lowerText.includes('busca') || lowerText.includes('investiga')) {
         const company = text.replace(/busca|buscar|investiga|investigar|información de|sobre/gi, '').trim();
-        response = await searchCompanyWeb(company);
+        if (company) {
+          response = await searchCompanyWeb(company);
+        } else {
+          response = "¿Qué empresa quieres que investigue? Ejemplo: 'busca Natura'";
+        }
         
       } else if (lowerText.includes('email')) {
         if (currentOpportunity) {
           response = await generateSmartEmail(currentOpportunity);
+        } else if (foundOpp) {
+          response = await generateSmartEmail(foundOpp);
         } else {
-          response = "❌ Selecciona un cliente primero para generar el email.";
+          response = "❌ Selecciona un cliente primero. Puedes escribir el nombre de cualquier cliente del CRM.";
         }
         
       } else if (lowerText.includes('llamada') || lowerText.includes('script')) {
         if (currentOpportunity) {
           response = await generateCallScript(currentOpportunity);
+        } else if (foundOpp) {
+          response = await generateCallScript(foundOpp);
         } else {
-          response = "❌ Selecciona un cliente primero para generar el script.";
+          response = "❌ Selecciona un cliente primero. Puedes escribir el nombre de cualquier cliente del CRM.";
         }
         
       } else if (lowerText.includes('roi') || lowerText.includes('retorno')) {
         if (currentOpportunity) {
           response = await generateROIAnalysis(currentOpportunity);
+        } else if (foundOpp) {
+          response = await generateROIAnalysis(foundOpp);
         } else {
-          response = "❌ Selecciona un cliente primero para calcular ROI.";
+          response = "❌ Selecciona un cliente primero. Puedes escribir el nombre de cualquier cliente del CRM.";
         }
         
       } else if (lowerText.includes('estrategia') || lowerText.includes('plan')) {
         if (currentOpportunity) {
           response = await analyzeWithClaude(currentOpportunity);
+        } else if (foundOpp) {
+          response = await analyzeWithClaude(foundOpp);
         } else {
-          response = "❌ Selecciona un cliente primero para crear la estrategia.";
+          response = "❌ Selecciona un cliente primero. Puedes escribir el nombre de cualquier cliente del CRM.";
         }
         
-      } else if (lowerText === 'listar' || lowerText === 'lista') {
+      } else if (lowerText === 'listar' || lowerText === 'lista' || lowerText === 'ver todas') {
         response = generateOpportunitiesList();
         
       } else {
-        // Pregunta general a Claude
+        // Si no es un comando conocido, intentar con Claude para pregunta general
         response = await callClaudeAPI(text, {
           cliente: currentOpportunity?.client,
           industria: currentOpportunity?.industry,
-          valor: currentOpportunity?.value
+          valor: currentOpportunity?.value,
+          oportunidadesDisponibles: allOpportunities.map(o => o.client).join(', ')
         });
         
         if (!response) {
-          response = "No pude procesar tu solicitud. Intenta ser más específico.";
+          // Si Claude no responde, dar ayuda
+          response = `No entendí "${text}".\n\n`;
+          response += `Puedes:\n`;
+          response += `• Escribir el nombre de un cliente: ${allOpportunities.slice(0, 3).map(o => o.client).join(', ')}\n`;
+          response += `• Usar comandos: email, script, roi, estrategia\n`;
+          response += `• Buscar empresas: "busca [nombre]"\n`;
+          response += `• Ver ayuda completa: "ayuda"`;
         }
       }
 
