@@ -261,30 +261,82 @@ Responde en español directo del Río de la Plata como el CEO espera.`;
 
   // ============= ANÁLISIS INTELIGENTE CON CLAUDE =============
   const analyzeWithClaude = async (opportunity) => {
+    // Calcular contexto adicional
+    const daysSinceUpdate = opportunity.last_update ? 
+      Math.floor((new Date() - new Date(opportunity.last_update)) / (1000 * 60 * 60 * 24)) : 999;
+    
+    // Buscar deals similares ganados
+    const similarWonDeals = allOpportunities.filter(opp => 
+      opp.industry === opportunity.industry && 
+      opp.stage === 6 && 
+      opp.id !== opportunity.id
+    ).slice(0, 3);
+
     const prompt = `
-Analiza esta oportunidad y dame una estrategia CONCRETA:
+Analiza esta oportunidad con TODOS los datos del CRM:
 - Cliente: ${opportunity.client}
 - Industria: ${opportunity.industry || 'General'}
 - Valor: R$ ${opportunity.value}
 - Etapa actual: ${opportunity.stage}
-- Dolor actual: ${opportunity.scales?.dor?.score || 0}/10
-- Poder: ${opportunity.scales?.poder?.score || 0}/10
+- Probabilidad actual: ${opportunity.probability}%
+- Días sin contacto: ${daysSinceUpdate}
+- Última acción registrada: ${opportunity.next_action || 'Ninguna'}
 
-Necesito:
-1. ¿Qué caso de éxito real debo usar? (SOLO de los que tienes)
-2. ¿Cuál es el problema principal a atacar?
-3. Script exacto para la próxima llamada (máximo 5 líneas)
-4. Objeción probable y cómo responder
-5. ROI estimado con números reales
+SCORES PPVVCC DETALLADOS:
+- Dolor: ${opportunity.scales?.dor?.score || 0}/10 - "${opportunity.scales?.dor?.description || 'Sin notas'}"
+- Poder: ${opportunity.scales?.poder?.score || 0}/10 - "${opportunity.scales?.poder?.description || 'Sin notas'}"
+- Visión: ${opportunity.scales?.visao?.score || 0}/10
+- Valor: ${opportunity.scales?.valor?.score || 0}/10
+- Control: ${opportunity.scales?.controle?.score || 0}/10
+- Compras: ${opportunity.scales?.compras?.score || 0}/10
 
-NO inventes casos. USA SOLO: Honda, L'Oréal, Nike, MercadoLibre, Natura o Centauro.`;
+CONTACTOS IDENTIFICADOS:
+- Power Sponsor: ${opportunity.power_sponsor || 'NO IDENTIFICADO - CRÍTICO!'}
+- Sponsor: ${opportunity.sponsor || 'No identificado'}
+
+${similarWonDeals.length > 0 ? `
+DEALS SIMILARES GANADOS EN ${opportunity.industry}:
+${similarWonDeals.map(d => `- ${d.client}: ROI ${d.scales?.valor?.score || 'N/A'}/10`).join('\n')}
+` : 'No hay deals ganados en esta industria aún'}
+
+ANALIZA Y DAME:
+1. ¿Cuál es el MAYOR RIESGO de perder este deal?
+2. ¿Qué caso de éxito real usar? (SOLO Honda, L'Oréal, Nike, MercadoLibre, Natura o Centauro)
+3. Acción URGENTE para los próximos 2 días
+4. Si hay más de 7 días sin contacto, ¿cómo reactivar?
+5. ¿Qué score PPVVCC es crítico mejorar YA?
+
+Sé DIRECTO y ALARMISTA si hay riesgos.`;
 
     const response = await callClaudeAPI(prompt, {
       cliente: opportunity.client,
       industria: opportunity.industry,
       valor: opportunity.value,
       etapa: opportunity.stage,
-      ppvvcc: calculateHealthScore(opportunity.scales)
+      probabilidad: opportunity.probability,
+      ppvvcc: calculateHealthScore(opportunity.scales),
+      diasSinContacto: daysSinceUpdate,
+      ultimaActualizacion: opportunity.last_update,
+      proximaAccion: opportunity.next_action,
+      scoreDor: opportunity.scales?.dor?.score,
+      descripcionDor: opportunity.scales?.dor?.description,
+      scorePoder: opportunity.scales?.poder?.score,
+      descripcionPoder: opportunity.scales?.poder?.description,
+      scoreVisao: opportunity.scales?.visao?.score,
+      scoreValor: opportunity.scales?.valor?.score,
+      scoreControle: opportunity.scales?.controle?.score,
+      scoreCompras: opportunity.scales?.compras?.score,
+      powerSponsor: opportunity.power_sponsor,
+      sponsor: opportunity.sponsor,
+      influencer: opportunity.influencer,
+      supportContact: opportunity.support_contact,
+      totalOportunidades: allOpportunities.filter(o => o.vendor === currentUser).length,
+      valorTotalPipeline: allOpportunities.filter(o => o.vendor === currentUser).reduce((sum, o) => sum + o.value, 0),
+      oportunidadesEnRiesgo: allOpportunities.filter(o => {
+        const health = calculateHealthScore(o.scales);
+        return health < 4 && o.value > 50000;
+      }).length,
+      dealsSimilaresGanados: similarWonDeals.length
     });
 
     return response;
@@ -337,27 +389,44 @@ Sé DIRECTO y ESPECÍFICO.`;
 
   // ============= GENERADORES MEJORADOS =============
   const generateSmartEmail = async (opp) => {
+    // Calcular días sin contacto
+    const daysSinceUpdate = opp.last_update ? 
+      Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24)) : 0;
+
     const prompt = `
-Genera un email de venta para:
+Genera un email de venta URGENTE para:
 - Cliente: ${opp.client}
 - Contacto: ${opp.sponsor || 'Gerente'}
+- Power Sponsor: ${opp.power_sponsor || 'NO IDENTIFICADO AÚN'}
 - Industria: ${opp.industry || 'General'}
 - Valor deal: R$ ${opp.value}
 - Etapa: ${opp.stage}
+- Días sin contacto: ${daysSinceUpdate}
+- Última acción: ${opp.next_action || 'Ninguna'}
+- Score Dolor: ${opp.scales?.dor?.score || 0}/10
+- Score Poder: ${opp.scales?.poder?.score || 0}/10
+
+${daysSinceUpdate > 7 ? '⚠️ ALERTA: Más de 7 días sin contacto - REACTIVAR URGENTE' : ''}
+${!opp.power_sponsor ? '⚠️ ALERTA: Power Sponsor no identificado - CRÍTICO' : ''}
+${opp.scales?.dor?.score < 5 ? '⚠️ ALERTA: Dolor no admitido - NO HAY VENTA POSIBLE' : ''}
 
 El email debe:
-1. Ser máximo 10 líneas
-2. Mencionar UN caso de éxito relevante (de los reales)
-3. Incluir UNA métrica de pérdida específica
-4. Tener UN call-to-action claro
-5. Asunto que genere urgencia
+1. ${daysSinceUpdate > 7 ? 'Reactivar con urgencia' : 'Mantener momentum'}
+2. ${!opp.power_sponsor ? 'Solicitar acceso al decisor' : 'Involucrar al power sponsor'}
+3. Mencionar UN caso de éxito relevante (de los reales)
+4. Incluir UNA métrica de pérdida específica
+5. Call-to-action para ${opp.stage < 3 ? 'agendar demo' : opp.stage < 5 ? 'hacer prueba' : 'cerrar deal'}
 
-NO uses templates genéricos. Hazlo específico para este cliente.`;
+Asunto que genere urgencia. NO uses templates genéricos.`;
 
     return await callClaudeAPI(prompt, {
       cliente: opp.client,
       industria: opp.industry,
-      valor: opp.value
+      valor: opp.value,
+      diasSinContacto: daysSinceUpdate,
+      scoreDor: opp.scales?.dor?.score,
+      scorePoder: opp.scales?.poder?.score,
+      powerSponsor: opp.power_sponsor
     });
   };
 
