@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
-import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users } from 'lucide-react';
+import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users, Brain } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import AIAssistant from './AIAssistant';
 
@@ -882,6 +882,7 @@ const CRMVentapel: React.FC = () => {
   const [dashboardVendorFilter, setDashboardVendorFilter] = useState('all');
   const [selectedStageForList, setSelectedStageForList] = useState<number | null>(null);
   const [showStageChecklist, setShowStageChecklist] = useState<{ opportunity: Opportunity, targetStage: number } | null>(null);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
   const { 
     opportunities, 
