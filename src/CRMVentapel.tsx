@@ -882,7 +882,7 @@ const CRMVentapel: React.FC = () => {
   const [dashboardVendorFilter, setDashboardVendorFilter] = useState('all');
   const [selectedStageForList, setSelectedStageForList] = useState<number | null>(null);
   const [showStageChecklist, setShowStageChecklist] = useState<{ opportunity: Opportunity, targetStage: number } | null>(null);
-  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false); // MODIFICACIÓN 2: Nuevo estado
 
   const { 
     opportunities, 
@@ -965,6 +965,16 @@ const CRMVentapel: React.FC = () => {
       opportunities: dashboardOpportunities.filter(opp => opp.stage === stage.id)
     }))
   }), [dashboardOpportunities]);
+
+  // MODIFICACIÓN 3: Función para abrir el asistente con contexto
+  const openAssistantWithOpportunity = useCallback((opportunity: Opportunity) => {
+    setSelectedOpportunity(opportunity);
+    setIsAssistantOpen(true);
+    // Disparar evento para que el AIAssistant se abra
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('openAssistant'));
+    }, 100);
+  }, []);
 
   const handleMoveStage = useCallback(async (opportunity: Opportunity, newStage: number) => {
     if (newStage > opportunity.stage && !checkStageRequirements(opportunity, opportunity.stage)) {
@@ -1133,16 +1143,30 @@ const CRMVentapel: React.FC = () => {
                             R$ {(opp.value * opp.probability / 100).toLocaleString('pt-BR')}
                           </td>
                           <td className="py-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedOpportunity(opp);
-                                setEditingOpportunity(opp);
-                              }}
-                              className="text-blue-600 hover:text-blue-800"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
+                            {/* MODIFICACIÓN 6: Agregar botón Brain en la tabla */}
+                            <div className="flex space-x-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedOpportunity(opp);
+                                  setEditingOpportunity(opp);
+                                }}
+                                className="text-blue-600 hover:text-blue-800"
+                                title="Ver detalles"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openAssistantWithOpportunity(opp);
+                                }}
+                                className="text-purple-600 hover:text-purple-800"
+                                title="Analizar con Coach IA"
+                              >
+                                <Brain className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1173,7 +1197,7 @@ const CRMVentapel: React.FC = () => {
     </div>
   );
 
-  const OpportunityCard: React.FC<{ opportunity: Opportunity }> = ({ opportunity }) => {
+const OpportunityCard: React.FC<{ opportunity: Opportunity }> = ({ opportunity }) => {
     const stage = stages.find(s => s.id === opportunity.stage);
     const nextStage = stages.find(s => s.id === opportunity.stage + 1);
     const prevStage = stages.find(s => s.id === opportunity.stage - 1);
@@ -1212,18 +1236,28 @@ const CRMVentapel: React.FC = () => {
                   +7 dias sem movimento
                 </span>
               )}
+              {/* MODIFICACIÓN 4: Agregar botón Brain en OpportunityCard */}
               <button
                 onClick={() => {
                   setEditingOpportunity(opportunity);
                   setSelectedOpportunity(opportunity);
                 }}
                 className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                title="Editar oportunidad"
               >
                 <Edit3 className="w-4 h-4" />
               </button>
               <button
+                onClick={() => openAssistantWithOpportunity(opportunity)}
+                className="p-2 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"
+                title="Analizar con Coach IA"
+              >
+                <Brain className="w-4 h-4" />
+              </button>
+              <button
                 onClick={() => deleteOpportunity(opportunity.id)}
                 className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                title="Eliminar oportunidad"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -1302,10 +1336,19 @@ const CRMVentapel: React.FC = () => {
           )}
         </div>
 
+        {/* MODIFICACIÓN 5: Agregar indicador visual cuando hay oportunidad seleccionada */}
         <div className="mb-6">
           <div className="flex justify-between items-center mb-3">
             <span className="text-sm font-bold text-gray-700">📊 Score PPVVCC Geral</span>
-            <span className="text-lg font-bold text-gray-900">{avgScore.toFixed(1)}/10</span>
+            <div className="flex items-center space-x-2">
+              <span className="text-lg font-bold text-gray-900">{avgScore.toFixed(1)}/10</span>
+              {selectedOpportunity?.id === opportunity.id && (
+                <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center">
+                  <Brain className="w-3 h-3 mr-1" />
+                  Em análise
+                </span>
+              )}
+            </div>
           </div>
           <div className="bg-gray-200 rounded-full h-4 mb-4">
             <div 
