@@ -1,5 +1,57 @@
-import React, { useState, useEffect } from 'react';
-import { MessageCircle, X, AlertTriangle, Target, RefreshCw, TrendingUp, Globe, Calendar, Zap, DollarSign, Database, Search } from 'lucide-react';
+// CASO 1: Búsqueda web de empresa nueva
+    if (intent === 'web_search') {
+      // Extraer nombre de empresa del mensaje
+      const companyMatch = messageText.match(/(?:buscar|investigar|información de|info de|busca sobre)\s+(.+?)(?:\s|$)/i);
+      const companyName = companyMatch ? companyMatch[1].trim() : messageText.split(' ').slice(-1)[0];
+      
+      try {
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `🔍 Buscando información sobre **${companyName}** en internet...` 
+        }]);
+        
+        // Llamar al API con búsqueda web
+        const response = await fetch('/api/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            specialRequestType: 'web_research',
+            companyName: companyName,
+            searchQuery: `${companyName} Brasil logística e-commerce embalaje`,
+            vendorName: currentUser,
+            context: 'prospecting'
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Generar approach basado en la investigación
+          const approach = generateApproachFromResearch(companyName, data.response);
+          
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: approach 
+          }]);
+          
+          // Crear oportunidad en stage 1 si no existe
+          const existingOpp = allOpportunities.find(o => 
+            o.client.toLowerCase().includes(companyName.toLowerCase())
+          );
+          
+          if (!existingOpp) {
+            setMessages(prev => [...prev, { 
+              role: 'assistant', 
+              content: `\n💡 **¿Quieres crear esta oportunidad?**\n[Crear oportunidad ${companyName}|create:${companyName}]` 
+            }]);
+          }
+        } else {
+          throw new Error('Error en búsqueda web');
+        }
+      } catch (error) {
+        // Fallback sin datos web
+        constimport React, { useState, useEffect } from 'react';
+import { MessageCircle, X, AlertTriangle, Target, RefreshCw, TrendingUp, Globe, Calendar, Zap, DollarSign, Database, Search, Mail, Phone, FileText, MessageSquare, Video, Users, BookOpen, Brain } from 'lucide-react';
 
 // Componente para renderizar mensajes con botones interactivos
 const MessageRenderer = ({ content, onButtonClick }) => {
@@ -40,8 +92,130 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
   const [showROI, setShowROI] = useState(false);
   const [assistantActiveOpportunity, setAssistantActiveOpportunity] = useState(null);
   const [similarDeals, setSimilarDeals] = useState([]);
+  const [activeView, setActiveView] = useState('chat'); // chat, strategy, scripts, templates
 
-  // Benchmarks reales de Brasil 2024-2025 (ÚLTIMA PRIORIDAD)
+  // ============= DATOS Y SCRIPTS DE VENTAPEL =============
+  
+  // Preguntas SPIN del Playbook
+  const spinQuestions = {
+    situacion: [
+      "¿Qué tipo de cinta utilizan actualmente para sellar las cajas?",
+      "¿Cómo es el proceso actual de embalaje en su operación?",
+      "¿Cuántas cajas procesan diariamente/mensualmente?",
+      "¿Tienen algún sistema para rastrear cajas violadas?",
+      "¿Quién es responsable del proceso de embalaje actualmente?"
+    ],
+    problema: [
+      "¿Con qué frecuencia tienen cajas que llegan abiertas al cliente?",
+      "¿Cuántas veces necesitan rehacer el sellado por mala aplicación?",
+      "¿Han calculado el tiempo perdido en retrabajo?",
+      "¿Qué porcentaje de sus envíos tienen reclamos por violación?",
+      "¿Cuánto material adicional usan por el retrabajo?"
+    ],
+    implicacion: [
+      "¿Cuál es el costo de reponer un producto cuando hay un reclamo?",
+      "¿Cómo afecta esto la satisfacción de sus clientes?",
+      "¿Qué impacto tiene en la reputación de su marca?",
+      "¿Los ejecutivos están al tanto de estas pérdidas?",
+      "¿Compras está presionando para reducir estos costos?"
+    ],
+    necesidad: [
+      "¿Qué tan importante es para ustedes eliminar las violaciones?",
+      "Si pudieran reducir 95% las pérdidas, ¿qué significaría para su área?",
+      "¿Cuánto estarían dispuestos a invertir para solucionar esto?",
+      "¿Quién tomaría la decisión de implementar una solución?",
+      "¿Cuál sería el proceso para aprobar esta inversión?"
+    ]
+  };
+
+  // Manejo de objeciones del Playbook
+  const objectionHandlers = {
+    precio: {
+      objecion: "Es muy caro",
+      respuesta: "Entiendo su preocupación. Pero veamos los números: están perdiendo R$ [X] por mes. Nuestra solución cuesta R$ [Y] con ROI en 3 meses. No es un gasto, es una inversión con retorno garantizado. L'Oréal pensó lo mismo y ahora ahorra R$ 2.5M al año."
+    },
+    importado: {
+      objecion: "Es importado, puede faltar material",
+      respuesta: "Mantenemos stock para 6+ meses en Brasil. En 10 años jamás dejamos a un cliente sin material. Amazon, nuestro cliente más exigente, nunca tuvo faltantes. Además, incluimos cláusula de garantía de suministro en el contrato."
+    },
+    cambio_proceso: {
+      objecion: "Requiere cambiar nuestro proceso",
+      respuesta: "El cambio es mínimo y lo acompañamos. Incluimos 2 días de capacitación y soporte en sitio. MercadoLibre hizo la transición en 3 días sin parar la operación. El equipo prefiere nuestra solución porque es más ergonómica."
+    },
+    decisor_ausente: {
+      objecion: "Necesito consultarlo con mi jefe",
+      respuesta: "Perfecto, es una decisión importante. ¿Podemos agendar una reunión con él? Preparé un business case ejecutivo de 1 página. ¿Qué información necesita para tomar la decisión? Lo ayudo a preparar la presentación."
+    }
+  };
+
+  // Casos de éxito para referencias
+  const successCases = {
+    'e-commerce': {
+      empresa: 'MercadoLibre',
+      resultado: '40% reducción retrabajo, ahorro R$ 180k/mes',
+      roi: '2 meses',
+      contacto: 'Podemos organizar una llamada con su par en ML'
+    },
+    'cosmética': {
+      empresa: "L'Oréal",
+      resultado: '100% furtos eliminados, +50% eficiencia',
+      roi: '3 meses',
+      contacto: 'Caso documentado con métricas certificadas'
+    },
+    'farmacéutica': {
+      empresa: 'Natura',
+      resultado: '60% menos violaciones, R$ 85k/mes ahorro',
+      roi: '4 meses',
+      contacto: 'Video testimonial disponible'
+    },
+    'automotriz': {
+      empresa: 'Honda Argentina',
+      resultado: '+40% velocidad, 100% reducción faltantes',
+      roi: '3 meses',
+      contacto: 'Visita a planta disponible'
+    }
+  };
+
+  // Templates de acciones según etapa
+  const stageActions = {
+    1: { // Prospección
+      llamada: "Hacer llamada de calificación SPIN (15 min)",
+      email: "Enviar email con datos de pérdidas del sector",
+      linkedin: "Conectar en LinkedIn con mensaje personalizado",
+      whatsapp: "Enviar video caso de éxito (30 seg)",
+      siguiente: "Agendar reunión de descubrimiento"
+    },
+    2: { // Calificación
+      llamada: "Call de descubrimiento profundo (30 min)",
+      email: "Enviar calculadora de ROI personalizada",
+      demo: "Mostrar demo virtual con su producto",
+      visita: "Visita técnica para assessment",
+      siguiente: "Conseguir acceso al decisor"
+    },
+    3: { // Presentación
+      llamada: "Presentación ejecutiva con decisor",
+      email: "Enviar propuesta técnica detallada",
+      demo: "Demo en vivo con sus cajas",
+      caso: "Compartir caso de éxito similar",
+      siguiente: "Proponer test/piloto"
+    },
+    4: { // Validación
+      test: "Ejecutar test day en sus instalaciones",
+      email: "Enviar resultados del test",
+      roi: "Presentar business case final",
+      referencias: "Conectar con cliente referencia",
+      siguiente: "Negociar términos comerciales"
+    },
+    5: { // Negociación
+      llamada: "Call de negociación con Compras",
+      email: "Enviar propuesta comercial final",
+      contrato: "Revisar términos del contrato",
+      descuento: "Ofrecer incentivo por firma rápida",
+      siguiente: "Cerrar el deal"
+    }
+  };
+
+  // Benchmarks reales de Brasil 2024-2025
   const brazilBenchmarks = {
     averageLoss: 0.10,
     packagingImpact: 0.80,
@@ -56,6 +230,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       'alimentos': { rate: 0.07, source: 'Cadena fría Brasil' }
     }
   };
+
+  // ============= FUNCIONES CORE DEL ASISTENTE =============
 
   useEffect(() => {
     if (supabase) {
@@ -90,21 +266,18 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   };
 
-  // NUEVA FUNCIÓN: Buscar deals similares en el CRM (PRIORIDAD 2)
   const findSimilarDeals = async (opp) => {
     if (!opp || !supabase) return;
 
     try {
-      // Buscar por industria similar
       const { data: industryDeals } = await supabase
         .from('opportunities')
         .select('*')
         .eq('industry', opp.industry)
         .neq('id', opp.id)
-        .gte('stage', 5) // Solo deals avanzados/cerrados
+        .gte('stage', 5)
         .limit(5);
 
-      // Buscar por producto similar
       const { data: productDeals } = await supabase
         .from('opportunities')
         .select('*')
@@ -113,7 +286,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         .gte('stage', 5)
         .limit(5);
 
-      // Buscar por rango de valor similar (±30%)
       const minValue = opp.value * 0.7;
       const maxValue = opp.value * 1.3;
       const { data: valueDeals } = await supabase
@@ -125,7 +297,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         .gte('stage', 5)
         .limit(5);
 
-      // Combinar y deduplicar
       const allSimilar = [...(industryDeals || []), ...(productDeals || []), ...(valueDeals || [])];
       const uniqueDeals = Array.from(new Map(allSimilar.map(d => [d.id, d])).values());
       
@@ -135,197 +306,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       console.error('Error buscando deals similares:', err);
       return [];
     }
-  };
-
-  // NUEVA FUNCIÓN: Obtener contexto inteligente con priorización
-  const getIntelligentContext = (opp) => {
-    const context = {
-      priority1_clientNotes: {},
-      priority2_similarDeals: {},
-      priority3_ventapelCases: {},
-      priority4_brazilBenchmarks: {},
-      dataSource: null
-    };
-
-    // PRIORIDAD 1: Lo que el cliente YA DIJO (notes y campos del CRM)
-    if (opp) {
-      context.priority1_clientNotes = {
-        hasData: false,
-        notes: []
-      };
-
-      // Extraer información de campos personalizados
-      if (opp.next_action) {
-        context.priority1_clientNotes.notes.push(`Próxima acción acordada: ${opp.next_action}`);
-        context.priority1_clientNotes.hasData = true;
-      }
-      
-      if (opp.scales?.dor?.description) {
-        context.priority1_clientNotes.notes.push(`Cliente dijo sobre DOR: ${opp.scales.dor.description}`);
-        context.priority1_clientNotes.hasData = true;
-      }
-      
-      if (opp.scales?.poder?.description) {
-        context.priority1_clientNotes.notes.push(`Sobre decisor: ${opp.scales.poder.description}`);
-        context.priority1_clientNotes.hasData = true;
-      }
-      
-      if (opp.scales?.valor?.description) {
-        context.priority1_clientNotes.notes.push(`Sobre valor/ROI: ${opp.scales.valor.description}`);
-        context.priority1_clientNotes.hasData = true;
-      }
-
-      // Contactos mencionados
-      if (opp.power_sponsor || opp.sponsor) {
-        context.priority1_clientNotes.notes.push(
-          `Contactos identificados: ${[opp.power_sponsor, opp.sponsor, opp.influencer].filter(Boolean).join(', ')}`
-        );
-        context.priority1_clientNotes.hasData = true;
-      }
-    }
-
-    // PRIORIDAD 2: Datos de deals similares EN TU CRM
-    if (similarDeals.length > 0) {
-      context.priority2_similarDeals = {
-        hasData: true,
-        count: similarDeals.length,
-        avgValue: similarDeals.reduce((sum, d) => sum + d.value, 0) / similarDeals.length,
-        avgCloseTime: calculateAvgCloseTime(similarDeals),
-        commonPatterns: extractCommonPatterns(similarDeals),
-        successfulApproaches: extractSuccessfulApproaches(similarDeals)
-      };
-
-      // Extraer lecciones específicas
-      const closedDeals = similarDeals.filter(d => d.stage === 6);
-      if (closedDeals.length > 0) {
-        context.priority2_similarDeals.closedExamples = closedDeals.map(d => ({
-          client: d.client,
-          value: d.value,
-          product: d.product,
-          closeTime: calculateDaysInPipeline(d),
-          keySuccess: d.next_action || 'Deal cerrado exitosamente'
-        }));
-      }
-    }
-
-    // PRIORIDAD 3: Casos de éxito Ventapel (solo si no hay datos mejores)
-    if (!context.priority1_clientNotes.hasData && !context.priority2_similarDeals.hasData) {
-      context.priority3_ventapelCases = {
-        hasData: true,
-        relevantCase: selectRelevantCase(opp)
-      };
-    }
-
-    // PRIORIDAD 4: Benchmarks de Brasil (último recurso)
-    if (!context.priority1_clientNotes.hasData && 
-        !context.priority2_similarDeals.hasData && 
-        !context.priority3_ventapelCases.hasData) {
-      const industry = opp?.industry?.toLowerCase() || 'default';
-      context.priority4_brazilBenchmarks = {
-        hasData: true,
-        lossRate: brazilBenchmarks.industries[industry]?.rate || brazilBenchmarks.averageLoss,
-        source: brazilBenchmarks.industries[industry]?.source || 'IBEVAR média Brasil'
-      };
-    }
-
-    // Determinar fuente de datos principal
-    if (context.priority1_clientNotes.hasData) {
-      context.dataSource = 'DATOS DEL CLIENTE';
-    } else if (context.priority2_similarDeals.hasData) {
-      context.dataSource = 'DEALS SIMILARES EN CRM';
-    } else if (context.priority3_ventapelCases.hasData) {
-      context.dataSource = 'CASOS VENTAPEL';
-    } else {
-      context.dataSource = 'BENCHMARKS BRASIL';
-    }
-
-    return context;
-  };
-
-  // Funciones auxiliares para análisis
-  const calculateAvgCloseTime = (deals) => {
-    const times = deals.map(d => calculateDaysInPipeline(d)).filter(t => t > 0);
-    return times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
-  };
-
-  const calculateDaysInPipeline = (deal) => {
-    if (!deal.created_at) return 0;
-    const created = new Date(deal.created_at);
-    const closed = deal.expected_close ? new Date(deal.expected_close) : new Date();
-    return Math.floor((closed - created) / (1000 * 60 * 60 * 24));
-  };
-
-  const extractCommonPatterns = (deals) => {
-    const patterns = [];
-    
-    // Patrón de productos más vendidos
-    const productCounts = {};
-    deals.forEach(d => {
-      if (d.product) {
-        productCounts[d.product] = (productCounts[d.product] || 0) + 1;
-      }
-    });
-    
-    const topProduct = Object.entries(productCounts).sort((a, b) => b[1] - a[1])[0];
-    if (topProduct) {
-      patterns.push(`Producto más exitoso: ${topProduct[0]} (${topProduct[1]} deals)`);
-    }
-
-    // Patrón de etapa de cierre
-    const avgStage = Math.round(deals.reduce((sum, d) => sum + d.stage, 0) / deals.length);
-    patterns.push(`Etapa promedio: ${avgStage}`);
-
-    return patterns;
-  };
-
-  const extractSuccessfulApproaches = (deals) => {
-    const approaches = [];
-    
-    deals.forEach(deal => {
-      if (deal.scales) {
-        const avgScore = calculateHealthScore(deal.scales);
-        if (avgScore > 7) {
-          approaches.push({
-            client: deal.client,
-            approach: `Score PPVVCC alto (${avgScore.toFixed(1)}/10)`,
-            value: deal.value
-          });
-        }
-      }
-    });
-
-    return approaches;
-  };
-
-  const selectRelevantCase = (opp) => {
-    const industry = opp?.industry?.toLowerCase() || '';
-    const value = opp?.value || 0;
-
-    // Mapeo de industrias a casos
-    const caseMapping = {
-      'cosmética': {
-        name: 'L\'Oréal',
-        results: '100% furtos eliminados, +50% eficiência, ROI 3 meses'
-      },
-      'e-commerce': {
-        name: 'MercadoLibre',
-        results: '40% redução retrabalho, economia R$180k/mês'
-      },
-      'farmacéutica': {
-        name: 'Natura',
-        results: '60% menos violações, economia R$85k/mês'
-      },
-      'varejo': {
-        name: 'Centauro',
-        results: '95% redução furtos, economia R$50mi/ano'
-      },
-      'automotriz': {
-        name: 'Honda Argentina',
-        results: '+40% velocidade, 100% redução faltantes'
-      }
-    };
-
-    return caseMapping[industry] || caseMapping['e-commerce'];
   };
 
   const getScaleValue = (scale) => {
@@ -355,7 +335,286 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return values.length > 0 ? sum / values.length : 0;
   };
 
-  // FUNCIÓN MEJORADA: Analizar con contexto inteligente
+  // ============= GENERADORES DE CONTENIDO =============
+  
+  // Generar estrategia completa
+  const generateCompleteStrategy = (opp) => {
+    if (!opp) return "Selecciona un cliente primero";
+
+    const stage = opp.stage || 1;
+    const dorScore = getScaleValue(opp.scales?.dor);
+    const poderScore = getScaleValue(opp.scales?.poder);
+    const visaoScore = getScaleValue(opp.scales?.visao);
+    const valorScore = getScaleValue(opp.scales?.valor);
+    const controleScore = getScaleValue(opp.scales?.controle);
+    const comprasScore = getScaleValue(opp.scales?.compras);
+    
+    let strategy = `🎯 **ESTRATEGIA COMPLETA - ${opp.client}**\n\n`;
+    
+    // Diagnóstico
+    strategy += `📊 **DIAGNÓSTICO ACTUAL:**\n`;
+    strategy += `• Etapa: ${stage} - ${['', 'Prospección', 'Calificación', 'Presentación', 'Validación', 'Negociación', 'Cerrado'][stage]}\n`;
+    strategy += `• Score PPVVCC: ${calculateHealthScore(opp.scales).toFixed(1)}/10\n`;
+    strategy += `• Valor: R$ ${opp.value.toLocaleString('pt-BR')}\n`;
+    
+    // Problema principal
+    strategy += `\n⚠️ **PROBLEMA PRINCIPAL:**\n`;
+    if (dorScore < 5) {
+      strategy += `❌ Cliente NO admite el problema (DOR: ${dorScore}/10)\n`;
+      strategy += `→ Sin dolor admitido, no hay venta posible\n`;
+    } else if (poderScore < 4) {
+      strategy += `❌ Sin acceso al decisor (PODER: ${poderScore}/10)\n`;
+      strategy += `→ Riesgo de perder tiempo con quien no decide\n`;
+    } else if (comprasScore < 5) {
+      strategy += `❌ Compras no está alineado (COMPRAS: ${comprasScore}/10)\n`;
+      strategy += `→ Deal puede morir en el proceso de compra\n`;
+    } else if (valorScore < 6) {
+      strategy += `⚠️ ROI no validado (VALOR: ${valorScore}/10)\n`;
+      strategy += `→ Sin business case, no hay presupuesto\n`;
+    } else {
+      strategy += `✅ Bien encaminado, falta cerrar\n`;
+    }
+    
+    // Plan de acción detallado
+    strategy += `\n📋 **PLAN DE ACCIÓN (próximos 7 días):**\n\n`;
+    
+    // DÍA 1-2
+    strategy += `**📅 HOY/MAÑANA - Acción inmediata:**\n`;
+    if (dorScore < 5) {
+      strategy += `📞 Llamada SPIN de 15 minutos:\n`;
+      strategy += `   1. Situación: "${spinQuestions.situacion[0]}"\n`;
+      strategy += `   2. Problema: "${spinQuestions.problema[0]}"\n`;
+      strategy += `   3. Implicación: "${spinQuestions.implicacion[0]}"\n`;
+      strategy += `   4. Necesidad: "${spinQuestions.necesidad[0]}"\n`;
+      strategy += `   Meta: Que admita pérdidas de R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')}/mes\n`;
+    } else if (poderScore < 4) {
+      strategy += `📧 Email al sponsor actual:\n`;
+      strategy += `   Asunto: "Business case ${opp.client} - necesito 10 min con [decisor]"\n`;
+      strategy += `   Mensaje: ROI calculado en ${Math.round(opp.value / (opp.value * 0.01 * 0.95))} meses\n`;
+      strategy += `   CTA: Agendar reunión tripartita esta semana\n`;
+    } else {
+      strategy += `💰 Presentar propuesta con urgencia:\n`;
+      strategy += `   "Cada día sin decidir = R$ ${Math.round(opp.value * 0.01 / 30).toLocaleString('pt-BR')} perdidos"\n`;
+    }
+    
+    // DÍA 3-4
+    strategy += `\n**📅 MIÉRCOLES/JUEVES - Construir momentum:**\n`;
+    const industry = opp.industry?.toLowerCase() || 'default';
+    const successCase = successCases[industry] || successCases['e-commerce'];
+    strategy += `📹 Compartir caso ${successCase.empresa}:\n`;
+    strategy += `   • Resultado: ${successCase.resultado}\n`;
+    strategy += `   • ROI: ${successCase.roi}\n`;
+    strategy += `   • Oferta: ${successCase.contacto}\n`;
+    
+    // DÍA 5-7
+    strategy += `\n**📅 VIERNES/PRÓXIMA SEMANA - Cerrar compromiso:**\n`;
+    if (stage < 4) {
+      strategy += `🎯 Objetivo: Agendar TEST DAY\n`;
+      strategy += `   • Propuesta: "Probemos con 100 cajas sin compromiso"\n`;
+      strategy += `   • Fecha tentativa: ${new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')}\n`;
+    } else {
+      strategy += `✅ Objetivo: CERRAR EL DEAL\n`;
+      strategy += `   • Incentivo: "10% descuento si firmamos esta semana"\n`;
+      strategy += `   • Garantía: "ROI en 3 meses o devolvemos su dinero"\n`;
+    }
+    
+    // Scripts y mensajes
+    strategy += `\n📝 **MENSAJES CLAVE PARA USAR:**\n\n`;
+    
+    strategy += `**WhatsApp (copiar y pegar):**\n`;
+    strategy += `"Hola [nombre], calculé que ${opp.client} pierde ~R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')}/mes por violación de cajas.\n`;
+    strategy += `${successCase.empresa} tenía el mismo problema y ahora ahorra R$ millones.\n`;
+    strategy += `¿10 minutos mañana para mostrarle los números?"\n\n`;
+    
+    strategy += `**LinkedIn:**\n`;
+    strategy += `"Vi que ${opp.client} está creciendo en e-commerce. `;
+    strategy += `¿Sabía que el sector pierde 10% por violación (IBEVAR 2024)? `;
+    strategy += `Ayudamos a ${successCase.empresa} a eliminar este problema. ¿Charlamos?"\n\n`;
+    
+    strategy += `**Email asunto:**\n`;
+    strategy += `"${opp.client}: Pérdida identificada R$ ${(opp.value * 0.01 * 12).toLocaleString('pt-BR')}/año"\n\n`;
+    
+    // Métricas de éxito
+    strategy += `📈 **KPIs PARA MEDIR ÉXITO:**\n`;
+    strategy += `• Esta semana: ${dorScore < 5 ? 'DOR ≥ 5' : poderScore < 4 ? 'PODER ≥ 4' : 'Propuesta enviada'}\n`;
+    strategy += `• En 15 días: ${stage < 4 ? 'Test day agendado' : 'Contrato en revisión'}\n`;
+    strategy += `• En 30 días: ${stage < 3 ? 'Etapa 3 alcanzada' : 'Deal cerrado'}\n\n`;
+    
+    // Recursos
+    strategy += `🛠️ **RECURSOS DISPONIBLES:**\n`;
+    strategy += `• [Calculadora ROI](calcular ROI ${opp.client})\n`;
+    strategy += `• [Caso ${successCase.empresa}](mostrar caso ${successCase.empresa})\n`;
+    strategy += `• [Demo en video](link demo Ventapel)\n`;
+    strategy += `• [Propuesta template](generar propuesta)\n`;
+    
+    return strategy;
+  };
+
+  // Generar email específico
+  const generateEmail = (opp, tipo = 'seguimiento') => {
+    if (!opp) return "Selecciona un cliente primero";
+
+    const stage = opp.stage || 1;
+    const dorScore = getScaleValue(opp.scales?.dor);
+    const poderScore = getScaleValue(opp.scales?.poder);
+    const comprasScore = getScaleValue(opp.scales?.compras);
+    
+    let email = `📧 **EMAIL PARA ${opp.client.toUpperCase()}**\n\n`;
+    
+    // Diferentes tipos de email según situación
+    if (tipo === 'primer_contacto' || stage === 1) {
+      email += `**Asunto:** 🚨 ${opp.industry || 'Empresas'} pierden 10% en violación - Caso ${opp.client}\n\n`;
+      email += `Estimado ${opp.sponsor || 'equipo de ' + opp.client},\n\n`;
+      email += `¿Sabían que empresas del sector ${opp.industry || 'logístico'} en Brasil pierden en promedio 10% de sus envíos por violación de cajas? `;
+      email += `(Fuente: IBEVAR 2024)\n\n`;
+      email += `Para ${opp.client}, esto representa aproximadamente:\n`;
+      email += `• R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')}/mes en pérdidas\n`;
+      email += `• R$ ${Math.round(opp.value * 0.01 * 12).toLocaleString('pt-BR')}/año tirados a la basura\n\n`;
+      email += `En Ventapel eliminamos este problema. Casos recientes:\n`;
+      email += `• L'Oréal: 100% furtos eliminados, ROI 3 meses\n`;
+      email += `• MercadoLibre: 40% menos retrabajo\n`;
+      email += `• Nike: Cero violaciones, +30% eficiencia\n\n`;
+      email += `¿Podemos agendar 15 minutos esta semana para mostrarle cuánto podría ahorrar ${opp.client}?\n\n`;
+      email += `Días disponibles:\n`;
+      email += `• Martes 2pm-5pm\n`;
+      email += `• Miércoles 9am-12pm\n`;
+      email += `• Jueves 2pm-5pm\n\n`;
+      
+    } else if (comprasScore < 5 && dorScore >= 5) {
+      // Email para convencer a Compras
+      email += `**Asunto:** ✅ Business Case ${opp.client} - ROI ${Math.round(opp.value / (opp.value * 0.01 * 0.95))} meses\n\n`;
+      email += `${opp.sponsor || 'Estimado'},\n\n`;
+      email += `Adjunto el business case completo para facilitar la aprobación con Compras:\n\n`;
+      email += `**📊 NÚMEROS EJECUTIVOS:**\n`;
+      email += `• Pérdida actual: R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')}/mes\n`;
+      email += `• Inversión Ventapel: R$ ${opp.value.toLocaleString('pt-BR')}\n`;
+      email += `• Ahorro mensual: R$ ${Math.round(opp.value * 0.01 * 0.95).toLocaleString('pt-BR')}\n`;
+      email += `• ROI: ${Math.round(opp.value / (opp.value * 0.01 * 0.95))} meses\n`;
+      email += `• TIR Año 1: ${Math.round(((opp.value * 0.01 * 0.95 * 12 - opp.value) / opp.value) * 100)}%\n\n`;
+      email += `**✅ GARANTÍAS:**\n`;
+      email += `• ROI en 3 meses o devolvemos su dinero\n`;
+      email += `• 2 años garantía en equipos\n`;
+      email += `• Stock garantizado (nunca faltó en 10 años)\n`;
+      email += `• Soporte local en Brasil\n\n`;
+      email += `**⚡ URGENCIA:**\n`;
+      email += `Cada mes sin decidir = R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')} perdidos\n`;
+      email += `En 6 meses = R$ ${Math.round(opp.value * 0.01 * 6).toLocaleString('pt-BR')} desperdiciados\n\n`;
+      email += `¿Necesita algún documento adicional para Compras?\n\n`;
+      
+    } else if (stage >= 4) {
+      // Email de cierre
+      email += `**Asunto:** 🎯 Propuesta Final ${opp.client} - Decisión esta semana\n\n`;
+      email += `${opp.power_sponsor || opp.sponsor || 'Estimado'},\n\n`;
+      email += `Como acordamos, aquí está la propuesta final con condiciones especiales:\n\n`;
+      email += `**✅ PROPUESTA APROBADA:**\n`;
+      email += `• Inversión: R$ ${opp.value.toLocaleString('pt-BR')}\n`;
+      email += `• Forma de pago: 30/60/90 días\n`;
+      email += `• Instalación: Incluida\n`;
+      email += `• Capacitación: 2 días en sitio\n\n`;
+      email += `**🎁 BONUS por firmar esta semana:**\n`;
+      email += `• 10% descuento adicional\n`;
+      email += `• 3 meses de cinta sin costo\n`;
+      email += `• Upgrade a soporte premium\n\n`;
+      email += `**Para proceder:**\n`;
+      email += `1. Confirme por este email\n`;
+      email += `2. Enviamos contrato digital (DocuSign)\n`;
+      email += `3. Instalación en 7 días hábiles\n\n`;
+      email += `¿Cerramos hoy?\n\n`;
+    }
+    
+    // Firma
+    email += `Saludos,\n`;
+    email += `${currentUser || '[Tu nombre]'}\n`;
+    email += `Ventapel Brasil\n`;
+    email += `📱 WhatsApp: [tu número]\n`;
+    email += `🌐 www.ventapel.com.br\n\n`;
+    email += `P.D.: ${successCases[opp.industry?.toLowerCase()]?.empresa || 'L\'Oréal'} también dudó al principio. `;
+    email += `Hoy ahorran millones. No dejen pasar esta oportunidad.\n`;
+    
+    return email;
+  };
+
+  // Generar script de llamada
+  const generateCallScript = (opp) => {
+    if (!opp) return "Selecciona un cliente primero";
+
+    const dorScore = getScaleValue(opp.scales?.dor);
+    const poderScore = getScaleValue(opp.scales?.poder);
+    
+    let script = `📞 **SCRIPT DE LLAMADA - ${opp.client}**\n\n`;
+    script += `⏱️ Duración objetivo: 15-20 minutos\n\n`;
+    
+    // Apertura
+    script += `**🎯 APERTURA (30 seg):**\n`;
+    script += `"Hola [nombre], soy ${currentUser} de Ventapel. `;
+    script += `¿Tiene 2 minutos? Le llamo porque descubrí que empresas como ${opp.client} `;
+    script += `pierden ~R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')}/mes por violación de cajas. `;
+    script += `¿Esto es un tema relevante para ustedes?"\n\n`;
+    
+    // Preguntas SPIN
+    script += `**❓ PREGUNTAS SPIN (10 min):**\n\n`;
+    
+    script += `**Situación:**\n`;
+    spinQuestions.situacion.slice(0, 2).forEach((q, i) => {
+      script += `${i + 1}. "${q}"\n`;
+    });
+    script += `→ Anotar: volumen, proceso actual, responsables\n\n`;
+    
+    script += `**Problema:**\n`;
+    spinQuestions.problema.slice(0, 2).forEach((q, i) => {
+      script += `${i + 1}. "${q}"\n`;
+    });
+    script += `→ Objetivo: Que admita % de pérdida\n\n`;
+    
+    script += `**Implicación:**\n`;
+    spinQuestions.implicacion.slice(0, 2).forEach((q, i) => {
+      script += `${i + 1}. "${q}"\n`;
+    });
+    script += `→ Objetivo: Que vea el impacto en R$\n\n`;
+    
+    script += `**Necesidad:**\n`;
+    script += `"Si pudiera eliminar 95% de estas pérdidas con ROI en 3 meses, `;
+    script += `¿sería prioridad para ${opp.client}?"\n\n`;
+    
+    // Presentación de valor
+    script += `**💡 PRESENTACIÓN DE VALOR (5 min):**\n`;
+    script += `"Basado en lo que me cuenta, Ventapel puede ayudarles:\n`;
+    script += `• Eliminar 95% de violaciones (garantizado)\n`;
+    script += `• ROI en 3 meses (o devolvemos su dinero)\n`;
+    script += `• Caso similar: ${successCases[opp.industry?.toLowerCase()]?.empresa || 'L\'Oréal'}\n`;
+    script += `  Resultado: ${successCases[opp.industry?.toLowerCase()]?.resultado || '100% furtos eliminados'}\n\n`;
+    
+    // Manejo de objeciones
+    script += `**🛡️ OBJECIONES PROBABLES:**\n\n`;
+    
+    script += `Si dice "${objectionHandlers.precio.objecion}":\n`;
+    script += `→ "${objectionHandlers.precio.respuesta}"\n\n`;
+    
+    script += `Si dice "${objectionHandlers.decisor_ausente.objecion}":\n`;
+    script += `→ "${objectionHandlers.decisor_ausente.respuesta}"\n\n`;
+    
+    // Cierre
+    script += `**✅ CIERRE (2 min):**\n`;
+    if (dorScore < 5) {
+      script += `"Le envío un análisis personalizado mostrando cuánto pierde ${opp.client}. `;
+      script += `¿Podemos agendar 30 minutos la próxima semana para revisarlo juntos?"\n`;
+    } else if (poderScore < 4) {
+      script += `"Necesito validar estos números con quien toma la decisión. `;
+      script += `¿Podemos incluir a [decisor] en una reunión de 20 minutos?"\n`;
+    } else {
+      script += `"El siguiente paso es un test en sus instalaciones. `;
+      script += `¿Qué día de la próxima semana podríamos hacer una prueba con 100 cajas?"\n`;
+    }
+    
+    script += `\n**📅 AGENDAR SIGUIENTE PASO:**\n`;
+    script += `• Confirmar día y hora\n`;
+    script += `• Enviar invitación de calendario\n`;
+    script += `• WhatsApp de confirmación\n`;
+    
+    return script;
+  };
+
+  // Analizar oportunidad con contexto
   const analyzeOpportunityWithContext = (opp) => {
     if (!opp || !opp.scales) return;
 
@@ -373,66 +632,35 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     const avgScale = calculateHealthScore(opp.scales);
     const inconsistencies = [];
     
-    // Análisis basado en contexto inteligente
+    // Detectar inconsistencias
     if (opp.stage >= 3 && scaleValues.pain < 5) {
-      let message = '🔴 INCONSISTÊNCIA: Apresentando sem DOR confirmada!';
-      
-      // Agregar contexto según prioridad
-      if (context.priority1_clientNotes.hasData) {
-        message += ` ${context.priority1_clientNotes.notes[0]}`;
-      } else if (context.priority2_similarDeals.hasData && context.priority2_similarDeals.closedExamples) {
-        message += ` Deals similares como ${context.priority2_similarDeals.closedExamples[0].client} necesitaron DOR > 7`;
-      }
-      
       inconsistencies.push({
         type: 'critical',
-        message,
-        action: 'Voltar para qualificação URGENTE',
-        dataSource: context.dataSource
+        message: '🔴 INCONSISTENCIA: Presentando sin DOR confirmada!',
+        action: 'Volver a calificación URGENTE',
+        script: spinQuestions.problema[0]
       });
     }
     
     if (opp.value > 100000 && scaleValues.power < 4) {
-      let message = `⛔ PROBLEMA: R$${opp.value.toLocaleString()} sem falar com decisor.`;
-      
-      if (context.priority2_similarDeals.hasData) {
-        message += ` Deals similares demoraram ${context.priority2_similarDeals.avgCloseTime} dias em média`;
-      }
-      
       inconsistencies.push({
         type: 'critical',
-        message,
-        action: 'Conseguir acesso ao POWER hoje',
-        dataSource: context.dataSource
+        message: `⛔ PROBLEMA: R$${opp.value.toLocaleString('pt-BR')} sin hablar con decisor`,
+        action: 'Conseguir acceso al POWER hoy',
+        script: "Necesito validar con quien aprueba inversiones de este monto"
       });
     }
 
-    // Calcular probabilidad basada en datos reales
+    // Calcular probabilidad real
     let probability = 0;
-    
-    // Si hay deals similares cerrados, usar su tasa de éxito
-    if (context.priority2_similarDeals.hasData) {
-      const closedCount = similarDeals.filter(d => d.stage === 6).length;
-      const successRate = closedCount / similarDeals.length;
-      
-      if (scaleValues.pain >= 7 && scaleValues.power >= 6) {
-        probability = Math.round(75 * successRate);
-      } else if (scaleValues.pain >= 5 && scaleValues.power >= 4) {
-        probability = Math.round(40 * successRate);
-      } else {
-        probability = Math.round(15 * successRate);
-      }
+    if (scaleValues.pain >= 7 && scaleValues.power >= 6 && scaleValues.value >= 6) {
+      probability = 75;
+    } else if (scaleValues.pain >= 5 && scaleValues.power >= 4 && scaleValues.value >= 4) {
+      probability = 40;
+    } else if (scaleValues.pain >= 3) {
+      probability = 15;
     } else {
-      // Usar cálculo estándar
-      if (scaleValues.pain >= 7 && scaleValues.power >= 6 && scaleValues.value >= 6) {
-        probability = 75;
-      } else if (scaleValues.pain >= 5 && scaleValues.power >= 4 && scaleValues.value >= 4) {
-        probability = 40;
-      } else if (scaleValues.pain >= 3) {
-        probability = 15;
-      } else {
-        probability = 5;
-      }
+      probability = 5;
     }
 
     setAnalysis({
@@ -446,100 +674,96 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     });
   };
 
-  // FUNCIÓN MEJORADA: Generar próxima acción con contexto
+  const getIntelligentContext = (opp) => {
+    const context = {
+      priority1_clientNotes: {},
+      priority2_similarDeals: {},
+      priority3_ventapelCases: {},
+      priority4_brazilBenchmarks: {},
+      dataSource: null
+    };
+
+    // Prioridad 1: Notas del cliente
+    if (opp) {
+      context.priority1_clientNotes = {
+        hasData: false,
+        notes: []
+      };
+
+      if (opp.next_action) {
+        context.priority1_clientNotes.notes.push(`Próxima acción: ${opp.next_action}`);
+        context.priority1_clientNotes.hasData = true;
+      }
+      
+      if (opp.scales?.dor?.description) {
+        context.priority1_clientNotes.notes.push(`Dolor: ${opp.scales.dor.description}`);
+        context.priority1_clientNotes.hasData = true;
+      }
+    }
+
+    // Prioridad 2: Deals similares
+    if (similarDeals.length > 0) {
+      context.priority2_similarDeals = {
+        hasData: true,
+        count: similarDeals.length,
+        avgValue: similarDeals.reduce((sum, d) => sum + d.value, 0) / similarDeals.length
+      };
+    }
+
+    // Determinar fuente principal
+    if (context.priority1_clientNotes.hasData) {
+      context.dataSource = 'DATOS DEL CLIENTE';
+    } else if (context.priority2_similarDeals.hasData) {
+      context.dataSource = 'DEALS SIMILARES';
+    } else {
+      context.dataSource = 'BENCHMARKS BRASIL';
+    }
+
+    return context;
+  };
+
   const generateSmartNextAction = (opp, scaleValues, inconsistencies, context) => {
     if (inconsistencies.length > 0 && inconsistencies[0].type === 'critical') {
       return {
         action: inconsistencies[0].action,
-        script: `AÇÃO IMEDIATA: ${inconsistencies[0].message}`,
+        script: inconsistencies[0].script,
         dataSource: context.dataSource
       };
     }
     
-    // Generar acciones basadas en el contexto disponible
     if (scaleValues.pain < 5) {
-      let script = "Pergunta: ";
-      
-      if (context.priority1_clientNotes.hasData) {
-        script += `'Você mencionou ${context.priority1_clientNotes.notes[0]}. Quanto isso custa em R$ por mês?'`;
-      } else if (context.priority2_similarDeals.hasData && context.priority2_similarDeals.closedExamples) {
-        const example = context.priority2_similarDeals.closedExamples[0];
-        script += `'${example.client} tinha o mesmo problema e economizou R$${example.value.toLocaleString()}. Vocês têm desafios similares?'`;
-      } else {
-        script += `'Quantas horas por mês vocês perdem com retrabalho?'`;
-      }
-      
       return {
-        action: "🎯 Fazer cliente ADMITIR o problema",
-        script,
+        action: "🎯 Hacer que ADMITA el problema",
+        script: spinQuestions.problema[0],
         dataSource: context.dataSource
       };
     }
     
     if (scaleValues.power < 4) {
-      let script = "Script: ";
-      
-      if (context.priority1_clientNotes.notes.some(n => n.includes('decisor'))) {
-        script += `'Você mencionou ${opp.sponsor || 'o decisor'}. Podemos incluí-lo na próxima reunião?'`;
-      } else if (context.priority2_similarDeals.hasData) {
-        script += `'Em ${context.priority2_similarDeals.count} casos similares, o decisor foi crucial. Podemos agendar com ele?'`;
-      } else {
-        script += `'Para avançar, preciso validar com quem assina. Consegue nos conectar?'`;
-      }
-      
       return {
-        action: "👔 Acessar o DECISOR",
-        script,
+        action: "👔 Acceder al DECISOR",
+        script: "Para garantizar ROI de 3 meses, necesito validar con quien aprueba",
         dataSource: context.dataSource
       };
     }
     
     if (scaleValues.vision < 5) {
-      let demoContent = "";
-      
-      if (context.priority2_similarDeals.hasData && context.priority2_similarDeals.closedExamples) {
-        const example = context.priority2_similarDeals.closedExamples[0];
-        demoContent = `caso ${example.client} com ${example.product}`;
-      } else if (context.priority3_ventapelCases.relevantCase) {
-        demoContent = `caso ${context.priority3_ventapelCases.relevantCase.name}`;
-      } else {
-        demoContent = "nossa solução completa";
-      }
-      
       return {
         action: "🎬 Demo urgente",
-        script: `Mostrar: 'Veja o ${demoContent} - resultados em 3 meses'`,
-        dataSource: context.dataSource
-      };
-    }
-    
-    if (scaleValues.value < 5) {
-      let roiCalc = "";
-      
-      if (context.priority2_similarDeals.hasData) {
-        const avgValue = context.priority2_similarDeals.avgValue;
-        roiCalc = `'Baseado em ${context.priority2_similarDeals.count} casos similares, ROI médio de R$${avgValue.toLocaleString()}'`;
-      } else {
-        roiCalc = `'Com seu volume, economia de R$${(opp.value * 0.3).toLocaleString()}/ano'`;
-      }
-      
-      return {
-        action: "💰 Calcular ROI específico",
-        script: roiCalc,
+        script: `Mostrar caso ${successCases[opp.industry?.toLowerCase()]?.empresa || 'L\'Oréal'}`,
         dataSource: context.dataSource
       };
     }
     
     return {
-      action: "✅ FECHAR o negócio",
-      script: "Closing: 'Qual processo interno preciso seguir para começar?'",
+      action: "✅ CERRAR el negocio",
+      script: "¿Cuál es el proceso interno para aprobar esta inversión?",
       dataSource: context.dataSource
     };
   };
 
   const analyzePipelineHealth = (opportunities) => {
     const totalValue = opportunities.reduce((sum, opp) => sum + (opp.value || 0), 0);
-    
     const riskOpps = opportunities.filter(opp => {
       const avgScale = calculateHealthScore(opp.scales || {});
       return avgScale < 4 && opp.value > 50000;
@@ -555,35 +779,16 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
   const checkOpportunityHealth = (opp) => {
     const newAlerts = [];
-    const context = getIntelligentContext(opp);
     
     if (opp.last_update) {
       const daysSince = Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24));
       if (daysSince > 7) {
-        let message = `🔴 ${daysSince} dias sem contato - VAI PERDER!`;
-        
-        // Agregar contexto de deals similares si existe
-        if (context.priority2_similarDeals.hasData) {
-          message += ` Deals similares fecham em ${context.priority2_similarDeals.avgCloseTime} dias`;
-        }
-        
         newAlerts.push({
           type: 'urgent',
-          message,
-          action: 'reactivate',
-          dataSource: context.dataSource
+          message: `🔴 ${daysSince} días sin contacto - VAI PERDER!`,
+          action: 'reactivate'
         });
       }
-    }
-
-    const avgScale = calculateHealthScore(opp.scales || {});
-    if (avgScale < 4 && opp.value > 100000) {
-      newAlerts.push({
-        type: 'critical',
-        message: `💣 R$${opp.value.toLocaleString()} em RISCO! Score: ${avgScale.toFixed(1)}/10`,
-        action: 'rescue',
-        dataSource: context.dataSource
-      });
     }
 
     setAlerts(newAlerts);
@@ -593,378 +798,394 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     if (!supabase) return null;
     
     try {
-      const { data: clientData, error: clientError } = await supabase
+      const { data: clientData } = await supabase
         .from('opportunities')
         .select('*')
         .or(`client.ilike.%${clientName}%,name.ilike.%${clientName}%`);
-      
-      if (clientError) throw clientError;
       
       if (clientData && clientData.length > 0) {
         return clientData;
       }
       
-      const { data: productData, error: productError } = await supabase
-        .from('opportunities')
-        .select('*')
-        .or(`product.ilike.%${clientName}%,industry.ilike.%${clientName}%`);
-      
-      if (productError) throw productError;
-      return productData || [];
-      
+      return [];
     } catch (err) {
-      console.error('Error buscando oportunidad:', err);
+      console.error('Error buscando:', err);
       return null;
     }
   };
 
-  const detectOpportunityQuery = (message) => {
-    const searchPatterns = [
-      /(?:como está|status de|situação de|análise de|info sobre|información sobre|dados de|escalas de|ppvvcc de)\s+(.+?)(?:\?|$)/i,
-      /(?:mostrar|ver|buscar|encontrar|analizar|checar)\s+(?:oportunidad|oportunidade|deal|negócio|cliente)\s+(.+?)(?:\?|$)/i,
-      /^buscar\s+(.+)/i,
-      /^cliente\s+(.+?)(?:\s|$)/i
-    ];
+  // Detectar intenciones del usuario - MEJORADO CON BÚSQUEDA WEB
+  const detectUserIntent = (message) => {
+    const lower = message.toLowerCase();
     
-    const contextIndicators = [
-      'tengo', 'tenho', 'nueva', 'novo', 'voy a', 'vou',
-      'reunión', 'meeting', 'demo', 'llamé', 'contacté',
-      'falei', 'admitieron', 'dijeron', 'quieren', 'necesitan'
-    ];
-    
-    const lowerMessage = message.toLowerCase();
-    
-    if (contextIndicators.some(indicator => lowerMessage.includes(indicator))) {
-      return null;
+    // Detección de búsqueda web
+    if (lower.includes('buscar online') || lower.includes('buscar en internet') || 
+        lower.includes('investigar') || lower.includes('información de') ||
+        lower.includes('research') || lower.includes('busca info')) {
+      return 'web_search';
     }
     
-    for (const pattern of searchPatterns) {
-      const match = message.match(pattern);
-      if (match && match[1]) {
-        return match[1].trim();
-      }
+    if (lower.includes('email') || lower.includes('mail') || lower.includes('correo')) {
+      return 'email';
+    }
+    if (lower.includes('llamada') || lower.includes('call') || lower.includes('teléfono') || lower.includes('script')) {
+      return 'call';
+    }
+    if (lower.includes('estrategia') || lower.includes('plan') || lower.includes('qué hacer')) {
+      return 'strategy';
+    }
+    if (lower.includes('whatsapp') || lower.includes('mensaje')) {
+      return 'whatsapp';
+    }
+    if (lower.includes('propuesta') || lower.includes('proposal')) {
+      return 'proposal';
+    }
+    if (lower.includes('roi') || lower.includes('calcular')) {
+      return 'roi';
+    }
+    if (lower.includes('objeción') || lower.includes('objection') || lower.includes('dice que')) {
+      return 'objection';
     }
     
     return null;
   };
 
-  const getQuickActions = () => {
-    const activeOpp = assistantActiveOpportunity || currentOpportunity;
+  // NUEVA FUNCIÓN: Generar approach basado en investigación web
+  const generateApproachFromResearch = (companyName, webData) => {
+    let approach = `🔍 **ESTRATEGIA DE APPROACH - ${companyName}**\n\n`;
     
-    if (!activeOpp) {
-      return [
-        { icon: <Database size={18} />, label: 'Ver Pipeline', prompt: 'Listar todas las oportunidades con análisis' },
-        { icon: <Search size={18} />, label: 'Buscar Deal', prompt: 'Buscar oportunidad específica' },
-        { icon: <AlertTriangle size={18} />, label: 'Deals en Riesgo', prompt: 'Mostrar deals en riesgo' },
-        { icon: <Calendar size={18} />, label: 'Plan Semanal', prompt: 'plan_semanal' }
-      ];
-    }
+    approach += `📊 **INFORMACIÓN ENCONTRADA:**\n`;
+    approach += webData + '\n\n';
     
-    const actions = [];
+    approach += `🎯 **APPROACH RECOMENDADO:**\n\n`;
     
-    // Prioridad 1: Basado en datos del cliente
-    if (analysis?.context?.priority1_clientNotes?.hasData) {
-      actions.push({ 
-        icon: <Database size={18} />, 
-        label: 'Usar notas cliente', 
-        prompt: `Generar estrategia basada en lo que ${activeOpp.client} ya dijo` 
-      });
-    }
+    approach += `**1. GANCHO INICIAL (basado en la investigación):**\n`;
+    approach += `"Vi que ${companyName} [mencionar algo específico de la investigación]. `;
+    approach += `Empresas similares están perdiendo 10% en violación de cajas. `;
+    approach += `¿Es un tema relevante para ustedes?"\n\n`;
     
-    // Prioridad 2: Basado en deals similares
-    if (similarDeals.length > 0) {
-      actions.push({ 
-        icon: <TrendingUp size={18} />, 
-        label: `Ver ${similarDeals.length} similares`, 
-        prompt: `Mostrar qué funcionó en deals similares a ${activeOpp.client}` 
-      });
-    }
+    approach += `**2. PUNTOS DE DOLOR PROBABLES:**\n`;
+    approach += `• Si es e-commerce: Violación en última milla\n`;
+    approach += `• Si es manufactura: Retrabajo en embalaje\n`;
+    approach += `• Si es logística: Reclamos de clientes\n`;
+    approach += `• Si es retail: Pérdidas en transporte\n\n`;
     
-    // Prioridad 3: Calcular ROI
-    actions.push({ 
-      icon: <DollarSign size={18} />, 
-      label: 'Calcular ROI', 
-      prompt: `Calcular ROI para ${activeOpp.client} con datos reales` 
-    });
+    approach += `**3. CONTACTOS A BUSCAR (LinkedIn):**\n`;
+    approach += `• Gerente de Operaciones / Logística\n`;
+    approach += `• Director de Supply Chain\n`;
+    approach += `• Gerente de Calidad\n`;
+    approach += `• CFO (si el valor es alto)\n\n`;
     
-    // Siempre: Cambiar cliente
-    actions.push({ 
-      icon: <RefreshCw size={18} />, 
-      label: 'Cambiar Cliente', 
-      prompt: 'Listar todas las oportunidades' 
-    });
+    approach += `**4. MENSAJE DE LINKEDIN:**\n`;
+    approach += `"Hola [Nombre],\n\n`;
+    approach += `Vi que ${companyName} está [dato de la investigación]. `;
+    approach += `Ayudamos a empresas como L'Oréal y MercadoLibre a eliminar 100% las pérdidas por violación de cajas.\n\n`;
+    approach += `¿Vale la pena una conversación de 15 minutos?"\n\n`;
     
-    return actions.slice(0, 4);
+    approach += `**5. EMAIL DE PRIMER CONTACTO:**\n`;
+    approach += `Asunto: ${companyName} - Pérdidas evitables de R$ [estimar basado en tamaño]\n\n`;
+    approach += `[Personalizar con datos de la investigación]\n\n`;
+    
+    approach += `**6. PREGUNTAS SPIN ESPECÍFICAS:**\n`;
+    approach += `• Situación: "¿Cómo manejan actualmente el sellado de cajas?"\n`;
+    approach += `• Problema: "¿Han medido el % de cajas que llegan violadas?"\n`;
+    approach += `• Implicación: "¿Cuánto les cuesta cada reclamo por violación?"\n`;
+    approach += `• Necesidad: "Si pudieran eliminar 95% de estas pérdidas..."\n\n`;
+    
+    approach += `**7. CASO DE ÉXITO RELEVANTE:**\n`;
+    approach += `[Seleccionar basado en la industria identificada]\n\n`;
+    
+    approach += `**8. PRÓXIMOS PASOS:**\n`;
+    approach += `□ Buscar contactos en LinkedIn\n`;
+    approach += `□ Enviar InMail personalizado\n`;
+    approach += `□ Preparar presentación con datos del sector\n`;
+    approach += `□ Agendar llamada de 15 minutos\n`;
+    
+    return approach;
   };
 
-const handleActionClick = async (actionPayload) => {
-  if (!actionPayload) return;
+  const handleActionClick = async (actionPayload) => {
+    if (!actionPayload) return;
 
-  const [action, ...params] = actionPayload.split(':');
+    const [action, ...params] = actionPayload.split(':');
 
-  // Manejar cancelación
-  if (action === 'cancel') {
-    setMessages(prev => [...prev, { role: 'assistant', content: 'Ação cancelada.' }]);
-    return;
-  }
-
-  // Manejar actualización de escalas
-  if (action === 'update' && params.length >= 2) {
-    const [scale, newValue, oppId] = params;
-    const opportunityToUpdateId = oppId || getActiveOpportunity()?.id;
-    
-    if (!opportunityToUpdateId) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '❌ Erro: Não sei qual oportunidade atualizar.' }]);
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const currentOpp = allOpportunities.find(o => o.id === opportunityToUpdateId);
-      const updatedScales = {
-        ...(currentOpp?.scales || {}),
-        [scale]: { 
-          ...(currentOpp?.scales?.[scale] || {}),
-          score: parseInt(newValue) 
-        }
-      };
-
-      const { data, error } = await supabase
-        .from('opportunities')
-        .update({ 
-          scales: updatedScales,
-          last_update: new Date().toISOString()
-        })
-        .eq('id', opportunityToUpdateId)
-        .select();
-
-      if (error) throw error;
-
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: `✅ Atualizado! ${scale.toUpperCase()} = ${newValue}/10 para ${data[0].client}` 
-      }]);
-
-      await loadPipelineData();
-    } catch (error) {
-      console.error('Error actualizando:', error);
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: `❌ Erro: ${error.message}` 
-      }]);
-    } finally {
-      setIsLoading(false);
-    }
-    return;
-  }
-
-  // NUEVO: Manejar otros tipos de acciones sin llamar al API
-  setIsLoading(true);
-  
-  try {
-    // En lugar de llamar al API, manejar localmente
-    const activeOpp = getActiveOpportunity();
-    
-    if (!activeOpp) {
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: '❌ No hay oportunidad activa para analizar.' 
-      }]);
-      setIsLoading(false);
-      return;
-    }
-
-    // Generar respuesta basada en el actionPayload
-    let response = '';
-    
-    // Si el payload contiene el prompt completo, usarlo
-    if (actionPayload.includes('Generar estrategia')) {
-      const context = getIntelligentContext(activeOpp);
+    if (action === 'update' && params.length >= 2) {
+      const [scale, newValue, oppId] = params;
+      const opportunityToUpdateId = oppId || getActiveOpportunity()?.id;
       
-      response = `📋 **Estrategia para ${activeOpp.client}**\n\n`;
-      
-      // Basarse en datos del cliente
-      if (context.priority1_clientNotes?.hasData) {
-        response += `**Basado en lo que ya dijeron:**\n`;
-        context.priority1_clientNotes.notes.forEach(note => {
-          response += `• ${note}\n`;
-        });
-        response += `\n`;
+      if (!opportunityToUpdateId) {
+        setMessages(prev => [...prev, { role: 'assistant', content: '❌ Error: No sé qué oportunidad actualizar.' }]);
+        return;
       }
-      
-      // Análisis PPVVCC
-      response += `**Estado actual PPVVCC:**\n`;
-      response += `• DOR: ${getScaleValue(activeOpp.scales?.dor)}/10\n`;
-      response += `• PODER: ${getScaleValue(activeOpp.scales?.poder)}/10\n`;
-      response += `• VISÃO: ${getScaleValue(activeOpp.scales?.visao)}/10\n`;
-      response += `• VALOR: ${getScaleValue(activeOpp.scales?.valor)}/10\n`;
-      response += `• CONTROLE: ${getScaleValue(activeOpp.scales?.controle)}/10\n`;
-      response += `• COMPRAS: ${getScaleValue(activeOpp.scales?.compras)}/10\n\n`;
-      
-      // Próximas acciones
-      const analysis = analyzeOpportunityWithContext(activeOpp);
-      if (analysis?.nextAction) {
-        response += `**➡️ Acción inmediata:**\n`;
-        response += `${analysis.nextAction.action}\n\n`;
-        response += `**Script sugerido:**\n`;
-        response += `"${analysis.nextAction.script}"\n`;
+
+      setIsLoading(true);
+      try {
+        const currentOpp = allOpportunities.find(o => o.id === opportunityToUpdateId);
+        const updatedScales = {
+          ...(currentOpp?.scales || {}),
+          [scale]: { 
+            ...(currentOpp?.scales?.[scale] || {}),
+            score: parseInt(newValue) 
+          }
+        };
+
+        const { data, error } = await supabase
+          .from('opportunities')
+          .update({ 
+            scales: updatedScales,
+            last_update: new Date().toISOString()
+          })
+          .eq('id', opportunityToUpdateId)
+          .select();
+
+        if (error) throw error;
+
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `✅ Actualizado! ${scale.toUpperCase()} = ${newValue}/10 para ${data[0].client}` 
+        }]);
+
+        await loadPipelineData();
+      } catch (error) {
+        console.error('Error:', error);
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `❌ Error: ${error.message}` 
+        }]);
+      } finally {
+        setIsLoading(false);
       }
-      
-      // Agregar datos de ROI
-      response += `\n**💰 ROI estimado:**\n`;
-      response += `• Pérdida mensual actual: R$ ${Math.round(activeOpp.value * 0.01).toLocaleString()}\n`;
-      response += `• Ahorro con Ventapel: 95% de reducción\n`;
-      response += `• ROI: 2-3 meses garantizado\n`;
-      
-    } else {
-      // Respuesta genérica para otras acciones
-      response = `Procesando acción: ${action}\n`;
-      response += `Para ${activeOpp.client}\n`;
     }
-    
-    setMessages(prev => [...prev, { 
-      role: 'assistant', 
-      content: response 
-    }]);
-    
-  } catch (error) {
-    console.error('Error en handleActionClick:', error);
-    setMessages(prev => [...prev, { 
-      role: 'assistant', 
-      content: '❌ Error procesando la acción.' 
-    }]);
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
-const sendMessage = async (messageText = input) => {
-  if (!messageText.trim()) return;
+  const sendMessage = async (messageText = input) => {
+    if (!messageText.trim()) return;
 
-  // Plan semanal especial
-  if (messageText === 'plan_semanal') {
-    const userMessage = { role: 'user', content: "Plan para la semana" };
+    const userMessage = { role: 'user', content: messageText };
     setMessages(prev => [...prev, userMessage]);
+    setInput('');
     setIsLoading(true);
-
-    try {
-      const response = await fetch('/api/assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          specialRequestType: 'weekly_plan',
-          pipelineData: {
-            allOpportunities: allOpportunities.filter(o => o.vendor === currentUser),
-            vendorName: currentUser
-          }
-        })
-      });
-      
-      const data = await response.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
-    } catch (error) {
-      console.error('Error:', error);
-      setMessages(prev => [...prev, { role: 'assistant', content: '❌ Error generando plan' }]);
-    } finally {
-      setIsLoading(false);
-      setInput('');
-    }
-    return;
-  }
-
-  const userMessage = { role: 'user', content: messageText };
-  setMessages(prev => [...prev, userMessage]);
-  setInput('');
-  setIsLoading(true);
-
-  try {
-    // BÚSQUEDA LOCAL RÁPIDA - Sin API
-    const isSimpleSearch = messageText.split(' ').length <= 2 && 
-                          !messageText.includes('?') && 
-                          messageText.length > 2;
     
-    if (isSimpleSearch || messageText.toLowerCase().includes('buscar')) {
-      const searchTerm = messageText.replace(/buscar|encontrar|ver|mostrar/gi, '').trim();
+    // Detectar intención
+    const intent = detectUserIntent(messageText);
+    const activeOpp = assistantActiveOpportunity || currentOpportunity;
+    
+    // CASO 1: Búsqueda web de empresa nueva
+    if (intent === 'web_search') {
+      // Extraer nombre de empresa del mensaje
+      const companyMatch = messageText.match(/(?:buscar|investigar|información de|info de|busca sobre)\s+(.+?)(?:\s|$)/i);
+      const companyName = companyMatch ? companyMatch[1].trim() : messageText.split(' ').slice(-1)[0];
       
-      if (searchTerm && allOpportunities.length > 0) {
-        const searchResults = allOpportunities.filter(opp => 
-          opp.client?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          opp.name?.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+      try {
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `🔍 Buscando información sobre **${companyName}** en internet...` 
+        }]);
         
-        if (searchResults.length > 0) {
-          const found = searchResults[0];
-          setAssistantActiveOpportunity(found);
+        // Llamar al API con búsqueda web
+        const response = await fetch('/api/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            specialRequestType: 'web_research',
+            companyName: companyName,
+            searchQuery: `${companyName} Brasil logística e-commerce embalaje`,
+            vendorName: currentUser,
+            context: 'prospecting'
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
           
-          // Analizar localmente
-          await findSimilarDeals(found);
-          analyzeOpportunityWithContext(found);
-          
-          const score = calculateHealthScore(found.scales || {});
-          
-          let response = `🎯 **${found.client}**\n\n`;
-          response += `**Valor:** R$ ${found.value?.toLocaleString('pt-BR')}\n`;
-          response += `**Etapa:** ${found.stage}\n`;
-          response += `**Score PPVVCC:** ${score.toFixed(1)}/10\n\n`;
-          
-          if (found.scales) {
-            response += `**Escalas:**\n`;
-            response += `• DOR: ${getScaleValue(found.scales.dor)}/10\n`;
-            response += `• PODER: ${getScaleValue(found.scales.poder)}/10\n`;
-            response += `• VISÃO: ${getScaleValue(found.scales.visao)}/10\n`;
-            response += `• VALOR: ${getScaleValue(found.scales.valor)}/10\n`;
-            response += `• CONTROLE: ${getScaleValue(found.scales.controle)}/10\n`;
-            response += `• COMPRAS: ${getScaleValue(found.scales.compras)}/10\n\n`;
-          }
-          
-          // Agregar problemas detectados
-          if (analysis?.inconsistencies?.length > 0) {
-            response += `**⚠️ Problemas detectados:**\n`;
-            analysis.inconsistencies.forEach(inc => {
-              response += `• ${inc.message}\n`;
-            });
-            response += `\n`;
-          }
-          
-          // Agregar próxima acción
-          if (analysis?.nextAction) {
-            response += `**➡️ Próxima acción:**\n`;
-            response += `${analysis.nextAction.action}\n`;
-          }
+          // Generar approach basado en la investigación
+          const approach = generateApproachFromResearch(companyName, data.response);
           
           setMessages(prev => [...prev, { 
             role: 'assistant', 
-            content: response 
+            content: approach 
           }]);
-          setIsLoading(false);
-          return;
+          
+          // Crear oportunidad en stage 1 si no existe
+          const existingOpp = allOpportunities.find(o => 
+            o.client.toLowerCase().includes(companyName.toLowerCase())
+          );
+          
+          if (!existingOpp) {
+            setMessages(prev => [...prev, { 
+              role: 'assistant', 
+              content: `\n💡 **¿Quieres crear esta oportunidad?**\n[Crear oportunidad ${companyName}|create:${companyName}]` 
+            }]);
+          }
         } else {
-          setMessages(prev => [...prev, { 
-            role: 'assistant', 
-            content: `❌ No encontré "${searchTerm}".\n\nEscribí "listar" para ver todas las oportunidades.` 
-          }]);
-          setIsLoading(false);
-          return;
+          throw new Error('Error en búsqueda web');
         }
+      } catch (error) {
+        // Fallback sin datos web
+        const fallbackApproach = `🔍 **ESTRATEGIA DE APPROACH - ${companyName}**\n\n`;
+        const approach = fallbackApproach + `⚠️ No pude buscar online, pero aquí está el approach estándar:\n\n` +
+          `**1. INVESTIGACIÓN MANUAL:**\n` +
+          `• Buscar en Google: "${companyName} Brasil"\n` +
+          `• LinkedIn: Empleados y estructura\n` +
+          `• Sitio web: Productos y servicios\n` +
+          `• Noticias recientes: Expansión, problemas\n\n` +
+          `**2. APPROACH GENÉRICO EFECTIVO:**\n` +
+          `"Hola [Nombre],\n\n` +
+          `Vi que ${companyName} está creciendo en [sector]. ` +
+          `El 10% de las empresas brasileñas pierden mercadería por violación (IBEVAR 2024).\n\n` +
+          `L'Oréal y MercadoLibre eliminaron este problema con nuestra solución.\n\n` +
+          `¿15 minutos para mostrarle cuánto podría ahorrar ${companyName}?"\n\n` +
+          `**3. PRÓXIMOS PASOS:**\n` +
+          `□ Buscar en LinkedIn: "Gerente Operaciones ${companyName}"\n` +
+          `□ Identificar volumen estimado de envíos\n` +
+          `□ Preparar caso similar de la industria\n`;
+          
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: approach 
+        }]);
+      } finally {
+        setIsLoading(false);
       }
+      return;
+    }
+    
+    // CASO 2: Intenciones predefinidas con cliente activo
+    if (intent && activeOpp) {
+      let response = '';
+      
+      switch (intent) {
+        case 'strategy':
+          response = generateCompleteStrategy(activeOpp);
+          break;
+        case 'email':
+          response = generateEmail(activeOpp);
+          break;
+        case 'call':
+          response = generateCallScript(activeOpp);
+          break;
+        case 'whatsapp':
+          response = `📱 **MENSAJE WHATSAPP para ${activeOpp.client}:**\n\n`;
+          response += `Hola [nombre]! 👋\n\n`;
+          response += `Calculé que ${activeOpp.client} pierde ~R$ ${Math.round(activeOpp.value * 0.01).toLocaleString('pt-BR')}/mes por violación de cajas 📦\n\n`;
+          response += `${successCases[activeOpp.industry?.toLowerCase()]?.empresa || 'L\'Oréal'} tenía el mismo problema.\n`;
+          response += `Resultado: ${successCases[activeOpp.industry?.toLowerCase()]?.resultado || '100% furtos eliminados'} ✅\n\n`;
+          response += `¿10 minutos mañana para mostrarle cómo eliminar estas pérdidas?\n\n`;
+          response += `Tengo estos horarios:\n`;
+          response += `• 9:00 ⏰\n`;
+          response += `• 14:00 ⏰\n`;
+          response += `• 16:00 ⏰\n\n`;
+          response += `¿Cuál le viene mejor? 🤔`;
+          break;
+        case 'objection':
+          response = `🛡️ **MANEJO DE OBJECIONES - ${activeOpp.client}**\n\n`;
+          Object.values(objectionHandlers).forEach(obj => {
+            response += `**Si dice: "${obj.objecion}"**\n`;
+            response += `✅ Responder: "${obj.respuesta}"\n\n`;
+          });
+          break;
+        case 'roi':
+          // Llamar al API para cálculo de ROI
+          try {
+            const apiResponse = await fetch('/api/assistant', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                context: 'calcular roi',
+                opportunityData: activeOpp,
+                vendorName: currentUser
+              })
+            });
+            
+            if (apiResponse.ok) {
+              const data = await apiResponse.json();
+              response = data.response;
+            } else {
+              // Fallback local
+              response = `💰 **ROI ESTIMADO - ${activeOpp.client}**\n\n`;
+              response += `• Pérdida mensual: R$ ${Math.round(activeOpp.value * 0.01).toLocaleString('pt-BR')}\n`;
+              response += `• Inversión: R$ ${activeOpp.value.toLocaleString('pt-BR')}\n`;
+              response += `• ROI: ${Math.round(activeOpp.value / (activeOpp.value * 0.01 * 0.95))} meses\n`;
+            }
+          } catch (error) {
+            response = generateCompleteStrategy(activeOpp);
+          }
+          break;
+        default:
+          response = `Analizando ${activeOpp.client}...`;
+      }
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: response }]);
+      setIsLoading(false);
+      return;
     }
 
-    // LISTAR OPORTUNIDADES
+    // CASO 2: Plan semanal especial
+    if (messageText.toLowerCase().includes('plan semanal') || messageText === 'plan_semanal') {
+      try {
+        const response = await fetch('/api/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            specialRequestType: 'weekly_plan',
+            pipelineData: {
+              allOpportunities: allOpportunities.filter(o => o.vendor === currentUser),
+              vendorName: currentUser
+            }
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+        } else {
+          throw new Error('API error');
+        }
+      } catch (error) {
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: '❌ Error generando plan. Intenta de nuevo.' 
+        }]);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // CASO 3: Búsqueda simple de cliente
+    const isSimpleSearch = messageText.split(' ').length <= 2 && messageText.length > 2;
+    
+    if (isSimpleSearch) {
+      const searchTerm = messageText.trim();
+      const searchResults = allOpportunities.filter(opp => 
+        opp.client?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      
+      if (searchResults.length > 0) {
+        const found = searchResults[0];
+        setAssistantActiveOpportunity(found);
+        
+        const response = generateCompleteStrategy(found);
+        setMessages(prev => [...prev, { role: 'assistant', content: response }]);
+      } else {
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `❌ No encontré "${searchTerm}".\n\nEscribe "listar" para ver todas las oportunidades.` 
+        }]);
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    // CASO 4: Listar oportunidades
     if (messageText.toLowerCase().includes('listar')) {
-      let listMessage = `📋 **Oportunidades con Análisis:**\n\n`;
+      let listMessage = `📋 **TODAS LAS OPORTUNIDADES:**\n\n`;
       
       allOpportunities.slice(0, 10).forEach(opp => {
-        const context = getIntelligentContext(opp);
         const score = calculateHealthScore(opp.scales || {});
-        
-        listMessage += `**${opp.client}** - R$${opp.value?.toLocaleString()}\n`;
-        listMessage += `  Score: ${score.toFixed(1)}/10 | Fuente: ${context.dataSource}\n`;
-        
-        if (context.priority2_similarDeals?.hasData) {
-          listMessage += `  📊 ${context.priority2_similarDeals.count} deals similares\n`;
-        }
-        
-        listMessage += '\n';
+        listMessage += `**${opp.client}** - R${opp.value?.toLocaleString('pt-BR')}\n`;
+        listMessage += `  Etapa: ${opp.stage} | Score: ${score.toFixed(1)}/10\n`;
+        listMessage += `  Vendedor: ${opp.vendor}\n\n`;
       });
       
       setMessages(prev => [...prev, { role: 'assistant', content: listMessage }]);
@@ -972,86 +1193,150 @@ const sendMessage = async (messageText = input) => {
       return;
     }
 
-    // MOSTRAR DEALS SIMILARES
-    if (messageText.toLowerCase().includes('similar')) {
-      const activeOpp = assistantActiveOpportunity || currentOpportunity;
-      if (activeOpp && similarDeals.length > 0) {
-        let similarMessage = `📊 **Deals Similares a ${activeOpp.client}:**\n\n`;
-        
-        similarDeals.slice(0, 5).forEach((deal, idx) => {
-          const score = calculateHealthScore(deal.scales || {});
-          similarMessage += `${idx + 1}. **${deal.client}**\n`;
-          similarMessage += `   Valor: R$${deal.value?.toLocaleString()}\n`;
-          similarMessage += `   Score: ${score.toFixed(1)}/10\n\n`;
+    // CASO 5: Preguntas complejas - LLAMAR A CLAUDE API
+    // Para cualquier pregunta que no encaje en los casos anteriores
+    if (activeOpp && !intent) {
+      try {
+        // Preparar contexto completo para Claude
+        const ventapelContext = {
+          client: activeOpp.client,
+          stage: activeOpp.stage,
+          value: activeOpp.value,
+          scales: activeOpp.scales,
+          industry: activeOpp.industry,
+          spinQuestions: spinQuestions,
+          objectionHandlers: objectionHandlers,
+          successCases: successCases[activeOpp.industry?.toLowerCase()] || successCases['e-commerce']
+        };
+
+        const response = await fetch('/api/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            context: messageText,
+            opportunityData: activeOpp,
+            vendorName: currentUser,
+            ventapelContext: ventapelContext,
+            intelligentContext: getIntelligentContext(activeOpp),
+            similarDeals: similarDeals.slice(0, 3)
+          })
         });
-        
-        setMessages(prev => [...prev, { role: 'assistant', content: similarMessage }]);
-        setIsLoading(false);
-        return;
-      }
-    }
 
-    // LLAMADA AL API PARA OTROS CASOS
-    const opportunityToAnalyze = assistantActiveOpportunity || currentOpportunity;
-    const intelligentContext = opportunityToAnalyze ? getIntelligentContext(opportunityToAnalyze) : null;
-    
-    const response = await fetch('/api/assistant', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        context: messageText,
-        opportunityData: opportunityToAnalyze,
-        intelligentContext,
-        similarDeals: similarDeals.slice(0, 3),
-        vendorName: currentUser,
-        pipelineData: {
-          allOpportunities: allOpportunities.filter(o => o.vendor === currentUser),
-          pipelineHealth,
-          vendorName: currentUser
+        if (response.ok) {
+          const data = await response.json();
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: data.response 
+          }]);
+        } else {
+          // Si el API falla, usar respuesta local inteligente
+          let fallbackResponse = `📊 **Análisis para ${activeOpp.client}**\n\n`;
+          
+          // Intentar dar una respuesta útil basada en el contexto
+          if (messageText.toLowerCase().includes('qué') || messageText.toLowerCase().includes('cómo')) {
+            fallbackResponse += generateSmartNextAction(
+              activeOpp, 
+              {
+                pain: getScaleValue(activeOpp.scales?.dor),
+                power: getScaleValue(activeOpp.scales?.poder),
+                vision: getScaleValue(activeOpp.scales?.visao),
+                value: getScaleValue(activeOpp.scales?.valor),
+                control: getScaleValue(activeOpp.scales?.controle),
+                purchase: getScaleValue(activeOpp.scales?.compras)
+              },
+              [],
+              getIntelligentContext(activeOpp)
+            ).script;
+          } else {
+            fallbackResponse += generateCompleteStrategy(activeOpp);
+          }
+          
+          setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            content: fallbackResponse 
+          }]);
         }
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      } catch (error) {
+        console.error('Error llamando a Claude:', error);
+        
+        // Fallback con estrategia local
+        const fallbackStrategy = generateCompleteStrategy(activeOpp);
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: fallbackStrategy 
+        }]);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
     }
 
-    const data = await response.json();
-    
-    let finalResponse = data.response;
-    if (intelligentContext?.dataSource) {
-      finalResponse += `\n\n📊 *Fuente: ${intelligentContext.dataSource}*`;
-    }
-    
-    setMessages(prev => [...prev, { 
-      role: 'assistant', 
-      content: finalResponse
-    }]);
-    
-  } catch (error) {
-    console.error('Error completo:', error);
-    setMessages(prev => [...prev, { 
-      role: 'assistant', 
-      content: '❌ Error procesando. Verifique la conexión.' 
-    }]);
-  } finally {
+    // CASO 6: Sin cliente activo - Mensaje de ayuda
+    const helpMessage = `
+🤖 **SOY TU ASISTENTE DE VENTAS VENTAPEL**
+
+Para ayudarte mejor, primero **busca un cliente**:
+Ejemplo: "intelbras" o "mwm"
+
+Luego puedo ayudarte con:
+📋 **"estrategia"** - Plan completo de acción
+📧 **"email"** - Email personalizado
+📞 **"script llamada"** - Script SPIN para llamar
+📱 **"whatsapp"** - Mensaje para WhatsApp
+💰 **"calcular roi"** - Análisis de ROI con Claude
+🛡️ **"objeciones"** - Cómo manejar objeciones
+🤖 **Preguntas abiertas** - Claude te ayuda con cualquier situación
+
+También puedo:
+• "listar" - Ver todas las oportunidades
+• "plan semanal" - Tu agenda optimizada con IA
+• Cualquier pregunta sobre ventas
+
+**Comandos rápidos:**
+[🎯 Ver estrategia|estrategia]
+[📧 Generar email|email]
+[📞 Script llamada|llamada]
+[💰 Calcular ROI|roi]
+
+¿Con qué cliente quieres empezar?`;
+
+    setMessages(prev => [...prev, { role: 'assistant', content: helpMessage }]);
     setIsLoading(false);
-  }
-};
+  };
 
   const getActiveOpportunity = () => {
     return assistantActiveOpportunity || currentOpportunity;
   };
 
+  const getQuickActions = () => {
+    const activeOpp = getActiveOpportunity();
+    
+    if (!activeOpp) {
+      return [
+        { icon: <Database size={18} />, label: 'Ver Pipeline', prompt: 'listar' },
+        { icon: <Search size={18} />, label: 'Buscar Deal', prompt: 'buscar oportunidad' },
+        { icon: <Calendar size={18} />, label: 'Plan Semanal', prompt: 'plan_semanal' },
+        { icon: <Brain size={18} />, label: 'Ayuda', prompt: 'ayuda' }
+      ];
+    }
+    
+    return [
+      { icon: <Brain size={18} />, label: 'Estrategia', prompt: 'estrategia' },
+      { icon: <Mail size={18} />, label: 'Email', prompt: 'email' },
+      { icon: <Phone size={18} />, label: 'Script', prompt: 'script llamada' },
+      { icon: <DollarSign size={18} />, label: 'ROI', prompt: `calcular roi` }
+    ];
+  };
+
   return (
     <>
-      {/* Panel de Análisis PPVVCC Mejorado */}
+      {/* Panel de análisis PPVVCC */}
       {getActiveOpportunity() && analysis && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 mb-4 rounded-lg shadow-md">
           <div className="flex justify-between items-start mb-3">
             <h3 className="font-bold text-lg flex items-center">
               <Target className="mr-2" /> 
-              Diagnóstico: {getActiveOpportunity().client}
+              {getActiveOpportunity().client}
               {analysis.context?.dataSource && (
                 <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
                   {analysis.context.dataSource}
@@ -1059,20 +1344,6 @@ const sendMessage = async (messageText = input) => {
               )}
             </h3>
             <div className="flex items-center gap-2">
-              {similarDeals.length > 0 && (
-                <button
-                  onClick={() => sendMessage('mostrar deals similares')}
-                  className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200"
-                >
-                  📊 {similarDeals.length} Similares
-                </button>
-              )}
-              <button
-                onClick={() => setShowROI(!showROI)}
-                className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200"
-              >
-                💰 ROI
-              </button>
               <div className="text-right">
                 <div className="text-2xl font-bold text-blue-600">{analysis.probability}%</div>
                 <div className="text-xs text-gray-600">Probabilidad</div>
@@ -1080,30 +1351,18 @@ const sendMessage = async (messageText = input) => {
             </div>
           </div>
 
-          {/* Mostrar contexto inteligente */}
-          {analysis.context?.priority1_clientNotes?.hasData && (
-            <div className="bg-yellow-50 border border-yellow-300 rounded p-2 mb-3 text-xs">
-              <strong>📝 Lo que el cliente dijo:</strong>
-              <ul className="ml-4 mt-1">
-                {analysis.context.priority1_clientNotes.notes.map((note, idx) => (
-                  <li key={idx}>• {note}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           {/* Semáforo PPVVCC */}
           {getActiveOpportunity().scales && (
             <div className="grid grid-cols-6 gap-2 mb-4">
               {[
-                { key: 'dor', label: 'DOR', altKey: 'pain' },
-                { key: 'poder', label: 'PODER', altKey: 'power' },
-                { key: 'visao', label: 'VISÃO', altKey: 'vision' },
-                { key: 'valor', label: 'VALOR', altKey: 'value' },
-                { key: 'controle', label: 'CTRL', altKey: 'control' },
-                { key: 'compras', label: 'COMPRAS', altKey: 'purchase' }
-              ].map(({ key, label, altKey }) => {
-                const value = getScaleValue(getActiveOpportunity().scales[key] || getActiveOpportunity().scales[altKey]);
+                { key: 'dor', label: 'DOR' },
+                { key: 'poder', label: 'PODER' },
+                { key: 'visao', label: 'VISÃO' },
+                { key: 'valor', label: 'VALOR' },
+                { key: 'controle', label: 'CTRL' },
+                { key: 'compras', label: 'COMPRAS' }
+              ].map(({ key, label }) => {
+                const value = getScaleValue(getActiveOpportunity().scales[key]);
                 const isCritical = value < 4;
                 const isWarning = value >= 4 && value < 7;
                 
@@ -1121,7 +1380,7 @@ const sendMessage = async (messageText = input) => {
             </div>
           )}
 
-          {/* Inconsistencias con fuente de datos */}
+          {/* Inconsistencias */}
           {analysis.inconsistencies?.length > 0 && (
             <div className="bg-red-50 border border-red-300 rounded-lg p-3 mb-4">
               <h4 className="font-bold text-red-700 text-sm mb-2">
@@ -1131,39 +1390,43 @@ const sendMessage = async (messageText = input) => {
               {analysis.inconsistencies.map((inc, idx) => (
                 <div key={idx} className="mb-2 text-sm">
                   <div className="text-red-600">• {inc.message}</div>
-                  {inc.dataSource && (
-                    <div className="text-xs text-gray-600 ml-4">Fuente: {inc.dataSource}</div>
-                  )}
+                  <div className="text-xs text-gray-600 ml-4">Acción: {inc.action}</div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Próxima acción con contexto */}
+          {/* Próxima acción */}
           {analysis.nextAction && (
             <div className="bg-white p-3 rounded-lg border-2 border-blue-400">
               <h4 className="font-semibold text-sm mb-2 text-blue-700">
                 <Zap className="inline mr-1 w-4 h-4" /> 
-                Próxima Acción 
-                {analysis.nextAction.dataSource && (
-                  <span className="text-xs font-normal ml-2">
-                    (basada en {analysis.nextAction.dataSource})
-                  </span>
-                )}
+                Próxima Acción
               </h4>
               <p className="text-sm font-bold mb-2">{analysis.nextAction.action}</p>
               <div className="bg-blue-50 p-2 rounded">
                 <p className="text-xs italic">"{analysis.nextAction.script}"</p>
               </div>
-              <button 
-                onClick={() => {
-                  setIsOpen(true);
-                  sendMessage(`Desarrolla: ${analysis.nextAction.action} para ${getActiveOpportunity().client}`);
-                }}
-                className="mt-2 bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700"
-              >
-                Ejecutar →
-              </button>
+              <div className="flex gap-2 mt-2">
+                <button 
+                  onClick={() => {
+                    setIsOpen(true);
+                    sendMessage('estrategia');
+                  }}
+                  className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs hover:bg-blue-700"
+                >
+                  Ver Estrategia →
+                </button>
+                <button 
+                  onClick={() => {
+                    setIsOpen(true);
+                    sendMessage('email');
+                  }}
+                  className="bg-green-600 text-white px-3 py-1.5 rounded text-xs hover:bg-green-700"
+                >
+                  Generar Email →
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1180,20 +1443,19 @@ const sendMessage = async (messageText = input) => {
         )}
       </button>
 
-      {/* Chat */}
+      {/* Chat Window */}
       {isOpen && (
         <div className="fixed bottom-24 right-6 w-96 h-[600px] bg-white rounded-lg shadow-2xl z-50 flex flex-col">
           <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 rounded-t-lg">
             <div className="flex justify-between items-center mb-2">
-              <h3 className="font-semibold">Asistente Inteligente Ventapel</h3>
+              <h3 className="font-semibold">🤖 Asistente de Ventas Ventapel</h3>
               <button onClick={() => setIsOpen(false)}>
                 <X size={20} />
               </button>
             </div>
             {assistantActiveOpportunity && (
               <div className="text-xs bg-white/20 rounded px-2 py-1 mt-2">
-                🎯 {assistantActiveOpportunity.client} | 
-                {similarDeals.length > 0 && ` ${similarDeals.length} similares`}
+                🎯 {assistantActiveOpportunity.client} | Etapa {assistantActiveOpportunity.stage}
               </div>
             )}
           </div>
@@ -1215,23 +1477,24 @@ const sendMessage = async (messageText = input) => {
             </div>
           </div>
 
-          {/* Mensajes */}
+          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && (
               <div className="bg-blue-50 p-3 rounded-lg">
                 <p className="font-bold text-sm text-blue-700 mb-2">
-                  👋 Hola {currentUser}!
+                  👋 Hola {currentUser}! Soy tu coach de ventas
                 </p>
                 <div className="text-xs text-gray-600">
-                  <p className="mb-2">Trabajo con datos en este orden:</p>
-                  <ol className="ml-4 space-y-1">
-                    <li>1️⃣ Lo que el cliente YA DIJO (notas)</li>
-                    <li>2️⃣ Deals similares en TU CRM</li>
-                    <li>3️⃣ Casos de éxito Ventapel</li>
-                    <li>4️⃣ Benchmarks Brasil (último recurso)</li>
-                  </ol>
+                  <p className="mb-2">Puedo ayudarte con:</p>
+                  <ul className="ml-4 space-y-1">
+                    <li>📋 Estrategias completas de venta</li>
+                    <li>📧 Emails persuasivos</li>
+                    <li>📞 Scripts de llamadas SPIN</li>
+                    <li>💰 Cálculos de ROI</li>
+                    <li>🛡️ Manejo de objeciones</li>
+                  </ul>
                   <p className="mt-3 font-semibold">
-                    💡 Escribe el nombre del cliente para análisis inteligente
+                    💡 Escribe el nombre del cliente para empezar
                   </p>
                 </div>
               </div>
@@ -1274,7 +1537,7 @@ const sendMessage = async (messageText = input) => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
-                placeholder="Nombre del cliente o pregunta..."
+                placeholder="Cliente, estrategia, email, llamada..."
                 className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={isLoading}
               />
