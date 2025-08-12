@@ -1,149 +1,154 @@
-import React, { useState, useEffect } from 'react';
-import { MessageCircle, X, AlertTriangle, Target, RefreshCw, TrendingUp, Globe, Calendar, Zap, DollarSign, Database, Search, Mail, Phone, FileText, MessageSquare, Video, Users, BookOpen, Brain } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { MessageCircle, X, AlertTriangle, Target, RefreshCw, TrendingUp, Globe, Calendar, Zap, DollarSign, Database, Search, Mail, Phone, FileText, MessageSquare, Users, Brain, Sparkles, Bot, Send, ChevronDown, Loader2, CheckCircle, XCircle, TrendingDown, Award } from 'lucide-react';
 
-// Componente para renderizar mensajes con botones interactivos
-const MessageRenderer = ({ content, onButtonClick }) => {
-  const buttonRegex = /\[([^|]+)\|([^\]]+)\]/g;
-  const parts = content.split(buttonRegex);
-
-  return (
-    <div className="text-sm whitespace-pre-wrap">
-      {parts.map((part, index) => {
-        if (index % 3 === 1) {
-          const actionPayload = parts[index + 1];
-          return (
-            <button
-              key={index}
-              onClick={() => onButtonClick(actionPayload)}
-              className="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 transition-all text-sm font-semibold mx-1 my-2 inline-block"
-            >
-              {part}
-            </button>
-          );
-        }
-        if (index % 3 === 2) return null;
-        return <span key={index}>{part}</span>;
-      })}
-    </div>
-  );
+// ============= CASOS REALES DE ÉXITO VENTAPEL =============
+const CASOS_EXITO_REALES = {
+  'honda': {
+    empresa: 'Honda Argentina',
+    sector: 'Automotriz',
+    problema: 'Velocidad limitada, 1% pérdidas, problemas ergonómicos, ruido alto',
+    solucion: 'BP555 + Fita Gorilla 300m',
+    resultados: {
+      velocidad: '+40%',
+      perdidas: '100% eliminadas',
+      roi_meses: 3,
+      inversion: 150000,
+      ahorro_anual: 600000
+    },
+    contacto: 'Gerente de Producción validó en planta',
+    testimonio: 'La mejora ergonómica permitió incluir operadores diversos'
+  },
+  'loreal': {
+    empresa: "L'Oréal Brasil",
+    sector: 'Cosmética',
+    problema: '+10% pérdidas por robo, cuellos de botella, sin espacio para crecer',
+    solucion: 'RSA (Random Sealer Automated) + Fita Gorilla 700m',
+    resultados: {
+      robos: '100% eliminados',
+      eficiencia: '+50%',
+      roi_meses: 3,
+      inversion: 280000,
+      capacidad: '12 cajas/minuto',
+      ahorro_anual: 2500000
+    },
+    contacto: 'Director de Operaciones Brasil',
+    testimonio: 'Trazabilidad 100% implementada, cero robos desde instalación'
+  },
+  'nike': {
+    empresa: 'Nike Brasil',
+    sector: 'Calzado/Textil',
+    problema: '10% pérdidas en transporte, disputas con transportadoras, salud ocupacional',
+    solucion: 'BP755 + Fita Gorilla 300m',
+    resultados: {
+      perdidas: '100% eliminadas',
+      eficiencia: '+30%',
+      roi_meses: 2,
+      inversion: 200000,
+      disputas: '100% resueltas',
+      ahorro_anual: 1200000
+    },
+    contacto: 'Supply Chain Manager',
+    testimonio: 'Cero disputas con transportadoras, control visual mejorado'
+  },
+  'mercadolibre': {
+    empresa: 'MercadoLibre',
+    sector: 'E-commerce',
+    problema: 'Alto retrabajo, pérdidas en fulfillment',
+    solucion: 'BP555e + Fita VENOM',
+    resultados: {
+      retrabajo: '-40%',
+      ahorro_mensual: 180000,
+      roi_meses: 2,
+      inversion: 360000,
+      transicion: '3 días sin parar operación'
+    },
+    contacto: 'Head of Fulfillment',
+    testimonio: 'Transición sin interrumpir operación fue clave'
+  },
+  'natura': {
+    empresa: 'Natura',
+    sector: 'Cosmética',
+    problema: 'Violaciones en cadena, pérdidas en distribución',
+    solucion: 'BP755 + Sistema completo',
+    resultados: {
+      violaciones: '-60%',
+      ahorro_mensual: 85000,
+      roi_meses: 4,
+      inversion: 340000
+    },
+    contacto: 'Gerente de Logística',
+    testimonio: 'Video testimonial disponible'
+  },
+  'centauro': {
+    empresa: 'Centauro',
+    sector: 'Deportes/Retail',
+    problema: 'Furtos masivos en distribución',
+    solucion: 'Sistema completo Ventapel',
+    resultados: {
+      furtos: '-95%',
+      ahorro_anual: 50000000,
+      roi_meses: 3,
+      inversion: 500000
+    },
+    contacto: 'CFO aprobó inversión',
+    testimonio: 'R$50 millones/año recuperados'
+  }
 };
 
+// ============= DATOS REALES DE BRASIL 2024-2025 =============
+const BENCHMARKS_BRASIL = {
+  'e-commerce': {
+    perdidas_promedio: 0.10,
+    costo_retrabajo: 30,
+    fuente: 'IBEVAR 2024',
+    tendencia: 'Creciendo 15% anual'
+  },
+  'cosmética': {
+    perdidas_promedio: 0.08,
+    costo_retrabajo: 50,
+    fuente: 'ABIHPEC 2024',
+    tendencia: 'Alto valor, alto riesgo'
+  },
+  'automotriz': {
+    perdidas_promedio: 0.04,
+    costo_retrabajo: 90,
+    fuente: 'ANFAVEA',
+    tendencia: 'Just-in-time crítico'
+  },
+  'farmacéutica': {
+    perdidas_promedio: 0.09,
+    costo_retrabajo: 70,
+    fuente: 'ANVISA + cadena fría',
+    tendencia: 'Regulación estricta'
+  },
+  'alimentos': {
+    perdidas_promedio: 0.07,
+    costo_retrabajo: 25,
+    fuente: 'ABIA',
+    tendencia: 'Cadena fría crítica'
+  }
+};
+
+// ============= COMPONENTE PRINCIPAL =============
 const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, supabase }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [analysis, setAnalysis] = useState(null);
-  const [alerts, setAlerts] = useState([]);
   const [allOpportunities, setAllOpportunities] = useState([]);
-  const [pipelineHealth, setPipelineHealth] = useState(null);
-  const [showROI, setShowROI] = useState(false);
-  const [assistantActiveOpportunity, setAssistantActiveOpportunity] = useState(null);
-  const [similarDeals, setSimilarDeals] = useState([]);
+  const [claudeContext, setClaudeContext] = useState([]);
   const [activeView, setActiveView] = useState('chat');
+  const [isThinking, setIsThinking] = useState(false);
+  const messagesEndRef = useRef(null);
 
-  // ============= DATOS Y SCRIPTS DE VENTAPEL =============
-  
-  // Preguntas SPIN del Playbook
-  const spinQuestions = {
-    situacion: [
-      "¿Qué tipo de cinta utilizan actualmente para sellar las cajas?",
-      "¿Cómo es el proceso actual de embalaje en su operación?",
-      "¿Cuántas cajas procesan diariamente/mensualmente?",
-      "¿Tienen algún sistema para rastrear cajas violadas?",
-      "¿Quién es responsable del proceso de embalaje actualmente?"
-    ],
-    problema: [
-      "¿Con qué frecuencia tienen cajas que llegan abiertas al cliente?",
-      "¿Cuántas veces necesitan rehacer el sellado por mala aplicación?",
-      "¿Han calculado el tiempo perdido en retrabajo?",
-      "¿Qué porcentaje de sus envíos tienen reclamos por violación?",
-      "¿Cuánto material adicional usan por el retrabajo?"
-    ],
-    implicacion: [
-      "¿Cuál es el costo de reponer un producto cuando hay un reclamo?",
-      "¿Cómo afecta esto la satisfacción de sus clientes?",
-      "¿Qué impacto tiene en la reputación de su marca?",
-      "¿Los ejecutivos están al tanto de estas pérdidas?",
-      "¿Compras está presionando para reducir estos costos?"
-    ],
-    necesidad: [
-      "¿Qué tan importante es para ustedes eliminar las violaciones?",
-      "Si pudieran reducir 95% las pérdidas, ¿qué significaría para su área?",
-      "¿Cuánto estarían dispuestos a invertir para solucionar esto?",
-      "¿Quién tomaría la decisión de implementar una solución?",
-      "¿Cuál sería el proceso para aprobar esta inversión?"
-    ]
-  };
-
-  // Manejo de objeciones del Playbook
-  const objectionHandlers = {
-    precio: {
-      objecion: "Es muy caro",
-      respuesta: "Entiendo su preocupación. Pero veamos los números: están perdiendo R$ [X] por mes. Nuestra solución cuesta R$ [Y] con ROI en 3 meses. No es un gasto, es una inversión con retorno garantizado. L'Oréal pensó lo mismo y ahora ahorra R$ 2.5M al año."
-    },
-    importado: {
-      objecion: "Es importado, puede faltar material",
-      respuesta: "Mantenemos stock para 6+ meses en Brasil. En 10 años jamás dejamos a un cliente sin material. Amazon, nuestro cliente más exigente, nunca tuvo faltantes. Además, incluimos cláusula de garantía de suministro en el contrato."
-    },
-    cambio_proceso: {
-      objecion: "Requiere cambiar nuestro proceso",
-      respuesta: "El cambio es mínimo y lo acompañamos. Incluimos 2 días de capacitación y soporte en sitio. MercadoLibre hizo la transición en 3 días sin parar la operación. El equipo prefiere nuestra solución porque es más ergonómica."
-    },
-    decisor_ausente: {
-      objecion: "Necesito consultarlo con mi jefe",
-      respuesta: "Perfecto, es una decisión importante. ¿Podemos agendar una reunión con él? Preparé un business case ejecutivo de 1 página. ¿Qué información necesita para tomar la decisión? Lo ayudo a preparar la presentación."
-    }
-  };
-
-  // Casos de éxito para referencias
-  const successCases = {
-    'e-commerce': {
-      empresa: 'MercadoLibre',
-      resultado: '40% reducción retrabajo, ahorro R$ 180k/mes',
-      roi: '2 meses',
-      contacto: 'Podemos organizar una llamada con su par en ML'
-    },
-    'cosmética': {
-      empresa: "L'Oréal",
-      resultado: '100% furtos eliminados, +50% eficiencia',
-      roi: '3 meses',
-      contacto: 'Caso documentado con métricas certificadas'
-    },
-    'farmacéutica': {
-      empresa: 'Natura',
-      resultado: '60% menos violaciones, R$ 85k/mes ahorro',
-      roi: '4 meses',
-      contacto: 'Video testimonial disponible'
-    },
-    'automotriz': {
-      empresa: 'Honda Argentina',
-      resultado: '+40% velocidad, 100% reducción faltantes',
-      roi: '3 meses',
-      contacto: 'Visita a planta disponible'
-    }
-  };
-
-  // ============= FUNCIONES CORE DEL ASISTENTE =============
-
+  // Cargar oportunidades
   useEffect(() => {
     if (supabase) {
-      loadPipelineData();
+      loadOpportunities();
     }
-  }, [currentUser, supabase]);
+  }, [supabase]);
 
-  useEffect(() => {
-    const opportunityToAnalyze = assistantActiveOpportunity || currentOpportunity;
-    if (opportunityToAnalyze) {
-      analyzeOpportunityWithContext(opportunityToAnalyze);
-      checkOpportunityHealth(opportunityToAnalyze);
-      findSimilarDeals(opportunityToAnalyze);
-    }
-  }, [currentOpportunity, assistantActiveOpportunity, allOpportunities]);
-
-  const loadPipelineData = async () => {
-    if (!supabase) return;
-    
+  const loadOpportunities = async () => {
     try {
       const { data, error } = await supabase
         .from('opportunities')
@@ -152,1379 +157,582 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
       if (!error && data) {
         setAllOpportunities(data);
-        analyzePipelineHealth(data);
       }
     } catch (err) {
-      console.error('Error loading pipeline:', err);
+      console.error('Error loading opportunities:', err);
     }
   };
 
-  const findSimilarDeals = async (opp) => {
-    if (!opp || !supabase) return;
+  // Auto-scroll al último mensaje
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
+  // ============= LLAMADA A CLAUDE API =============
+  const callClaudeAPI = async (prompt, context = {}) => {
     try {
-      const { data: industryDeals } = await supabase
-        .from('opportunities')
-        .select('*')
-        .eq('industry', opp.industry)
-        .neq('id', opp.id)
-        .gte('stage', 5)
-        .limit(5);
+      // Preparar el contexto enriquecido con TODOS los datos del CRM
+      const enrichedPrompt = `
+Eres un experto asesor de ventas de Ventapel Brasil. Tienes acceso a:
 
-      const { data: productDeals } = await supabase
-        .from('opportunities')
-        .select('*')
-        .eq('product', opp.product)
-        .neq('id', opp.id)
-        .gte('stage', 5)
-        .limit(5);
+CONTEXTO ACTUAL DEL CRM:
+- Cliente: ${context.cliente || 'No seleccionado'}
+- Industria: ${context.industria || 'No especificada'}
+- Valor oportunidad: R$ ${context.valor?.toLocaleString('pt-BR') || '0'}
+- Etapa actual: ${context.etapa || 'Prospección'}
+- Probabilidad: ${context.probabilidad || 0}%
+- Score PPVVCC: ${context.ppvvcc || '0/10'}
+- Última actualización: ${context.ultimaActualizacion || 'No registrada'}
+- Días sin contacto: ${context.diasSinContacto || 'No calculado'}
+- Próxima acción: ${context.proximaAccion || 'No definida'}
 
-      const minValue = opp.value * 0.7;
-      const maxValue = opp.value * 1.3;
-      const { data: valueDeals } = await supabase
-        .from('opportunities')
-        .select('*')
-        .gte('value', minValue)
-        .lte('value', maxValue)
-        .neq('id', opp.id)
-        .gte('stage', 5)
-        .limit(5);
+SCORES DETALLADOS PPVVCC:
+- DOR (Pain): ${context.scoreDor || 0}/10 - ${context.descripcionDor || 'Sin notas'}
+- PODER (Power): ${context.scorePoder || 0}/10 - ${context.descripcionPoder || 'Sin notas'}
+- VISÃO (Vision): ${context.scoreVisao || 0}/10 - ${context.descripcionVisao || 'Sin notas'}
+- VALOR (Value): ${context.scoreValor || 0}/10 - ${context.descripcionValor || 'Sin notas'}
+- CONTROLE (Control): ${context.scoreControle || 0}/10 - ${context.descripcionControle || 'Sin notas'}
+- COMPRAS (Purchase): ${context.scoreCompras || 0}/10 - ${context.descripcionCompras || 'Sin notas'}
 
-      const allSimilar = [...(industryDeals || []), ...(productDeals || []), ...(valueDeals || [])];
-      const uniqueDeals = Array.from(new Map(allSimilar.map(d => [d.id, d])).values());
+CONTACTOS MAPEADOS:
+- Power Sponsor: ${context.powerSponsor || 'No identificado'}
+- Sponsor: ${context.sponsor || 'No identificado'}
+- Influenciador: ${context.influencer || 'No identificado'}
+- Soporte: ${context.supportContact || 'No identificado'}
+
+PIPELINE CONTEXT:
+- Total oportunidades vendedor: ${context.totalOportunidades || 0}
+- Valor total pipeline: R$ ${context.valorTotalPipeline?.toLocaleString('pt-BR') || '0'}
+- Oportunidades en riesgo: ${context.oportunidadesEnRiesgo || 0}
+- Deals similares ganados: ${context.dealsSimilaresGanados || 'No hay datos'}
+
+CASOS DE ÉXITO REALES (NO inventar otros):
+${JSON.stringify(CASOS_EXITO_REALES, null, 2)}
+
+BENCHMARKS BRASIL 2024:
+${JSON.stringify(BENCHMARKS_BRASIL, null, 2)}
+
+INSTRUCCIONES CRÍTICAS:
+1. SOLO usa los casos de éxito que te proporcioné arriba. NO inventes casos.
+2. Si mencionas ROI, calcula con los datos reales: 10% pérdidas promedio Brasil
+3. Sé directo y sin rodeos. El CEO no quiere pérdida de tiempo.
+4. Usa métricas reales, no genéricas.
+5. Si no sabes algo, di que necesitas más información.
+
+SOLICITUD DEL USUARIO:
+${prompt}
+
+Responde en español directo del Río de la Plata como el CEO espera.`;
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2000,
+          messages: [
+            ...claudeContext,
+            { role: 'user', content: enrichedPrompt }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Claude API error: ${response.status}`);
+      }
+
+      const data = await response.json();
       
-      setSimilarDeals(uniqueDeals);
-      return uniqueDeals;
-    } catch (err) {
-      console.error('Error buscando deals similares:', err);
-      return [];
+      // Actualizar contexto de Claude
+      setClaudeContext(prev => [
+        ...prev.slice(-4), // Mantener últimos 4 mensajes
+        { role: 'user', content: prompt },
+        { role: 'assistant', content: data.content[0].text }
+      ]);
+
+      return data.content[0].text;
+    } catch (error) {
+      console.error('Error llamando a Claude:', error);
+      return null;
     }
+  };
+
+  // ============= ANÁLISIS INTELIGENTE CON CLAUDE =============
+  const analyzeWithClaude = async (opportunity) => {
+    const prompt = `
+Analiza esta oportunidad y dame una estrategia CONCRETA:
+- Cliente: ${opportunity.client}
+- Industria: ${opportunity.industry || 'General'}
+- Valor: R$ ${opportunity.value}
+- Etapa actual: ${opportunity.stage}
+- Dolor actual: ${opportunity.scales?.dor?.score || 0}/10
+- Poder: ${opportunity.scales?.poder?.score || 0}/10
+
+Necesito:
+1. ¿Qué caso de éxito real debo usar? (SOLO de los que tienes)
+2. ¿Cuál es el problema principal a atacar?
+3. Script exacto para la próxima llamada (máximo 5 líneas)
+4. Objeción probable y cómo responder
+5. ROI estimado con números reales
+
+NO inventes casos. USA SOLO: Honda, L'Oréal, Nike, MercadoLibre, Natura o Centauro.`;
+
+    const response = await callClaudeAPI(prompt, {
+      cliente: opportunity.client,
+      industria: opportunity.industry,
+      valor: opportunity.value,
+      etapa: opportunity.stage,
+      ppvvcc: calculateHealthScore(opportunity.scales)
+    });
+
+    return response;
+  };
+
+  // ============= BÚSQUEDA WEB INTELIGENTE =============
+  const searchCompanyWeb = async (companyName) => {
+    setIsThinking(true);
+    
+    // Primero buscar en web via API
+    const response = await fetch('/api/assistant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        specialRequestType: 'web_research',
+        companyName: companyName,
+        vendorName: currentUser
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      
+      // Ahora pedirle a Claude que analice los resultados
+      const claudePrompt = `
+Basándote en esta información de ${companyName}:
+${data.response}
+
+Crea una estrategia de approach ESPECÍFICA:
+1. ¿Qué problema tienen que Ventapel resuelve?
+2. ¿A quién debo contactar primero? (cargo específico)
+3. ¿Qué caso de éxito usar? (SOLO Honda, L'Oréal, Nike, MercadoLibre, Natura o Centauro)
+4. Mensaje de LinkedIn para primer contacto (máximo 3 líneas)
+5. Estimación de pérdidas mensuales
+
+Sé DIRECTO y ESPECÍFICO.`;
+
+      const claudeAnalysis = await callClaudeAPI(claudePrompt, {
+        cliente: companyName
+      });
+
+      setIsThinking(false);
+      
+      return `${data.response}\n\n🤖 **ANÁLISIS ESTRATÉGICO CLAUDE:**\n${claudeAnalysis}`;
+    }
+    
+    setIsThinking(false);
+    return null;
+  };
+
+  // ============= GENERADORES MEJORADOS =============
+  const generateSmartEmail = async (opp) => {
+    const prompt = `
+Genera un email de venta para:
+- Cliente: ${opp.client}
+- Contacto: ${opp.sponsor || 'Gerente'}
+- Industria: ${opp.industry || 'General'}
+- Valor deal: R$ ${opp.value}
+- Etapa: ${opp.stage}
+
+El email debe:
+1. Ser máximo 10 líneas
+2. Mencionar UN caso de éxito relevante (de los reales)
+3. Incluir UNA métrica de pérdida específica
+4. Tener UN call-to-action claro
+5. Asunto que genere urgencia
+
+NO uses templates genéricos. Hazlo específico para este cliente.`;
+
+    return await callClaudeAPI(prompt, {
+      cliente: opp.client,
+      industria: opp.industry,
+      valor: opp.value
+    });
+  };
+
+  const generateCallScript = async (opp) => {
+    const prompt = `
+Crea un script de llamada SPIN para:
+- Cliente: ${opp.client}
+- Dolor actual: ${opp.scales?.dor?.score || 0}/10
+- Poder: ${opp.scales?.poder?.score || 0}/10
+
+Dame:
+1. Apertura (máximo 2 líneas)
+2. 3 preguntas de SITUACIÓN específicas
+3. 2 preguntas de PROBLEMA que duelen
+4. 1 pregunta de IMPLICACIÓN financiera
+5. Cierre con próximo paso concreto
+
+Tiempo total: 15 minutos. Sé DIRECTO.`;
+
+    return await callClaudeAPI(prompt, {
+      cliente: opp.client
+    });
+  };
+
+  const generateROIAnalysis = async (opp) => {
+    const prompt = `
+Calcula el ROI REAL para:
+- Cliente: ${opp.client}
+- Industria: ${opp.industry || 'General'}
+- Valor mensual estimado: R$ ${opp.value}
+
+Usa estos datos reales:
+- Pérdidas promedio Brasil: 10% (IBEVAR 2024)
+- Ventapel reduce: 95% de las pérdidas
+
+Necesito:
+1. Pérdidas actuales mensuales en R$
+2. Ahorro mensual con Ventapel
+3. Inversión estimada (basada en casos similares)
+4. ROI en meses
+5. Caso de éxito comparable con métricas
+
+NO inventes números. Usa los casos reales y benchmarks que tienes.`;
+
+    return await callClaudeAPI(prompt, {
+      cliente: opp.client,
+      industria: opp.industry,
+      valor: opp.value
+    });
+  };
+
+  // ============= FUNCIONES AUXILIARES =============
+  const calculateHealthScore = (scales) => {
+    if (!scales) return 0;
+    const values = Object.values(scales).map(s => s?.score || 0);
+    return (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
   };
 
   const getScaleValue = (scale) => {
     if (!scale) return 0;
-    if (typeof scale === 'object' && scale.score !== undefined) {
-      return scale.score;
-    }
-    if (typeof scale === 'number') {
-      return scale;
-    }
-    return 0;
-  };
-
-  const calculateHealthScore = (scales) => {
-    if (!scales) return 0;
-    
-    const values = [
-      getScaleValue(scales.dor || scales.pain),
-      getScaleValue(scales.poder || scales.power),
-      getScaleValue(scales.visao || scales.vision),
-      getScaleValue(scales.valor || scales.value),
-      getScaleValue(scales.controle || scales.control),
-      getScaleValue(scales.compras || scales.purchase)
-    ];
-    
-    const sum = values.reduce((acc, val) => acc + val, 0);
-    return values.length > 0 ? sum / values.length : 0;
-  };
-
-  const analyzePipelineHealth = (opportunities) => {
-    const totalValue = opportunities.reduce((sum, opp) => sum + (opp.value || 0), 0);
-    const riskOpps = opportunities.filter(opp => {
-      const avgScale = calculateHealthScore(opp.scales || {});
-      return avgScale < 4 && opp.value > 50000;
-    });
-
-    setPipelineHealth({
-      total: opportunities.length,
-      totalValue,
-      atRisk: riskOpps.length,
-      riskValue: riskOpps.reduce((sum, opp) => sum + (opp.value || 0), 0)
-    });
-  };
-
-  const analyzeOpportunityWithContext = (opp) => {
-    if (!opp || !opp.scales) return;
-
-    const context = getIntelligentContext(opp);
-    
-    const scaleValues = {
-      pain: getScaleValue(opp.scales.dor || opp.scales.pain),
-      power: getScaleValue(opp.scales.poder || opp.scales.power),
-      vision: getScaleValue(opp.scales.visao || opp.scales.vision),
-      value: getScaleValue(opp.scales.valor || opp.scales.value),
-      control: getScaleValue(opp.scales.controle || opp.scales.control),
-      purchase: getScaleValue(opp.scales.compras || opp.scales.purchase)
-    };
-    
-    const avgScale = calculateHealthScore(opp.scales);
-    const inconsistencies = [];
-    
-    // Detectar inconsistencias
-    if (opp.stage >= 3 && scaleValues.pain < 5) {
-      inconsistencies.push({
-        type: 'critical',
-        message: '🔴 INCONSISTENCIA: Presentando sin DOR confirmada!',
-        action: 'Volver a calificación URGENTE',
-        script: spinQuestions.problema[0]
-      });
-    }
-    
-    if (opp.value > 100000 && scaleValues.power < 4) {
-      inconsistencies.push({
-        type: 'critical',
-        message: `⛔ PROBLEMA: R$${opp.value.toLocaleString('pt-BR')} sin hablar con decisor`,
-        action: 'Conseguir acceso al POWER hoy',
-        script: "Necesito validar con quien aprueba inversiones de este monto"
-      });
-    }
-
-    // Calcular probabilidad real
-    let probability = 0;
-    if (scaleValues.pain >= 7 && scaleValues.power >= 6 && scaleValues.value >= 6) {
-      probability = 75;
-    } else if (scaleValues.pain >= 5 && scaleValues.power >= 4 && scaleValues.value >= 4) {
-      probability = 40;
-    } else if (scaleValues.pain >= 3) {
-      probability = 15;
-    } else {
-      probability = 5;
-    }
-
-    setAnalysis({
-      avgScale: avgScale.toFixed(1),
-      probability,
-      scaleValues,
-      inconsistencies,
-      nextAction: generateSmartNextAction(opp, scaleValues, inconsistencies, context),
-      context,
-      similarDealsCount: similarDeals.length
-    });
-  };
-
-  const getIntelligentContext = (opp) => {
-    const context = {
-      priority1_clientNotes: {},
-      priority2_similarDeals: {},
-      priority3_ventapelCases: {},
-      priority4_brazilBenchmarks: {},
-      dataSource: null
-    };
-
-    // Prioridad 1: Notas del cliente
-    if (opp) {
-      context.priority1_clientNotes = {
-        hasData: false,
-        notes: []
-      };
-
-      if (opp.next_action) {
-        context.priority1_clientNotes.notes.push(`Próxima acción: ${opp.next_action}`);
-        context.priority1_clientNotes.hasData = true;
-      }
-      
-      if (opp.scales?.dor?.description) {
-        context.priority1_clientNotes.notes.push(`Dolor: ${opp.scales.dor.description}`);
-        context.priority1_clientNotes.hasData = true;
-      }
-    }
-
-    // Prioridad 2: Deals similares
-    if (similarDeals.length > 0) {
-      context.priority2_similarDeals = {
-        hasData: true,
-        count: similarDeals.length,
-        avgValue: similarDeals.reduce((sum, d) => sum + d.value, 0) / similarDeals.length
-      };
-    }
-
-    // Determinar fuente principal
-    if (context.priority1_clientNotes.hasData) {
-      context.dataSource = 'DATOS DEL CLIENTE';
-    } else if (context.priority2_similarDeals.hasData) {
-      context.dataSource = 'DEALS SIMILARES';
-    } else {
-      context.dataSource = 'BENCHMARKS BRASIL';
-    }
-
-    return context;
-  };
-
-  const generateSmartNextAction = (opp, scaleValues, inconsistencies, context) => {
-    if (inconsistencies.length > 0 && inconsistencies[0].type === 'critical') {
-      return {
-        action: inconsistencies[0].action,
-        script: inconsistencies[0].script,
-        dataSource: context.dataSource
-      };
-    }
-    
-    if (scaleValues.pain < 5) {
-      return {
-        action: "🎯 Hacer que ADMITA el problema",
-        script: spinQuestions.problema[0],
-        dataSource: context.dataSource
-      };
-    }
-    
-    if (scaleValues.power < 4) {
-      return {
-        action: "👔 Acceder al DECISOR",
-        script: "Para garantizar ROI de 3 meses, necesito validar con quien aprueba",
-        dataSource: context.dataSource
-      };
-    }
-    
-    if (scaleValues.vision < 5) {
-      return {
-        action: "🎬 Demo urgente",
-        script: `Mostrar caso ${successCases[opp.industry?.toLowerCase()]?.empresa || 'L\'Oréal'}`,
-        dataSource: context.dataSource
-      };
-    }
-    
-    return {
-      action: "✅ CERRAR el negocio",
-      script: "¿Cuál es el proceso interno para aprobar esta inversión?",
-      dataSource: context.dataSource
-    };
-  };
-
-  const checkOpportunityHealth = (opp) => {
-    const newAlerts = [];
-    
-    if (opp.last_update) {
-      const daysSince = Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24));
-      if (daysSince > 7) {
-        newAlerts.push({
-          type: 'urgent',
-          message: `🔴 ${daysSince} días sin contacto - VAI PERDER!`,
-          action: 'reactivate'
-        });
-      }
-    }
-
-    setAlerts(newAlerts);
-  };
-
-  // ============= GENERADORES DE CONTENIDO =============
-  
-  const generateCompleteStrategy = (opp) => {
-    if (!opp) return "Selecciona un cliente primero";
-
-    const stage = opp.stage || 1;
-    const dorScore = getScaleValue(opp.scales?.dor);
-    const poderScore = getScaleValue(opp.scales?.poder);
-    const visaoScore = getScaleValue(opp.scales?.visao);
-    const valorScore = getScaleValue(opp.scales?.valor);
-    const controleScore = getScaleValue(opp.scales?.controle);
-    const comprasScore = getScaleValue(opp.scales?.compras);
-    
-    let strategy = `🎯 **ESTRATEGIA COMPLETA - ${opp.client}**\n\n`;
-    
-    // Diagnóstico
-    strategy += `📊 **DIAGNÓSTICO ACTUAL:**\n`;
-    strategy += `• Etapa: ${stage} - ${['', 'Prospección', 'Calificación', 'Presentación', 'Validación', 'Negociación', 'Cerrado'][stage]}\n`;
-    strategy += `• Score PPVVCC: ${calculateHealthScore(opp.scales).toFixed(1)}/10\n`;
-    strategy += `• Valor: R$ ${opp.value.toLocaleString('pt-BR')}\n`;
-    
-    // Problema principal
-    strategy += `\n⚠️ **PROBLEMA PRINCIPAL:**\n`;
-    if (dorScore < 5) {
-      strategy += `❌ Cliente NO admite el problema (DOR: ${dorScore}/10)\n`;
-      strategy += `→ Sin dolor admitido, no hay venta posible\n`;
-    } else if (poderScore < 4) {
-      strategy += `❌ Sin acceso al decisor (PODER: ${poderScore}/10)\n`;
-      strategy += `→ Riesgo de perder tiempo con quien no decide\n`;
-    } else if (comprasScore < 5) {
-      strategy += `❌ Compras no está alineado (COMPRAS: ${comprasScore}/10)\n`;
-      strategy += `→ Deal puede morir en el proceso de compra\n`;
-    } else if (valorScore < 6) {
-      strategy += `⚠️ ROI no validado (VALOR: ${valorScore}/10)\n`;
-      strategy += `→ Sin business case, no hay presupuesto\n`;
-    } else {
-      strategy += `✅ Bien encaminado, falta cerrar\n`;
-    }
-    
-    // Plan de acción detallado
-    strategy += `\n📋 **PLAN DE ACCIÓN (próximos 7 días):**\n\n`;
-    
-    // DÍA 1-2
-    strategy += `**📅 HOY/MAÑANA - Acción inmediata:**\n`;
-    if (dorScore < 5) {
-      strategy += `📞 Llamada SPIN de 15 minutos:\n`;
-      strategy += `   1. Situación: "${spinQuestions.situacion[0]}"\n`;
-      strategy += `   2. Problema: "${spinQuestions.problema[0]}"\n`;
-      strategy += `   3. Implicación: "${spinQuestions.implicacion[0]}"\n`;
-      strategy += `   4. Necesidad: "${spinQuestions.necesidad[0]}"\n`;
-      strategy += `   Meta: Que admita pérdidas de R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')}/mes\n`;
-    } else if (poderScore < 4) {
-      strategy += `📧 Email al sponsor actual:\n`;
-      strategy += `   Asunto: "Business case ${opp.client} - necesito 10 min con [decisor]"\n`;
-      strategy += `   Mensaje: ROI calculado en ${Math.round(opp.value / (opp.value * 0.01 * 0.95))} meses\n`;
-      strategy += `   CTA: Agendar reunión tripartita esta semana\n`;
-    } else {
-      strategy += `💰 Presentar propuesta con urgencia:\n`;
-      strategy += `   "Cada día sin decidir = R$ ${Math.round(opp.value * 0.01 / 30).toLocaleString('pt-BR')} perdidos"\n`;
-    }
-    
-    // DÍA 3-4
-    strategy += `\n**📅 MIÉRCOLES/JUEVES - Construir momentum:**\n`;
-    const industry = opp.industry?.toLowerCase() || 'default';
-    const successCase = successCases[industry] || successCases['e-commerce'];
-    strategy += `📹 Compartir caso ${successCase.empresa}:\n`;
-    strategy += `   • Resultado: ${successCase.resultado}\n`;
-    strategy += `   • ROI: ${successCase.roi}\n`;
-    strategy += `   • Oferta: ${successCase.contacto}\n`;
-    
-    // DÍA 5-7
-    strategy += `\n**📅 VIERNES/PRÓXIMA SEMANA - Cerrar compromiso:**\n`;
-    if (stage < 4) {
-      strategy += `🎯 Objetivo: Agendar TEST DAY\n`;
-      strategy += `   • Propuesta: "Probemos con 100 cajas sin compromiso"\n`;
-      strategy += `   • Fecha tentativa: ${new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')}\n`;
-    } else {
-      strategy += `✅ Objetivo: CERRAR EL DEAL\n`;
-      strategy += `   • Incentivo: "10% descuento si firmamos esta semana"\n`;
-      strategy += `   • Garantía: "ROI en 3 meses o devolvemos su dinero"\n`;
-    }
-    
-    // Scripts y mensajes
-    strategy += `\n📝 **MENSAJES CLAVE PARA USAR:**\n\n`;
-    
-    strategy += `**WhatsApp (copiar y pegar):**\n`;
-    strategy += `"Hola [nombre], calculé que ${opp.client} pierde ~R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')}/mes por violación de cajas.\n`;
-    strategy += `${successCase.empresa} tenía el mismo problema y ahora ahorra R$ millones.\n`;
-    strategy += `¿10 minutos mañana para mostrarle los números?"\n\n`;
-    
-    strategy += `**LinkedIn:**\n`;
-    strategy += `"Vi que ${opp.client} está creciendo en e-commerce. `;
-    strategy += `¿Sabía que el sector pierde 10% por violación (IBEVAR 2024)? `;
-    strategy += `Ayudamos a ${successCase.empresa} a eliminar este problema. ¿Charlamos?"\n\n`;
-    
-    strategy += `**Email asunto:**\n`;
-    strategy += `"${opp.client}: Pérdida identificada R$ ${(opp.value * 0.01 * 12).toLocaleString('pt-BR')}/año"\n\n`;
-    
-    // Métricas de éxito
-    strategy += `📈 **KPIs PARA MEDIR ÉXITO:**\n`;
-    strategy += `• Esta semana: ${dorScore < 5 ? 'DOR ≥ 5' : poderScore < 4 ? 'PODER ≥ 4' : 'Propuesta enviada'}\n`;
-    strategy += `• En 15 días: ${stage < 4 ? 'Test day agendado' : 'Contrato en revisión'}\n`;
-    strategy += `• En 30 días: ${stage < 3 ? 'Etapa 3 alcanzada' : 'Deal cerrado'}\n\n`;
-    
-    // Recursos
-    strategy += `🛠️ **RECURSOS DISPONIBLES:**\n`;
-    strategy += `• [Calculadora ROI|calcular:ROI:${opp.client}]\n`;
-    strategy += `• [Caso ${successCase.empresa}|mostrar:caso:${successCase.empresa}]\n`;
-    strategy += `• [Demo en video|link:demo:Ventapel]\n`;
-    strategy += `• [Propuesta template|generar:propuesta]\n`;
-    
-    return strategy;
-  };
-
-  const generateEmail = (opp, tipo = 'seguimiento') => {
-    if (!opp) return "Selecciona un cliente primero";
-
-    const stage = opp.stage || 1;
-    const dorScore = getScaleValue(opp.scales?.dor);
-    const poderScore = getScaleValue(opp.scales?.poder);
-    const comprasScore = getScaleValue(opp.scales?.compras);
-    
-    let email = `📧 **EMAIL PARA ${opp.client.toUpperCase()}**\n\n`;
-    
-    // Diferentes tipos de email según situación
-    if (tipo === 'primer_contacto' || stage === 1) {
-      email += `**Asunto:** 🚨 ${opp.industry || 'Empresas'} pierden 10% en violación - Caso ${opp.client}\n\n`;
-      email += `Estimado ${opp.sponsor || 'equipo de ' + opp.client},\n\n`;
-      email += `¿Sabían que empresas del sector ${opp.industry || 'logístico'} en Brasil pierden en promedio 10% de sus envíos por violación de cajas? `;
-      email += `(Fuente: IBEVAR 2024)\n\n`;
-      email += `Para ${opp.client}, esto representa aproximadamente:\n`;
-      email += `• R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')}/mes en pérdidas\n`;
-      email += `• R$ ${Math.round(opp.value * 0.01 * 12).toLocaleString('pt-BR')}/año tirados a la basura\n\n`;
-      email += `En Ventapel eliminamos este problema. Casos recientes:\n`;
-      email += `• L'Oréal: 100% furtos eliminados, ROI 3 meses\n`;
-      email += `• MercadoLibre: 40% menos retrabajo\n`;
-      email += `• Nike: Cero violaciones, +30% eficiencia\n\n`;
-      email += `¿Podemos agendar 15 minutos esta semana para mostrarle cuánto podría ahorrar ${opp.client}?\n\n`;
-      email += `Días disponibles:\n`;
-      email += `• Martes 2pm-5pm\n`;
-      email += `• Miércoles 9am-12pm\n`;
-      email += `• Jueves 2pm-5pm\n\n`;
-      
-    } else if (comprasScore < 5 && dorScore >= 5) {
-      // Email para convencer a Compras
-      email += `**Asunto:** ✅ Business Case ${opp.client} - ROI ${Math.round(opp.value / (opp.value * 0.01 * 0.95))} meses\n\n`;
-      email += `${opp.sponsor || 'Estimado'},\n\n`;
-      email += `Adjunto el business case completo para facilitar la aprobación con Compras:\n\n`;
-      email += `**📊 NÚMEROS EJECUTIVOS:**\n`;
-      email += `• Pérdida actual: R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')}/mes\n`;
-      email += `• Inversión Ventapel: R$ ${opp.value.toLocaleString('pt-BR')}\n`;
-      email += `• Ahorro mensual: R$ ${Math.round(opp.value * 0.01 * 0.95).toLocaleString('pt-BR')}\n`;
-      email += `• ROI: ${Math.round(opp.value / (opp.value * 0.01 * 0.95))} meses\n`;
-      email += `• TIR Año 1: ${Math.round(((opp.value * 0.01 * 0.95 * 12 - opp.value) / opp.value) * 100)}%\n\n`;
-      email += `**✅ GARANTÍAS:**\n`;
-      email += `• ROI en 3 meses o devolvemos su dinero\n`;
-      email += `• 2 años garantía en equipos\n`;
-      email += `• Stock garantizado (nunca faltó en 10 años)\n`;
-      email += `• Soporte local en Brasil\n\n`;
-      email += `**⚡ URGENCIA:**\n`;
-      email += `Cada mes sin decidir = R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')} perdidos\n`;
-      email += `En 6 meses = R$ ${Math.round(opp.value * 0.01 * 6).toLocaleString('pt-BR')} desperdiciados\n\n`;
-      email += `¿Necesita algún documento adicional para Compras?\n\n`;
-      
-    } else if (stage >= 4) {
-      // Email de cierre
-      email += `**Asunto:** 🎯 Propuesta Final ${opp.client} - Decisión esta semana\n\n`;
-      email += `${opp.power_sponsor || opp.sponsor || 'Estimado'},\n\n`;
-      email += `Como acordamos, aquí está la propuesta final con condiciones especiales:\n\n`;
-      email += `**✅ PROPUESTA APROBADA:**\n`;
-      email += `• Inversión: R$ ${opp.value.toLocaleString('pt-BR')}\n`;
-      email += `• Forma de pago: 30/60/90 días\n`;
-      email += `• Instalación: Incluida\n`;
-      email += `• Capacitación: 2 días en sitio\n\n`;
-      email += `**🎁 BONUS por firmar esta semana:**\n`;
-      email += `• 10% descuento adicional\n`;
-      email += `• 3 meses de cinta sin costo\n`;
-      email += `• Upgrade a soporte premium\n\n`;
-      email += `**Para proceder:**\n`;
-      email += `1. Confirme por este email\n`;
-      email += `2. Enviamos contrato digital (DocuSign)\n`;
-      email += `3. Instalación en 7 días hábiles\n\n`;
-      email += `¿Cerramos hoy?\n\n`;
-    }
-    
-    // Firma
-    email += `Saludos,\n`;
-    email += `${currentUser || '[Tu nombre]'}\n`;
-    email += `Ventapel Brasil\n`;
-    email += `📱 WhatsApp: [tu número]\n`;
-    email += `🌐 www.ventapel.com.br\n\n`;
-    email += `P.D.: ${successCases[opp.industry?.toLowerCase()]?.empresa || 'L\'Oréal'} también dudó al principio. `;
-    email += `Hoy ahorran millones. No dejen pasar esta oportunidad.\n`;
-    
-    return email;
-  };
-
-  const generateCallScript = (opp) => {
-    if (!opp) return "Selecciona un cliente primero";
-
-    const dorScore = getScaleValue(opp.scales?.dor);
-    const poderScore = getScaleValue(opp.scales?.poder);
-    
-    let script = `📞 **SCRIPT DE LLAMADA - ${opp.client}**\n\n`;
-    script += `⏱️ Duración objetivo: 15-20 minutos\n\n`;
-    
-    // Apertura
-    script += `**🎯 APERTURA (30 seg):**\n`;
-    script += `"Hola [nombre], soy ${currentUser} de Ventapel. `;
-    script += `¿Tiene 2 minutos? Le llamo porque descubrí que empresas como ${opp.client} `;
-    script += `pierden ~R$ ${Math.round(opp.value * 0.01).toLocaleString('pt-BR')}/mes por violación de cajas. `;
-    script += `¿Esto es un tema relevante para ustedes?"\n\n`;
-    
-    // Preguntas SPIN
-    script += `**❓ PREGUNTAS SPIN (10 min):**\n\n`;
-    
-    script += `**Situación:**\n`;
-    spinQuestions.situacion.slice(0, 2).forEach((q, i) => {
-      script += `${i + 1}. "${q}"\n`;
-    });
-    script += `→ Anotar: volumen, proceso actual, responsables\n\n`;
-    
-    script += `**Problema:**\n`;
-    spinQuestions.problema.slice(0, 2).forEach((q, i) => {
-      script += `${i + 1}. "${q}"\n`;
-    });
-    script += `→ Objetivo: Que admita % de pérdida\n\n`;
-    
-    script += `**Implicación:**\n`;
-    spinQuestions.implicacion.slice(0, 2).forEach((q, i) => {
-      script += `${i + 1}. "${q}"\n`;
-    });
-    script += `→ Objetivo: Que vea el impacto en R$\n\n`;
-    
-    script += `**Necesidad:**\n`;
-    script += `"Si pudiera eliminar 95% de estas pérdidas con ROI en 3 meses, `;
-    script += `¿sería prioridad para ${opp.client}?"\n\n`;
-    
-    // Presentación de valor
-    script += `**💡 PRESENTACIÓN DE VALOR (5 min):**\n`;
-    script += `"Basado en lo que me cuenta, Ventapel puede ayudarles:\n`;
-    script += `• Eliminar 95% de violaciones (garantizado)\n`;
-    script += `• ROI en 3 meses (o devolvemos su dinero)\n`;
-    script += `• Caso similar: ${successCases[opp.industry?.toLowerCase()]?.empresa || 'L\'Oréal'}\n`;
-    script += `  Resultado: ${successCases[opp.industry?.toLowerCase()]?.resultado || '100% furtos eliminados'}\n\n`;
-    
-    // Manejo de objeciones
-    script += `**🛡️ OBJECIONES PROBABLES:**\n\n`;
-    
-    script += `Si dice "${objectionHandlers.precio.objecion}":\n`;
-    script += `→ "${objectionHandlers.precio.respuesta}"\n\n`;
-    
-    script += `Si dice "${objectionHandlers.decisor_ausente.objecion}":\n`;
-    script += `→ "${objectionHandlers.decisor_ausente.respuesta}"\n\n`;
-    
-    // Cierre
-    script += `**✅ CIERRE (2 min):**\n`;
-    if (dorScore < 5) {
-      script += `"Le envío un análisis personalizado mostrando cuánto pierde ${opp.client}. `;
-      script += `¿Podemos agendar 30 minutos la próxima semana para revisarlo juntos?"\n`;
-    } else if (poderScore < 4) {
-      script += `"Necesito validar estos números con quien toma la decisión. `;
-      script += `¿Podemos incluir a [decisor] en una reunión de 20 minutos?"\n`;
-    } else {
-      script += `"El siguiente paso es un test en sus instalaciones. `;
-      script += `¿Qué día de la próxima semana podríamos hacer una prueba con 100 cajas?"\n`;
-    }
-    
-    script += `\n**📅 AGENDAR SIGUIENTE PASO:**\n`;
-    script += `• Confirmar día y hora\n`;
-    script += `• Enviar invitación de calendario\n`;
-    script += `• WhatsApp de confirmación\n`;
-    
-    return script;
-  };
-
-  // ============= DETECCIÓN DE INTENCIONES =============
-  
-  const detectUserIntent = (message) => {
-    const lower = message.toLowerCase().trim();
-    
-    // Eliminar palabras comunes que confunden la detección
-    const cleanMessage = lower
-      .replace(/^(ayuda|ayudame|ayúdame|ayudar|help|asiste|asisteme|analicemos|analizar|analiza|trabajemos|trabajar|veamos|ver)\s+(con|en|a|el|la|sobre)?\s*/i, '')
-      .trim();
-    
-    console.log('🔍 Mensaje original:', lower);
-    console.log('🔍 Mensaje limpio:', cleanMessage);
-    
-    // PRIORIDAD 1: Comandos especiales de navegación/lista
-    if (lower === 'listar' || lower === 'lista' || lower === 'list' || 
-        lower === 'ver oportunidades' || lower === 'ver todas' || 
-        lower === 'mostrar oportunidades' || lower === 'ver pipeline') {
-      return 'list_opportunities';
-    }
-    
-    // PRIORIDAD 2: Detección de búsqueda web - MEJORADA
-    const webSearchPatterns = [
-      /^(?:busca|buscar|buscá)\s+(?:online|en\s+internet|en\s+la\s+web|web)\s+(.+)$/i,
-      /^(?:busca|buscar|buscá)\s+(?:información|info|informacion)\s+(?:de|sobre)\s+(.+)$/i,
-      /^(?:investigar|investiga|research)\s+(.+)$/i,
-      /^(?:información|informacion|info)\s+(?:de|sobre)\s+(.+)$/i,
-      /^busca\s+(.+)\s+(?:online|en\s+internet)$/i
-    ];
-    
-    for (const pattern of webSearchPatterns) {
-      const match = lower.match(pattern);
-      if (match) {
-        return 'web_search';
-      }
-    }
-    
-    // PRIORIDAD 3: Verificar si es un nombre de empresa existente
-    if (cleanMessage && cleanMessage.length > 1) {
-      const foundOpp = allOpportunities.find(opp => 
-        opp.client?.toLowerCase() === cleanMessage ||
-        opp.client?.toLowerCase().includes(cleanMessage) ||
-        cleanMessage.includes(opp.client?.toLowerCase())
-      );
-      
-      if (foundOpp) {
-        return 'analyze_existing';
-      }
-    }
-    
-    // PRIORIDAD 4: Plan semanal
-    if (lower.includes('plan semanal') || lower === 'plan' || 
-        lower.includes('plan de la semana') || lower.includes('agenda')) {
-      return 'weekly_plan';
-    }
-    
-    // PRIORIDAD 5: Intenciones específicas de generación de contenido
-    if (lower.includes('email') || lower.includes('mail') || lower.includes('correo')) {
-      return 'email';
-    }
-    if (lower.includes('llamada') || lower.includes('call') || lower.includes('teléfono') || lower.includes('script')) {
-      return 'call';
-    }
-    if (lower.includes('estrategia') || lower.includes('strategy') || lower.includes('qué hacer')) {
-      return 'strategy';
-    }
-    if (lower.includes('whatsapp') || lower.includes('mensaje')) {
-      return 'whatsapp';
-    }
-    if (lower.includes('propuesta') || lower.includes('proposal')) {
-      return 'proposal';
-    }
-    if (lower.includes('roi') || lower.includes('calcular')) {
-      return 'roi';
-    }
-    if (lower.includes('objeción') || lower.includes('objection') || lower.includes('dice que')) {
-      return 'objection';
-    }
-    
-    return null;
-  };
-
-  const extractCompanyName = (message, intent) => {
-    const lower = message.toLowerCase().trim();
-    
-    if (intent === 'web_search') {
-      const patterns = [
-        /(?:busca|buscar|buscá)\s+(?:online|en\s+internet|en\s+la\s+web|web)\s+(.+)$/i,
-        /(?:busca|buscar|buscá)\s+(?:información|info|informacion)\s+(?:de|sobre)\s+(.+)$/i,
-        /(?:investigar|investiga|research)\s+(.+)$/i,
-        /(?:información|informacion|info)\s+(?:de|sobre)\s+(.+)$/i
-      ];
-      
-      for (const pattern of patterns) {
-        const match = message.match(pattern);
-        if (match && match[1]) {
-          return match[1].trim();
-        }
-      }
-    } else if (intent === 'analyze_existing') {
-      const cleanMessage = lower
-        .replace(/^(ayuda|ayudame|ayúdame|help|asiste|asisteme|analicemos|analizar|trabajemos|veamos)\s+(con|en|a|el|la|sobre)?\s*/i, '')
-        .trim();
-      
-      return cleanMessage;
-    }
-    
-    const words = message.split(' ').filter(w => w.length > 2);
-    return words[words.length - 1] || message;
+    return scale.score || 0;
   };
 
   // ============= PROCESAMIENTO DE MENSAJES =============
-  
-  const sendMessage = async (messageText = input) => {
-    if (!messageText.trim()) return;
+  const sendMessage = async (text = input) => {
+    if (!text.trim()) return;
 
-    const userMessage = { role: 'user', content: messageText };
+    const userMessage = { 
+      role: 'user', 
+      content: text,
+      timestamp: new Date().toISOString()
+    };
+    
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
-    
-    const intent = detectUserIntent(messageText);
-    const activeOpp = assistantActiveOpportunity || currentOpportunity;
-    
-    console.log('🎯 Intent detectado:', intent);
-    console.log('📝 Mensaje:', messageText);
-    
+
+    const lowerText = text.toLowerCase();
+
     try {
-      // CASO 1: LISTAR OPORTUNIDADES
-      if (intent === 'list_opportunities') {
-        let listMessage = `📋 **TODAS LAS OPORTUNIDADES:**\n\n`;
+      let response = '';
+
+      // Detectar intención
+      if (lowerText.includes('busca') || lowerText.includes('investiga')) {
+        const company = text.replace(/busca|buscar|investiga|investigar|información de|sobre/gi, '').trim();
+        response = await searchCompanyWeb(company);
         
-        if (allOpportunities.length === 0) {
-          listMessage = `📭 **No hay oportunidades en el pipeline**\n\n`;
-          listMessage += `¿Quieres buscar una empresa nueva?\n`;
-          listMessage += `Escribe: "buscar información de [nombre empresa]"`;
+      } else if (lowerText.includes('email')) {
+        if (currentOpportunity) {
+          response = await generateSmartEmail(currentOpportunity);
         } else {
-          allOpportunities.slice(0, 10).forEach(opp => {
-            const score = calculateHealthScore(opp.scales || {});
-            listMessage += `**${opp.client}** - R$ ${opp.value?.toLocaleString('pt-BR')}\n`;
-            listMessage += `  Etapa: ${opp.stage} | Score: ${score.toFixed(1)}/10\n`;
-            listMessage += `  Vendedor: ${opp.vendor}\n`;
-            listMessage += `  [Ver estrategia|select:${opp.id}]\n\n`;
-          });
-          
-          if (allOpportunities.length > 10) {
-            listMessage += `\n... y ${allOpportunities.length - 10} oportunidades más`;
-          }
-          
-          listMessage += `\n**Acciones rápidas:**\n`;
-          listMessage += `[🔍 Buscar empresa nueva|search:new]\n`;
-          listMessage += `[📅 Ver plan semanal|plan_semanal]`;
+          response = "❌ Selecciona un cliente primero para generar el email.";
         }
         
-        setMessages(prev => [...prev, { role: 'assistant', content: listMessage }]);
-        setIsLoading(false);
-        return;
-      }
-      
-      // CASO 2: ANALIZAR EMPRESA EXISTENTE
-      if (intent === 'analyze_existing') {
-        const companyName = extractCompanyName(messageText, intent);
-        console.log('🏢 Buscando empresa existente:', companyName);
-        
-        const foundOpp = allOpportunities.find(opp => 
-          opp.client?.toLowerCase() === companyName.toLowerCase() ||
-          opp.client?.toLowerCase().includes(companyName.toLowerCase()) ||
-          companyName.toLowerCase().includes(opp.client?.toLowerCase())
-        );
-        
-        if (foundOpp) {
-          setAssistantActiveOpportunity(foundOpp);
-          const strategy = generateCompleteStrategy(foundOpp);
-          setMessages(prev => [...prev, { role: 'assistant', content: strategy }]);
+      } else if (lowerText.includes('llamada') || lowerText.includes('script')) {
+        if (currentOpportunity) {
+          response = await generateCallScript(currentOpportunity);
         } else {
-          setMessages(prev => [...prev, { 
-            role: 'assistant', 
-            content: `❌ No encontré "${companyName}" en el CRM.\n\n` +
-                     `**¿Qué quieres hacer?**\n\n` +
-                     `[🔍 Buscar ${companyName} en internet|search:${companyName}]\n` +
-                     `[📋 Ver todas las oportunidades|list:all]\n` +
-                     `[➕ Crear nueva oportunidad|create:new]`
-          }]);
+          response = "❌ Selecciona un cliente primero para generar el script.";
         }
-        setIsLoading(false);
-        return;
-      }
-      
-      // CASO 3: BÚSQUEDA WEB DE EMPRESA NUEVA
-      if (intent === 'web_search') {
-        const companyName = extractCompanyName(messageText, intent);
-        console.log('🔍 Buscando en web:', companyName);
         
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: `🔍 Buscando información sobre **${companyName}** en internet...` 
-        }]);
+      } else if (lowerText.includes('roi') || lowerText.includes('retorno')) {
+        if (currentOpportunity) {
+          response = await generateROIAnalysis(currentOpportunity);
+        } else {
+          response = "❌ Selecciona un cliente primero para calcular ROI.";
+        }
         
-        const response = await fetch('/api/assistant', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            specialRequestType: 'web_research',
-            companyName: companyName,
-            vendorName: currentUser,
-            context: 'prospecting'
-          })
+      } else if (lowerText.includes('estrategia') || lowerText.includes('plan')) {
+        if (currentOpportunity) {
+          response = await analyzeWithClaude(currentOpportunity);
+        } else {
+          response = "❌ Selecciona un cliente primero para crear la estrategia.";
+        }
+        
+      } else if (lowerText === 'listar' || lowerText === 'lista') {
+        response = generateOpportunitiesList();
+        
+      } else {
+        // Pregunta general a Claude
+        response = await callClaudeAPI(text, {
+          cliente: currentOpportunity?.client,
+          industria: currentOpportunity?.industry,
+          valor: currentOpportunity?.value
         });
         
-        if (response.ok) {
-          const data = await response.json();
-          
-          setMessages(prev => {
-            const newMessages = [...prev];
-            newMessages[newMessages.length - 1] = {
-              role: 'assistant',
-              content: data.response
-            };
-            return newMessages;
-          });
-          
-          if (data.response && !data.response.includes('No pude encontrar')) {
-            setMessages(prev => [...prev, { 
-              role: 'assistant', 
-              content: `\n💡 **¿Quieres crear esta oportunidad?**\n\n` +
-                      `[✅ Crear oportunidad ${companyName}|create:${companyName}]\n` +
-                      `[🔍 Buscar otra empresa|search:new]\n` +
-                      `[📋 Ver pipeline actual|list:opportunities]`
-            }]);
-          }
+        if (!response) {
+          response = "No pude procesar tu solicitud. Intenta ser más específico.";
         }
-        setIsLoading(false);
-        return;
       }
+
+      const assistantMessage = {
+        role: 'assistant',
+        content: response,
+        timestamp: new Date().toISOString()
+      };
       
-      // CASO 4: Plan semanal
-      if (intent === 'weekly_plan') {
-        const response = await fetch('/api/assistant', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            specialRequestType: 'weekly_plan',
-            pipelineData: {
-              allOpportunities: allOpportunities.filter(o => o.vendor === currentUser),
-              vendorName: currentUser
-            },
-            vendorName: currentUser
-          })
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
-        }
-        setIsLoading(false);
-        return;
-      }
+      setMessages(prev => [...prev, assistantMessage]);
       
-      // CASO 5: Intenciones con cliente activo
-      if (intent && activeOpp) {
-        let response = '';
-        
-        switch (intent) {
-          case 'strategy':
-            response = generateCompleteStrategy(activeOpp);
-            break;
-          case 'email':
-            response = generateEmail(activeOpp);
-            break;
-          case 'call':
-            response = generateCallScript(activeOpp);
-            break;
-          case 'roi':
-            const apiResponse = await fetch('/api/assistant', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                context: 'calcular roi',
-                opportunityData: activeOpp,
-                vendorName: currentUser
-              })
-            });
-            
-            if (apiResponse.ok) {
-              const data = await apiResponse.json();
-              response = data.response;
-            }
-            break;
-          default:
-            response = generateCompleteStrategy(activeOpp);
-        }
-        
-        setMessages(prev => [...prev, { role: 'assistant', content: response }]);
-        setIsLoading(false);
-        return;
-      }
-
-      // CASO DEFAULT: Mensaje de ayuda
-      const helpMessage = `
-🤖 **SOY TU ASISTENTE DE VENTAS VENTAPEL**
-
-Para ayudarte mejor, puedo:
-
-**🔍 BUSCAR EMPRESAS EN INTERNET**
-Ejemplo: "buscar información de Natura"
-Ejemplo: "investigar Magazine Luiza"
-Ejemplo: "busca online Intelbras"
-
-**📊 ANALIZAR OPORTUNIDADES EXISTENTES**
-Ejemplo: "MercadoLible" (si ya está en CRM)
-Ejemplo: "ayudame con MWM"
-Ejemplo: "listar" (ver todas)
-
-**🎯 GENERAR CONTENIDO DE VENTAS**
-• "estrategia" - Plan completo de acción
-• "email" - Email personalizado
-• "script llamada" - Script SPIN
-• "whatsapp" - Mensaje para WhatsApp
-• "propuesta" - Propuesta comercial
-• "calcular roi" - Análisis de ROI
-
-**📅 ORGANIZAR TU SEMANA**
-• "plan semanal" - Tu agenda optimizada
-
-**Comandos rápidos:**
-[🔍 Buscar empresa nueva|search:new]
-[📋 Ver pipeline|list:opportunities]
-[📅 Plan semanal|plan_semanal]
-
-¿Con qué quieres empezar?`;
-
-      setMessages(prev => [...prev, { role: 'assistant', content: helpMessage }]);
-      setIsLoading(false);
     } catch (error) {
       console.error('Error:', error);
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: '❌ Error procesando. Intenta de nuevo.' 
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: '❌ Error procesando. Intenta de nuevo.',
+        timestamp: new Date().toISOString()
       }]);
+    } finally {
       setIsLoading(false);
     }
   };
 
-  const handleActionClick = async (actionPayload) => {
-    if (!actionPayload) return;
-
-    const [action, ...params] = actionPayload.split(':');
-
-    if (action === 'search') {
-      const searchTerm = params.join(':');
-      if (searchTerm === 'new') {
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: '🔍 **¿Qué empresa quieres investigar?**\n\nEscribe: "buscar información de [nombre empresa]"' 
-        }]);
-      } else {
-        sendMessage(`buscar información de ${searchTerm}`);
-      }
-      return;
+  const generateOpportunitiesList = () => {
+    if (allOpportunities.length === 0) {
+      return "📭 No hay oportunidades en el pipeline.";
     }
 
-    if (action === 'list') {
-      sendMessage('listar');
-      return;
-    }
-
-    if (action === 'select') {
-      const oppId = parseInt(params[0]);
-      const selectedOpp = allOpportunities.find(o => o.id === oppId);
-      if (selectedOpp) {
-        setAssistantActiveOpportunity(selectedOpp);
-        const strategy = generateCompleteStrategy(selectedOpp);
-        setMessages(prev => [...prev, { role: 'assistant', content: strategy }]);
-      }
-      return;
-    }
-
-    if (action === 'create') {
-      const companyName = params.join(':');
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: `➕ **Creando oportunidad para ${companyName}**\n\n` +
-                 `Por favor, abre el formulario de nueva oportunidad y completa:\n` +
-                 `• Cliente: ${companyName}\n` +
-                 `• Etapa: 1 - Prospección\n` +
-                 `• Valor estimado: Basado en la investigación\n\n` +
-                 `[Formulario no disponible desde el chat - usa el botón principal del CRM]`
-      }]);
-      return;
-    }
-
-    if (action === 'plan_semanal') {
-      sendMessage('plan semanal');
-      return;
-    }
-  };
-
-  const getQuickActions = () => {
-    const activeOpp = assistantActiveOpportunity || currentOpportunity;
+    let list = "📋 **OPORTUNIDADES EN PIPELINE:**\n\n";
     
-    if (!activeOpp) {
-      return [
-        { icon: <Globe size={18} />, label: 'Buscar Empresa', prompt: 'buscar información de ' },
-        { icon: <Database size={18} />, label: 'Ver Pipeline', prompt: 'listar' },
-        { icon: <Calendar size={18} />, label: 'Plan Semanal', prompt: 'plan semanal' },
-        { icon: <Brain size={18} />, label: 'Ayuda', prompt: 'ayuda' }
-      ];
+    allOpportunities.slice(0, 10).forEach(opp => {
+      const score = calculateHealthScore(opp.scales);
+      const emoji = score > 7 ? '🟢' : score > 4 ? '🟡' : '🔴';
+      
+      list += `${emoji} **${opp.client}** - R$ ${opp.value?.toLocaleString('pt-BR')}\n`;
+      list += `   Etapa: ${opp.stage} | Score: ${score}/10 | ${opp.vendor}\n\n`;
+    });
+
+    return list;
+  };
+
+  // ============= QUICK ACTIONS =============
+  const quickActions = [
+    {
+      icon: <Search className="w-4 h-4" />,
+      label: 'Buscar Empresa',
+      action: () => setInput('busca información de '),
+      color: 'bg-blue-500'
+    },
+    {
+      icon: <Mail className="w-4 h-4" />,
+      label: 'Email',
+      action: () => sendMessage('genera email de venta'),
+      color: 'bg-green-500'
+    },
+    {
+      icon: <Phone className="w-4 h-4" />,
+      label: 'Script',
+      action: () => sendMessage('script de llamada SPIN'),
+      color: 'bg-purple-500'
+    },
+    {
+      icon: <DollarSign className="w-4 h-4" />,
+      label: 'ROI',
+      action: () => sendMessage('calcula ROI'),
+      color: 'bg-yellow-500'
+    },
+    {
+      icon: <Target className="w-4 h-4" />,
+      label: 'Estrategia',
+      action: () => sendMessage('estrategia completa'),
+      color: 'bg-red-500'
+    },
+    {
+      icon: <Database className="w-4 h-4" />,
+      label: 'Listar',
+      action: () => sendMessage('listar'),
+      color: 'bg-gray-500'
     }
-    
-    return [
-      { icon: <Brain size={18} />, label: 'Estrategia', prompt: 'estrategia' },
-      { icon: <Mail size={18} />, label: 'Email', prompt: 'email' },
-      { icon: <Phone size={18} />, label: 'Script', prompt: 'script llamada' },
-      { icon: <DollarSign size={18} />, label: 'ROI', prompt: `calcular roi` }
-    ];
-  };
+  ];
 
-  const getActiveOpportunity = () => {
-    return assistantActiveOpportunity || currentOpportunity;
-  };
-
-  // ============= RENDER DEL COMPONENTE =============
-  
+  // ============= RENDER PRINCIPAL =============
   return (
     <>
-      {/* Panel de análisis PPVVCC */}
-      {getActiveOpportunity() && analysis && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4 mb-4 rounded-lg shadow-md">
-          <div className="flex justify-between items-start mb-3">
-            <h3 className="font-bold text-lg flex items-center">
-              <Target className="mr-2" /> 
-              {getActiveOpportunity().client}
-              {analysis.context?.dataSource && (
-                <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                  {analysis.context.dataSource}
-                </span>
-              )}
-            </h3>
-            <div className="flex items-center gap-2">
-              <div className="text-right">
-                <div className="text-2xl font-bold text-blue-600">{analysis.probability}%</div>
-                <div className="text-xs text-gray-600">Probabilidad</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Semáforo PPVVCC */}
-          {getActiveOpportunity().scales && (
-            <div className="grid grid-cols-6 gap-2 mb-4">
-              {[
-                { key: 'dor', label: 'DOR' },
-                { key: 'poder', label: 'PODER' },
-                { key: 'visao', label: 'VISIÓN' },
-                { key: 'valor', label: 'VALOR' },
-                { key: 'controle', label: 'CTRL' },
-                { key: 'compras', label: 'COMPRAS' }
-              ].map(({ key, label }) => {
-                const value = getScaleValue(getActiveOpportunity().scales[key]);
-                const isCritical = value < 4;
-                const isWarning = value >= 4 && value < 7;
-                
-                return (
-                  <div key={key} className={`text-center p-2 rounded-lg transition-all ${
-                    isCritical ? 'bg-red-500 animate-pulse' : 
-                    isWarning ? 'bg-yellow-500' : 
-                    'bg-green-500'
-                  }`}>
-                    <div className="text-white text-xs font-semibold">{label}</div>
-                    <div className="text-white text-xl font-bold">{value}</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Inconsistencias */}
-          {analysis.inconsistencies?.length > 0 && (
-            <div className="bg-red-50 border border-red-300 rounded-lg p-3 mb-4">
-              <h4 className="font-bold text-red-700 text-sm mb-2">
-                <AlertTriangle className="inline mr-1 w-4 h-4" /> 
-                PROBLEMAS DETECTADOS
-              </h4>
-              {analysis.inconsistencies.map((inc, idx) => (
-                <div key={idx} className="mb-2 text-sm">
-                  <div className="text-red-600">• {inc.message}</div>
-                  <div className="text-xs text-gray-600 ml-4">Acción: {inc.action}</div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Próxima acción */}
-          {analysis.nextAction && (
-            <div className="bg-white p-3 rounded-lg border-2 border-blue-400">
-              <h4 className="font-semibold text-sm mb-2 text-blue-700">
-                <Zap className="inline mr-1 w-4 h-4" /> 
-                Próxima Acción
-              </h4>
-              <p className="text-sm font-bold mb-2">{analysis.nextAction.action}</p>
-              <div className="bg-blue-50 p-2 rounded">
-                <p className="text-xs italic">"{analysis.nextAction.script}"</p>
-              </div>
-              <div className="flex gap-2 mt-2">
-                <button 
-                  onClick={() => {
-                    setIsOpen(true);
-                    sendMessage('estrategia');
-                  }}
-                  className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs hover:bg-blue-700"
-                >
-                  Ver Estrategia →
-                </button>
-                <button 
-                  onClick={() => {
-                    setIsOpen(true);
-                    sendMessage('email');
-                  }}
-                  className="bg-green-600 text-white px-3 py-1.5 rounded text-xs hover:bg-green-700"
-                >
-                  Generar Email →
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Botón flotante */}
+      {/* Botón flotante mejorado */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all z-50"
+        className="fixed bottom-6 right-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all z-50 group"
       >
-        <MessageCircle size={24} />
-        {alerts.some(a => a.type === 'urgent') && (
-          <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
-        )}
+        <Bot className="w-6 h-6" />
+        <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-yellow-300 animate-pulse" />
+        <span className="absolute -top-8 right-0 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+          Claude AI Assistant
+        </span>
       </button>
 
-      {/* Chat Window */}
+      {/* Ventana del Chat */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-96 h-[600px] bg-white rounded-lg shadow-2xl z-50 flex flex-col">
-          <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 rounded-t-lg">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="font-semibold">🤖 Asistente de Ventas Ventapel</h3>
-              <button onClick={() => setIsOpen(false)}>
-                <X size={20} />
+        <div className="fixed bottom-24 right-6 w-[450px] h-[650px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
+          
+          {/* Header */}
+          <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Bot className="w-5 h-5" />
+                <div>
+                  <h3 className="font-bold">Asistente Claude AI</h3>
+                  <p className="text-xs opacity-90">Powered by Claude Opus 4.1</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsOpen(false)}
+                className="hover:bg-white/20 p-1 rounded transition-colors"
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
-            {currentUser && (
-              <div className="text-xs opacity-90">
-                Vendedor: {currentUser}
+            
+            {currentOpportunity && (
+              <div className="mt-2 bg-white/20 rounded-lg px-3 py-1">
+                <p className="text-xs">
+                  🎯 {currentOpportunity.client} | 
+                  Etapa {currentOpportunity.stage} | 
+                  Score {calculateHealthScore(currentOpportunity.scales)}/10
+                </p>
               </div>
             )}
-            {assistantActiveOpportunity && (
-              <div className="text-xs bg-white/20 rounded px-2 py-1 mt-2">
-                🎯 Analizando: {assistantActiveOpportunity.client} | Etapa {assistantActiveOpportunity.stage}
-              </div>
-            )}
-          </div>
-
-          {/* Tabs de vista */}
-          <div className="flex border-b bg-gray-50">
-            <button
-              onClick={() => setActiveView('chat')}
-              className={`flex-1 py-2 text-xs font-medium ${activeView === 'chat' ? 'bg-white border-b-2 border-blue-500' : ''}`}
-            >
-              💬 Chat
-            </button>
-            <button
-              onClick={() => setActiveView('strategy')}
-              className={`flex-1 py-2 text-xs font-medium ${activeView === 'strategy' ? 'bg-white border-b-2 border-blue-500' : ''}`}
-            >
-              🎯 Estrategia
-            </button>
-            <button
-              onClick={() => setActiveView('scripts')}
-              className={`flex-1 py-2 text-xs font-medium ${activeView === 'scripts' ? 'bg-white border-b-2 border-blue-500' : ''}`}
-            >
-              📝 Scripts
-            </button>
-            <button
-              onClick={() => setActiveView('templates')}
-              className={`flex-1 py-2 text-xs font-medium ${activeView === 'templates' ? 'bg-white border-b-2 border-blue-500' : ''}`}
-            >
-              📧 Templates
-            </button>
           </div>
 
           {/* Quick Actions */}
-          {activeView === 'chat' && (
-            <div className="p-3 bg-gray-50 border-b">
-              <div className="grid grid-cols-2 gap-2">
-                {getQuickActions().map((action, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => sendMessage(action.prompt)}
-                    className="bg-white border-2 border-gray-300 rounded-lg px-3 py-2 text-xs hover:bg-blue-50 hover:border-blue-400 transition flex items-center gap-2"
-                    disabled={isLoading}
-                  >
-                    {action.icon}
-                    <span>{action.label}</span>
-                  </button>
-                ))}
-              </div>
+          <div className="p-3 bg-gray-50 border-b">
+            <div className="grid grid-cols-3 gap-2">
+              {quickActions.map((action, idx) => (
+                <button
+                  key={idx}
+                  onClick={action.action}
+                  className={`${action.color} text-white rounded-lg px-2 py-2 text-xs hover:opacity-90 transition-all flex items-center justify-center gap-1`}
+                  disabled={isLoading}
+                >
+                  {action.icon}
+                  <span className="font-medium">{action.label}</span>
+                </button>
+              ))}
             </div>
-          )}
-
-          {/* Content Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {activeView === 'chat' && (
-              <>
-                {messages.length === 0 && (
-                  <div className="bg-blue-50 p-3 rounded-lg">
-                    <p className="font-bold text-sm text-blue-700 mb-2">
-                      👋 Hola {currentUser}! Soy tu coach de ventas
-                    </p>
-                    <div className="text-xs text-gray-600">
-                      <p className="mb-2">Puedo ayudarte con:</p>
-                      <ul className="ml-4 space-y-1">
-                        <li>🔍 Buscar empresas en internet</li>
-                        <li>📋 Estrategias completas de venta</li>
-                        <li>📧 Emails persuasivos</li>
-                        <li>📞 Scripts de llamadas SPIN</li>
-                        <li>💰 Cálculos de ROI</li>
-                        <li>🛡️ Manejo de objeciones</li>
-                      </ul>
-                      <p className="mt-3 font-semibold">
-                        💡 Prueba: "ayudame con MWM" o "busca online Intelbras"
-                      </p>
-                    </div>
-                  </div>
-                )}
-                
-                {messages.map((msg, idx) => (
-                  <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] p-3 rounded-lg ${
-                      msg.role === 'user' 
-                        ? 'bg-blue-500 text-white' 
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {msg.role === 'assistant' ? (
-                        <MessageRenderer content={msg.content} onButtonClick={handleActionClick} />
-                      ) : (
-                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                
-                {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-100 p-3 rounded-lg">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {activeView === 'strategy' && (
-              <div className="space-y-4">
-                <h4 className="font-bold text-gray-800">🎯 Estrategias Rápidas</h4>
-                {getActiveOpportunity() ? (
-                  <div className="space-y-2">
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('estrategia');
-                      }}
-                      className="w-full text-left p-3 bg-blue-50 rounded-lg hover:bg-blue-100"
-                    >
-                      📋 Estrategia completa PPVVCC
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('calcular roi');
-                      }}
-                      className="w-full text-left p-3 bg-green-50 rounded-lg hover:bg-green-100"
-                    >
-                      💰 Calcular ROI específico
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('objeciones');
-                      }}
-                      className="w-full text-left p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100"
-                    >
-                      🛡️ Manejo de objeciones
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('plan semanal');
-                      }}
-                      className="w-full text-left p-3 bg-purple-50 rounded-lg hover:bg-purple-100"
-                    >
-                      📅 Plan semanal optimizado
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-sm">Selecciona un cliente primero</p>
-                )}
-              </div>
-            )}
-
-            {activeView === 'scripts' && (
-              <div className="space-y-4">
-                <h4 className="font-bold text-gray-800">📝 Scripts de Venta</h4>
-                {getActiveOpportunity() ? (
-                  <div className="space-y-2">
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('script llamada');
-                      }}
-                      className="w-full text-left p-3 bg-blue-50 rounded-lg hover:bg-blue-100"
-                    >
-                      📞 Script de llamada SPIN
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('whatsapp');
-                      }}
-                      className="w-full text-left p-3 bg-green-50 rounded-lg hover:bg-green-100"
-                    >
-                      📱 Mensaje WhatsApp
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('linkedin');
-                      }}
-                      className="w-full text-left p-3 bg-blue-100 rounded-lg hover:bg-blue-200"
-                    >
-                      💼 Mensaje LinkedIn
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('objeción precio');
-                      }}
-                      className="w-full text-left p-3 bg-red-50 rounded-lg hover:bg-red-100"
-                    >
-                      💸 Responder "Es muy caro"
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-sm">Selecciona un cliente primero</p>
-                )}
-              </div>
-            )}
-
-            {activeView === 'templates' && (
-              <div className="space-y-4">
-                <h4 className="font-bold text-gray-800">📧 Templates de Email</h4>
-                {getActiveOpportunity() ? (
-                  <div className="space-y-2">
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('email primer contacto');
-                      }}
-                      className="w-full text-left p-3 bg-blue-50 rounded-lg hover:bg-blue-100"
-                    >
-                      👋 Primer contacto
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('email seguimiento');
-                      }}
-                      className="w-full text-left p-3 bg-green-50 rounded-lg hover:bg-green-100"
-                    >
-                      📧 Email de seguimiento
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('email para compras');
-                      }}
-                      className="w-full text-left p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100"
-                    >
-                      🛒 Email para Compras
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('propuesta');
-                      }}
-                      className="w-full text-left p-3 bg-purple-50 rounded-lg hover:bg-purple-100"
-                    >
-                      📄 Propuesta comercial
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActiveView('chat');
-                        sendMessage('email cierre');
-                      }}
-                      className="w-full text-left p-3 bg-red-50 rounded-lg hover:bg-red-100"
-                    >
-                      ✅ Email de cierre
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-sm">Selecciona un cliente primero</p>
-                )}
-              </div>
-            )}
           </div>
 
-          {/* Input */}
-          {activeView === 'chat' && (
-            <div className="p-4 border-t">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
-                  placeholder="Buscar empresa o escribir pregunta..."
-                  className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={isLoading}
-                />
-                <button
-                  onClick={() => sendMessage()}
-                  disabled={isLoading || !input.trim()}
-                  className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50"
-                >
-                  Enviar
-                </button>
+          {/* Messages Area */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gradient-to-b from-gray-50 to-white">
+            {messages.length === 0 && (
+              <div className="bg-gradient-to-br from-purple-50 to-blue-50 p-4 rounded-xl">
+                <p className="font-bold text-purple-700 mb-2">
+                  👋 Hola {currentUser}! Soy tu asesor potenciado con Claude AI
+                </p>
+                <p className="text-sm text-gray-600 mb-3">
+                  Tengo acceso a casos reales y datos de Brasil 2024:
+                </p>
+                <ul className="text-xs space-y-1 text-gray-600">
+                  <li>✅ Honda: +40% velocidad, ROI 3 meses</li>
+                  <li>✅ L'Oréal: 100% robos eliminados</li>
+                  <li>✅ Nike: Cero violaciones</li>
+                  <li>✅ MercadoLibre: -40% retrabajo</li>
+                  <li>✅ Centauro: R$50M/año recuperados</li>
+                </ul>
+                <p className="text-xs font-bold text-purple-700 mt-3">
+                  Preguntame lo que necesites. Seré directo y específico.
+                </p>
               </div>
-              <div className="mt-2 text-xs text-gray-500">
-                💡 Tip: Escribe "listar" para ver todas las oportunidades
+            )}
+
+            {messages.map((msg, idx) => (
+              <div 
+                key={idx} 
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div className={`max-w-[85%] ${
+                  msg.role === 'user' 
+                    ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-2xl rounded-tr-sm' 
+                    : 'bg-white border border-gray-200 text-gray-800 rounded-2xl rounded-tl-sm shadow-sm'
+                } p-3`}>
+                  {msg.role === 'assistant' && (
+                    <div className="flex items-center gap-1 mb-1">
+                      <Bot className="w-3 h-3 text-purple-500" />
+                      <span className="text-xs text-purple-500 font-medium">Claude AI</span>
+                    </div>
+                  )}
+                  <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                  <div className="text-xs opacity-60 mt-1">
+                    {new Date(msg.timestamp).toLocaleTimeString('pt-BR', { 
+                      hour: '2-digit', 
+                      minute: '2-digit' 
+                    })}
+                  </div>
+                </div>
               </div>
+            ))}
+
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm p-3 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
+                    <span className="text-sm text-gray-600">
+                      {isThinking ? 'Claude está analizando...' : 'Escribiendo...'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input Area */}
+          <div className="p-4 border-t bg-white">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
+                placeholder="Pregunta o comando..."
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                disabled={isLoading}
+              />
+              <button
+                onClick={() => sendMessage()}
+                disabled={isLoading || !input.trim()}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </button>
             </div>
-          )}
+            
+            <div className="mt-2 flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                <span className="text-xs text-gray-500">Claude AI activo</span>
+              </div>
+              <span className="text-xs text-gray-400">
+                Casos reales • Datos Brasil 2024
+              </span>
+            </div>
+          </div>
         </div>
       )}
     </>
