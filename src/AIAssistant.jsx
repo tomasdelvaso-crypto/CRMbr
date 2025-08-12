@@ -683,9 +683,17 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     setAlerts(newAlerts);
   };
 
-  // FUNCIÓN MEJORADA: Detectar intenciones del usuario
+  // FUNCIÓN CORREGIDA: Detectar intenciones del usuario
   const detectUserIntent = (message) => {
     const lower = message.toLowerCase().trim();
+    
+    // Eliminar palabras comunes que confunden la detección
+    const cleanMessage = lower
+      .replace(/^(ayuda|ayudame|ayúdame|ayudar|help|asiste|asisteme|analicemos|analizar|analiza|trabajemos|trabajar|veamos|ver)\s+(con|en|a|el|la|sobre)?\s*/i, '')
+      .trim();
+    
+    console.log('🔍 Mensaje original:', lower);
+    console.log('🔍 Mensaje limpio:', cleanMessage);
     
     // PRIORIDAD 1: Comandos especiales de navegación/lista
     if (lower === 'listar' || lower === 'lista' || lower === 'list' || 
@@ -694,23 +702,44 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       return 'list_opportunities';
     }
     
-    // PRIORIDAD 2: Detección de búsqueda web mejorada
-    if (lower.includes('buscar') || lower.includes('busca') || 
-        lower.includes('investigar') || lower.includes('research') ||
-        lower.includes('información de') || lower.includes('info de') ||
-        lower.includes('buscar información') || lower.includes('buscar online') ||
-        lower.includes('buscá') || lower.includes('busca en internet') ||
-        lower.includes('buscar en internet') || lower.includes('buscar en la web')) {
-      return 'web_search';
+    // PRIORIDAD 2: Detección de búsqueda web - MEJORADA
+    // Detectar patrones de búsqueda web explícitos
+    const webSearchPatterns = [
+      /^(?:busca|buscar|buscá)\s+(?:online|en\s+internet|en\s+la\s+web|web)\s+(.+)$/i,
+      /^(?:busca|buscar|buscá)\s+(?:información|info|informacion)\s+(?:de|sobre)\s+(.+)$/i,
+      /^(?:investigar|investiga|research)\s+(.+)$/i,
+      /^(?:información|informacion|info)\s+(?:de|sobre)\s+(.+)$/i,
+      /^busca\s+(.+)\s+(?:online|en\s+internet)$/i
+    ];
+    
+    for (const pattern of webSearchPatterns) {
+      const match = lower.match(pattern);
+      if (match) {
+        return 'web_search';
+      }
     }
     
-    // PRIORIDAD 3: Plan semanal
+    // PRIORIDAD 3: Verificar si es un nombre de empresa existente
+    // Primero buscar en el mensaje limpio
+    if (cleanMessage && cleanMessage.length > 1) {
+      const foundOpp = allOpportunities.find(opp => 
+        opp.client?.toLowerCase() === cleanMessage ||
+        opp.client?.toLowerCase().includes(cleanMessage) ||
+        cleanMessage.includes(opp.client?.toLowerCase())
+      );
+      
+      if (foundOpp) {
+        return 'analyze_existing';
+      }
+    }
+    
+    // PRIORIDAD 4: Plan semanal
     if (lower.includes('plan semanal') || lower === 'plan' || 
         lower.includes('plan de la semana') || lower.includes('agenda')) {
       return 'weekly_plan';
     }
     
-    // PRIORIDAD 4: Intenciones específicas de generación de contenido
+    // PRIORIDAD 5: Intenciones específicas de generación de contenido
     if (lower.includes('email') || lower.includes('mail') || lower.includes('correo')) {
       return 'email';
     }
@@ -736,6 +765,39 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return null;
   };
 
+  // Función auxiliar para extraer el nombre de la empresa
+  const extractCompanyName = (message, intent) => {
+    const lower = message.toLowerCase().trim();
+    
+    if (intent === 'web_search') {
+      // Patrones para extraer nombre de empresa en búsquedas web
+      const patterns = [
+        /(?:busca|buscar|buscá)\s+(?:online|en\s+internet|en\s+la\s+web|web)\s+(.+)$/i,
+        /(?:busca|buscar|buscá)\s+(?:información|info|informacion)\s+(?:de|sobre)\s+(.+)$/i,
+        /(?:investigar|investiga|research)\s+(.+)$/i,
+        /(?:información|informacion|info)\s+(?:de|sobre)\s+(.+)$/i
+      ];
+      
+      for (const pattern of patterns) {
+        const match = message.match(pattern);
+        if (match && match[1]) {
+          return match[1].trim();
+        }
+      }
+    } else if (intent === 'analyze_existing') {
+      // Para empresas existentes, limpiar el mensaje
+      const cleanMessage = lower
+        .replace(/^(ayuda|ayudame|ayúdame|help|asiste|asisteme|analicemos|analizar|trabajemos|veamos)\s+(con|en|a|el|la|sobre)?\s*/i, '')
+        .trim();
+      
+      return cleanMessage;
+    }
+    
+    // Si no se pudo extraer, usar la última palabra significativa
+    const words = message.split(' ').filter(w => w.length > 2);
+    return words[words.length - 1] || message;
+  };
+
   // FUNCIÓN PRINCIPAL MEJORADA: Procesar mensajes
   const sendMessage = async (messageText = input) => {
     if (!messageText.trim()) return;
@@ -749,9 +811,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     const intent = detectUserIntent(messageText);
     const activeOpp = assistantActiveOpportunity || currentOpportunity;
     
-    console.log('🔍 Intent detectado:', intent, 'Mensaje:', messageText);
+    console.log('🎯 Intent detectado:', intent);
+    console.log('📝 Mensaje:', messageText);
     
-    // CASO 1: LISTAR OPORTUNIDADES - PRIORIDAD MÁXIMA
+    // CASO 1: LISTAR OPORTUNIDADES
     if (intent === 'list_opportunities') {
       let listMessage = `📋 **TODAS LAS OPORTUNIDADES:**\n\n`;
       
@@ -782,34 +845,40 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       return;
     }
     
-    // CASO 2: BÚSQUEDA WEB DE EMPRESA NUEVA - CORREGIDO
+    // CASO 2: ANALIZAR EMPRESA EXISTENTE
+    if (intent === 'analyze_existing') {
+      const companyName = extractCompanyName(messageText, intent);
+      console.log('🏢 Buscando empresa existente:', companyName);
+      
+      const foundOpp = allOpportunities.find(opp => 
+        opp.client?.toLowerCase() === companyName.toLowerCase() ||
+        opp.client?.toLowerCase().includes(companyName.toLowerCase()) ||
+        companyName.toLowerCase().includes(opp.client?.toLowerCase())
+      );
+      
+      if (foundOpp) {
+        setAssistantActiveOpportunity(foundOpp);
+        const strategy = generateCompleteStrategy(foundOpp);
+        setMessages(prev => [...prev, { role: 'assistant', content: strategy }]);
+      } else {
+        // No encontrada - ofrecer buscar en web
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: `❌ No encontré "${companyName}" en el CRM.\n\n` +
+                   `**¿Qué quieres hacer?**\n\n` +
+                   `[🔍 Buscar ${companyName} en internet|search:${companyName}]\n` +
+                   `[📋 Ver todas las oportunidades|list:all]\n` +
+                   `[➕ Crear nueva oportunidad|create:new]`
+        }]);
+      }
+      setIsLoading(false);
+      return;
+    }
+    
+    // CASO 3: BÚSQUEDA WEB DE EMPRESA NUEVA
     if (intent === 'web_search') {
-      // Extraer nombre de empresa del mensaje - MEJORADO
-      let companyName = '';
-      
-      // Intentar diferentes patrones
-      const patterns = [
-        /(?:buscar|busca|buscá|investigar|información de|info de|buscar información de|buscar online|busca online|buscá online)\s+(.+?)(?:\s|$)/i,
-        /(.+?)(?:\s+información|\s+info|\s+online|\s+internet)?$/i
-      ];
-      
-      for (const pattern of patterns) {
-        const match = messageText.match(pattern);
-        if (match && match[1]) {
-          companyName = match[1].trim();
-          // Limpiar palabras comunes al final
-          companyName = companyName.replace(/\s+(online|internet|información|info)$/i, '').trim();
-          if (companyName && companyName.length > 1) break;
-        }
-      }
-      
-      // Si no se pudo extraer, usar las últimas palabras
-      if (!companyName) {
-        const words = messageText.split(' ');
-        companyName = words[words.length - 1];
-      }
-      
-      console.log('🔍 Buscando empresa:', companyName);
+      const companyName = extractCompanyName(messageText, intent);
+      console.log('🔍 Buscando en web:', companyName);
       
       try {
         setMessages(prev => [...prev, { 
@@ -865,15 +934,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
           `□ Buscar en Google: "${companyName} Brasil logística"\n` +
           `□ LinkedIn: Buscar empleados y estructura\n` +
           `□ Sitio web: Identificar productos/servicios\n` +
-          `□ Noticias: Buscar expansión o problemas recientes\n\n` +
-          
-          `**📧 TEMPLATE DE PRIMER CONTACTO:**\n` +
-          `"Hola [Nombre],\n\n` +
-          `Vi que ${companyName} está creciendo en [sector]. ` +
-          `Empresas similares pierden 10% en violación de cajas (IBEVAR 2024).\n\n` +
-          `L'Oréal eliminó 100% sus pérdidas con nuestra solución.\n` +
-          `MercadoLibre redujo 40% el retrabajo.\n\n` +
-          `¿15 minutos para mostrarle cuánto podría ahorrar ${companyName}?"\n\n`;
+          `□ Noticias: Buscar expansión o problemas recientes\n\n`;
           
         setMessages(prev => {
           const newMessages = [...prev];
@@ -889,7 +950,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       return;
     }
     
-    // CASO 3: Plan semanal
+    // CASO 4: Plan semanal
     if (intent === 'weekly_plan') {
       try {
         const response = await fetch('/api/assistant', {
@@ -922,7 +983,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       return;
     }
     
-    // CASO 4: Intenciones con cliente activo
+    // CASO 5: Intenciones con cliente activo
     if (intent && activeOpp) {
       let response = '';
       
@@ -1013,8 +1074,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       return;
     }
 
-    // CASO 5: Búsqueda simple de cliente existente
-    const isSimpleSearch = messageText.split(' ').length <= 2 && messageText.length > 2 && !intent;
+    // CASO 6: Búsqueda simple - verificar si es nombre de empresa
+    const isSimpleSearch = messageText.split(' ').length <= 3 && messageText.length > 1 && !intent;
     
     if (isSimpleSearch) {
       const searchTerm = messageText.trim();
@@ -1043,7 +1104,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       return;
     }
 
-    // CASO 6: Sin cliente activo - Mensaje de ayuda
+    // CASO 7: Sin cliente activo - Mensaje de ayuda
     const helpMessage = `
 🤖 **SOY TU ASISTENTE DE VENTAS VENTAPEL**
 
@@ -1052,10 +1113,11 @@ Para ayudarte mejor, puedo:
 **🔍 BUSCAR EMPRESAS EN INTERNET**
 Ejemplo: "buscar información de Natura"
 Ejemplo: "investigar Magazine Luiza"
-Ejemplo: "buscá online Intelbras"
+Ejemplo: "busca online Intelbras"
 
 **📊 ANALIZAR OPORTUNIDADES EXISTENTES**
 Ejemplo: "MercadoLibre" (si ya está en CRM)
+Ejemplo: "ayudame con MWM"
 Ejemplo: "listar" (ver todas)
 
 **🎯 GENERAR CONTENIDO DE VENTAS**
@@ -1363,7 +1425,7 @@ Ejemplo: "listar" (ver todas)
                         <li>🛡️ Manejo de objeciones</li>
                       </ul>
                       <p className="mt-3 font-semibold">
-                        💡 Escribe "buscar información de [empresa]" para empezar
+                        💡 Prueba: "ayudame con MWM" o "busca online Intelbras"
                       </p>
                     </div>
                   </div>
