@@ -1,56 +1,4 @@
-// CASO 1: Búsqueda web de empresa nueva
-    if (intent === 'web_search') {
-      // Extraer nombre de empresa del mensaje
-      const companyMatch = messageText.match(/(?:buscar|investigar|información de|info de|busca sobre)\s+(.+?)(?:\s|$)/i);
-      const companyName = companyMatch ? companyMatch[1].trim() : messageText.split(' ').slice(-1)[0];
-      
-      try {
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: `🔍 Buscando información sobre **${companyName}** en internet...` 
-        }]);
-        
-        // Llamar al API con búsqueda web
-        const response = await fetch('/api/assistant', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            specialRequestType: 'web_research',
-            companyName: companyName,
-            searchQuery: `${companyName} Brasil logística e-commerce embalaje`,
-            vendorName: currentUser,
-            context: 'prospecting'
-          })
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          
-          // Generar approach basado en la investigación
-          const approach = generateApproachFromResearch(companyName, data.response);
-          
-          setMessages(prev => [...prev, { 
-            role: 'assistant', 
-            content: approach 
-          }]);
-          
-          // Crear oportunidad en stage 1 si no existe
-          const existingOpp = allOpportunities.find(o => 
-            o.client.toLowerCase().includes(companyName.toLowerCase())
-          );
-          
-          if (!existingOpp) {
-            setMessages(prev => [...prev, { 
-              role: 'assistant', 
-              content: `\n💡 **¿Quieres crear esta oportunidad?**\n[Crear oportunidad ${companyName}|create:${companyName}]` 
-            }]);
-          }
-        } else {
-          throw new Error('Error en búsqueda web');
-        }
-      } catch (error) {
-        // Fallback sin datos web
-        constimport React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MessageCircle, X, AlertTriangle, Target, RefreshCw, TrendingUp, Globe, Calendar, Zap, DollarSign, Database, Search, Mail, Phone, FileText, MessageSquare, Video, Users, BookOpen, Brain } from 'lucide-react';
 
 // Componente para renderizar mensajes con botones interactivos
@@ -814,14 +762,15 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   };
 
-  // Detectar intenciones del usuario - MEJORADO CON BÚSQUEDA WEB
+  // Detectar intenciones del usuario
   const detectUserIntent = (message) => {
     const lower = message.toLowerCase();
     
     // Detección de búsqueda web
     if (lower.includes('buscar online') || lower.includes('buscar en internet') || 
         lower.includes('investigar') || lower.includes('información de') ||
-        lower.includes('research') || lower.includes('busca info')) {
+        lower.includes('research') || lower.includes('busca info') || 
+        lower.includes('buscar información de')) {
       return 'web_search';
     }
     
@@ -850,115 +799,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return null;
   };
 
-  // NUEVA FUNCIÓN: Generar approach basado en investigación web
-  const generateApproachFromResearch = (companyName, webData) => {
-    let approach = `🔍 **ESTRATEGIA DE APPROACH - ${companyName}**\n\n`;
-    
-    approach += `📊 **INFORMACIÓN ENCONTRADA:**\n`;
-    approach += webData + '\n\n';
-    
-    approach += `🎯 **APPROACH RECOMENDADO:**\n\n`;
-    
-    approach += `**1. GANCHO INICIAL (basado en la investigación):**\n`;
-    approach += `"Vi que ${companyName} [mencionar algo específico de la investigación]. `;
-    approach += `Empresas similares están perdiendo 10% en violación de cajas. `;
-    approach += `¿Es un tema relevante para ustedes?"\n\n`;
-    
-    approach += `**2. PUNTOS DE DOLOR PROBABLES:**\n`;
-    approach += `• Si es e-commerce: Violación en última milla\n`;
-    approach += `• Si es manufactura: Retrabajo en embalaje\n`;
-    approach += `• Si es logística: Reclamos de clientes\n`;
-    approach += `• Si es retail: Pérdidas en transporte\n\n`;
-    
-    approach += `**3. CONTACTOS A BUSCAR (LinkedIn):**\n`;
-    approach += `• Gerente de Operaciones / Logística\n`;
-    approach += `• Director de Supply Chain\n`;
-    approach += `• Gerente de Calidad\n`;
-    approach += `• CFO (si el valor es alto)\n\n`;
-    
-    approach += `**4. MENSAJE DE LINKEDIN:**\n`;
-    approach += `"Hola [Nombre],\n\n`;
-    approach += `Vi que ${companyName} está [dato de la investigación]. `;
-    approach += `Ayudamos a empresas como L'Oréal y MercadoLibre a eliminar 100% las pérdidas por violación de cajas.\n\n`;
-    approach += `¿Vale la pena una conversación de 15 minutos?"\n\n`;
-    
-    approach += `**5. EMAIL DE PRIMER CONTACTO:**\n`;
-    approach += `Asunto: ${companyName} - Pérdidas evitables de R$ [estimar basado en tamaño]\n\n`;
-    approach += `[Personalizar con datos de la investigación]\n\n`;
-    
-    approach += `**6. PREGUNTAS SPIN ESPECÍFICAS:**\n`;
-    approach += `• Situación: "¿Cómo manejan actualmente el sellado de cajas?"\n`;
-    approach += `• Problema: "¿Han medido el % de cajas que llegan violadas?"\n`;
-    approach += `• Implicación: "¿Cuánto les cuesta cada reclamo por violación?"\n`;
-    approach += `• Necesidad: "Si pudieran eliminar 95% de estas pérdidas..."\n\n`;
-    
-    approach += `**7. CASO DE ÉXITO RELEVANTE:**\n`;
-    approach += `[Seleccionar basado en la industria identificada]\n\n`;
-    
-    approach += `**8. PRÓXIMOS PASOS:**\n`;
-    approach += `□ Buscar contactos en LinkedIn\n`;
-    approach += `□ Enviar InMail personalizado\n`;
-    approach += `□ Preparar presentación con datos del sector\n`;
-    approach += `□ Agendar llamada de 15 minutos\n`;
-    
-    return approach;
-  };
-
-  const handleActionClick = async (actionPayload) => {
-    if (!actionPayload) return;
-
-    const [action, ...params] = actionPayload.split(':');
-
-    if (action === 'update' && params.length >= 2) {
-      const [scale, newValue, oppId] = params;
-      const opportunityToUpdateId = oppId || getActiveOpportunity()?.id;
-      
-      if (!opportunityToUpdateId) {
-        setMessages(prev => [...prev, { role: 'assistant', content: '❌ Error: No sé qué oportunidad actualizar.' }]);
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        const currentOpp = allOpportunities.find(o => o.id === opportunityToUpdateId);
-        const updatedScales = {
-          ...(currentOpp?.scales || {}),
-          [scale]: { 
-            ...(currentOpp?.scales?.[scale] || {}),
-            score: parseInt(newValue) 
-          }
-        };
-
-        const { data, error } = await supabase
-          .from('opportunities')
-          .update({ 
-            scales: updatedScales,
-            last_update: new Date().toISOString()
-          })
-          .eq('id', opportunityToUpdateId)
-          .select();
-
-        if (error) throw error;
-
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: `✅ Actualizado! ${scale.toUpperCase()} = ${newValue}/10 para ${data[0].client}` 
-        }]);
-
-        await loadPipelineData();
-      } catch (error) {
-        console.error('Error:', error);
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: `❌ Error: ${error.message}` 
-        }]);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-  };
-
-const sendMessage = async (messageText = input) => {
+  const sendMessage = async (messageText = input) => {
     if (!messageText.trim()) return;
 
     const userMessage = { role: 'user', content: messageText };
