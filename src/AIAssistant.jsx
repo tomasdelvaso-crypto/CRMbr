@@ -477,24 +477,120 @@ Da una respuesta ACCIONABLE y BREVE (máximo 5 líneas).`;
         }
         
       } else {
-        // 2. DETECTAR EMPRESA MENCIONADA
+        // 2. DETECTAR EMPRESA MENCIONADA O USAR CONTEXTO ACTIVO
         const foundOpp = allOpportunities.find(opp => {
           const clientLower = opp.client?.toLowerCase() || '';
           return lowerText.includes(clientLower) || 
                  clientLower.split(' ').some(word => word.length > 3 && lowerText.includes(word));
         });
 
+        // Si encontramos una empresa, la establecemos como activa
         if (foundOpp) {
           setActiveOpportunity(foundOpp);
-          
+        }
+
+        // Usar la oportunidad encontrada O la activa si existe
+        const targetOpp = foundOpp || activeOpportunity;
+
+        if (targetOpp) {
           // Verificar intención específica
           if (lowerText.includes('recalif') || lowerText.includes('dolor') || 
-              lowerText.includes('como') || lowerText.includes('cómo') ||
+              (lowerText.includes('como') && (lowerText.includes('hacer') || lowerText.includes('hacemos'))) ||
               lowerText.includes('elevar') || lowerText.includes('aumentar')) {
-            response = generatePainStrategy(foundOpp);
-          } else {
-            // Primero análisis local
-            response = analyzeOpportunity(foundOpp);
+            response = generatePainStrategy(targetOpp);
+          } else if (lowerText.includes('estrategia completa') || 
+                     lowerText.includes('plan completo') ||
+                     lowerText.includes('estrategia') ||
+                     lowerText.includes('que hacer') ||
+                     lowerText.includes('qué hacer')) {
+            // GENERAR ESTRATEGIA COMPLETA
+            response = `🎯 **ESTRATEGIA COMPLETA PARA ${targetOpp.client}**\n\n`;
+            response += `**SITUACIÓN ACTUAL:**\n`;
+            response += `• Valor: R$ ${targetOpp.value.toLocaleString('pt-BR')}\n`;
+            response += `• Etapa: ${targetOpp.stage} - Probabilidad ${targetOpp.probability}%\n`;
+            response += `• Health Score: ${calculateHealthScore(targetOpp.scales)}/10 `;
+            
+            const healthScore = parseFloat(calculateHealthScore(targetOpp.scales));
+            if (healthScore < 4) response += `🔴 CRÍTICO\n`;
+            else if (healthScore < 7) response += `🟡 RIESGO\n`;
+            else response += `🟢 SALUDABLE\n`;
+            
+            response += `\n**PROBLEMAS DETECTADOS:**\n`;
+            
+            const problems = [];
+            if (targetOpp.scales?.dor?.score < 5) {
+              problems.push(`❌ Dolor no admitido (${targetOpp.scales.dor.score}/10) - SIN DOLOR NO HAY VENTA`);
+            }
+            if (targetOpp.scales?.poder?.score < 5) {
+              problems.push(`❌ Sin acceso al decisor (${targetOpp.scales.poder.score}/10)`);
+            }
+            if (targetOpp.scales?.visao?.score < 5) {
+              problems.push(`⚠️ Visión no construida (${targetOpp.scales.visao.score}/10)`);
+            }
+            if (targetOpp.scales?.valor?.score < 5) {
+              problems.push(`⚠️ ROI no validado (${targetOpp.scales.valor.score}/10)`);
+            }
+            
+            problems.forEach(p => response += `${p}\n`);
+            
+            response += `\n**📋 PLAN DE ACCIÓN (PRÓXIMOS 5 DÍAS):**\n\n`;
+            
+            // Prioridad 1: Dolor
+            if (targetOpp.scales?.dor?.score < 5) {
+              response += `**DÍA 1-2: RECALIFICAR DOLOR (CRÍTICO)**\n`;
+              response += `• Llamada SPIN de 20 minutos\n`;
+              response += `• Preguntas clave:\n`;
+              response += `  - "¿Cuántas cajas violadas por mes?"\n`;
+              response += `  - "¿Costo de cada retrabajo?"\n`;
+              response += `  - "¿Impacto anual = R$ ${Math.round(targetOpp.value * 0.1 * 12).toLocaleString('pt-BR')}?"\n`;
+              response += `• Enviar email con cálculo de pérdidas\n\n`;
+            }
+            
+            // Prioridad 2: Poder
+            if (targetOpp.scales?.poder?.score < 5) {
+              response += `**DÍA 3: ACCEDER AL DECISOR**\n`;
+              response += `• Pedir reunión con ${targetOpp.power_sponsor || 'gerente de operaciones'}\n`;
+              response += `• Script: "Para diseñar la mejor solución, necesito 15 min con quien aprueba inversiones"\n`;
+              response += `• Si se niega: "¿Qué necesita ver el decisor para aprobar?"\n\n`;
+            }
+            
+            // Prioridad 3: Visión y Valor
+            response += `**DÍA 4: DEMO CON ROI**\n`;
+            response += `• Demo de 30 minutos enfocada en:\n`;
+            response += `  - Caso ${targetOpp.industry === 'e-commerce' ? 'MercadoLibre' : 'Nike'}\n`;
+            response += `  - ROI específico: ${Math.ceil(targetOpp.value < 100000 ? 45000 : 95000 / (targetOpp.value * 0.1 * 0.95))} meses\n`;
+            response += `  - Video de antes/después\n\n`;
+            
+            response += `**DÍA 5: CIERRE O PRUEBA**\n`;
+            if (targetOpp.stage >= 4) {
+              response += `• Proponer prueba piloto 1 semana\n`;
+              response += `• "Si no reduce 40% violaciones, no cobro"\n`;
+            } else {
+              response += `• Avanzar a siguiente etapa\n`;
+              response += `• Definir fecha de decisión\n`;
+            }
+            
+            response += `\n**📞 SCRIPT DE APERTURA HOY:**\n`;
+            response += `"${targetOpp.sponsor || 'Hola'}, revisando nuestra última conversación, `;
+            response += `vi que procesan ${Math.round(targetOpp.value/100)} cajas/mes. `;
+            response += `${targetOpp.industry === 'e-commerce' ? 'MercadoLibre' : 'Nike'} tenía el mismo volumen `;
+            response += `y perdía R$ ${Math.round(targetOpp.value * 0.1).toLocaleString('pt-BR')}/mes. `;
+            response += `Hoy ahorran 95% de eso. ¿Tienes 15 minutos para ver los números específicos para ${targetOpp.client}?"\n\n`;
+            
+            response += `**📧 EMAIL DE REACTIVACIÓN:**\n`;
+            response += `Asunto: ${targetOpp.client} - Pérdida mensual R$ ${Math.round(targetOpp.value * 0.1).toLocaleString('pt-BR')} evitable\n\n`;
+            
+            response += `**⚡ ACCIÓN INMEDIATA (HOY):**\n`;
+            if (targetOpp.scales?.dor?.score < 5) {
+              response += `☎️ LLAMAR AHORA para recalificar dolor. Sin dolor admitido = sin venta.`;
+            } else if (targetOpp.scales?.poder?.score < 5) {
+              response += `📧 EMAIL pidiendo acceso al decisor ${targetOpp.power_sponsor || '(identificar quién es)'}.`;
+            } else {
+              response += `📅 AGENDAR demo/prueba para esta semana.`;
+            }
+          } else if (foundOpp) {
+            // Si mencionó específicamente una empresa, mostrar análisis
+            response = analyzeOpportunity(targetOpp);
             
             // Intentar enriquecer con Claude si está disponible
             if (lowerText.includes('estrategia') || lowerText.includes('completo')) {
