@@ -1,4 +1,9 @@
 // api/assistant.js
+// Configuración para Edge Runtime - MÁS RÁPIDO, sin timeout de 10s
+export const config = {
+  runtime: 'edge',
+  maxDuration: 30,
+};
 
 // ============= ROI CALCULATOR INTEGRADO CON DATOS REALES BRASIL =============
 function calculateVentapelROI(opportunity, monthlyVolume = null) {
@@ -128,7 +133,7 @@ function getSolutionRecommendation(monthlyVolume) {
       equipment: 'BP555e',
       tape: 'VENOM reinforced',
       stations: 2,
-      description: 'Solução estándar de alta eficiência'
+      description: 'Solução padrão de alta eficiência'
     };
   } else if (monthlyVolume < 50000) {
     return {
@@ -163,22 +168,22 @@ function generateROISummary(opportunity, losses, savings, roi, solution, benchma
 📊 **SITUAÇÃO ATUAL (Dados reais Brasil):**
 • Indústria: ${opportunity.industry || 'Geral'}
 • Taxa de violação: ${(benchmark.violationRate * 100).toFixed(1)}% (Fonte: ${benchmark.source})
-• Caixas processadas/mês: ${Math.round(opportunity.value / 100).toLocaleString()}
-• Caixas violadas/mês: ${losses.violatedBoxes.toLocaleString()}
-• Perda mensal: R$ ${losses.totalMonthlyLoss.toLocaleString()}
-• Perda anual: R$ ${(losses.totalMonthlyLoss * 12).toLocaleString()}
+• Caixas processadas/mês: ${Math.round(opportunity.value / 100).toLocaleString('pt-BR')}
+• Caixas violadas/mês: ${losses.violatedBoxes.toLocaleString('pt-BR')}
+• Perda mensal: R$ ${losses.totalMonthlyLoss.toLocaleString('pt-BR')}
+• Perda anual: R$ ${(losses.totalMonthlyLoss * 12).toLocaleString('pt-BR')}
 
 🎯 **SOLUÇÃO RECOMENDADA:**
 • Equipamento: ${solution.implementation.equipment}
 • Consumível: ${solution.implementation.tape}
 • Estações: ${solution.implementation.stations}
-• Investimento: R$ ${solution.investment.toLocaleString()}
+• Investimento: R$ ${solution.investment.toLocaleString('pt-BR')}
 
 ✅ **RESULTADOS PROJETADOS:**
 • Redução violações: 95% (garantido ou devolvemos)
 • Melhoria eficiência: +40%
-• Economia mensal: R$ ${savings.totalMonthlySavings.toLocaleString()}
-• Economia anual: R$ ${savings.annualSavings.toLocaleString()}
+• Economia mensal: R$ ${savings.totalMonthlySavings.toLocaleString('pt-BR')}
+• Economia anual: R$ ${savings.annualSavings.toLocaleString('pt-BR')}
 • **ROI: ${roi.paybackMonths} meses**
 • Retorno primeiro ano: ${roi.firstYearROI}%
 • Retorno 3 anos: ${roi.threeYearROI}%
@@ -193,9 +198,9 @@ ${opportunity.industry?.toLowerCase().includes('cosm') ?
   '• Nike: Furtos zero, +30% eficiência, ROI 2 meses'}
 
 ⚡ **URGÊNCIA - PERDA ACUMULADA:**
-• Cada mês sem decidir = R$ ${losses.totalMonthlyLoss.toLocaleString()} perdidos
-• Em 3 meses = R$ ${(losses.totalMonthlyLoss * 3).toLocaleString()} no lixo
-• Em 6 meses = R$ ${(losses.totalMonthlyLoss * 6).toLocaleString()} desperdiçados
+• Cada mês sem decidir = R$ ${losses.totalMonthlyLoss.toLocaleString('pt-BR')} perdidos
+• Em 3 meses = R$ ${(losses.totalMonthlyLoss * 3).toLocaleString('pt-BR')} no lixo
+• Em 6 meses = R$ ${(losses.totalMonthlyLoss * 6).toLocaleString('pt-BR')} desperdiçados
 
 💡 **DADO CRÍTICO:** 80% das avarias no Brasil são por embalagem inadequada (fonte: estudo setorial 2024)`;
 }
@@ -247,7 +252,7 @@ function generateWeeklyPlan(opportunities, vendorName = "Vendedor") {
     if (opp.value > 100000 && healthScore < 4) {
       atRisk.push({
         ...opp,
-        reason: `💣 R$${opp.value.toLocaleString()} com score ${healthScore.toFixed(1)}/10`,
+        reason: `💣 R$${opp.value.toLocaleString('pt-BR')} com score ${healthScore.toFixed(1)}/10`,
         action: 'Reunião de resgate esta semana',
         priority: 3
       });
@@ -278,7 +283,7 @@ function generateWeeklyPlan(opportunities, vendorName = "Vendedor") {
   let plan = `📋 **PLANO SEMANAL - ${vendorName}**\n`;
   plan += `📅 Semana: ${today.toLocaleDateString('pt-BR')} - ${weekEnd.toLocaleDateString('pt-BR')}\n\n`;
   
-  // Métricas de la semana con datos reales
+  // Métricas de la semana
   const totalPipeline = opportunities.reduce((sum, opp) => sum + opp.value, 0);
   const totalClosing = closing.reduce((sum, opp) => sum + opp.value, 0);
   const totalAtRisk = atRisk.reduce((sum, opp) => sum + opp.value, 0);
@@ -288,98 +293,51 @@ function generateWeeklyPlan(opportunities, vendorName = "Vendedor") {
   plan += `• Para Fechar: R$ ${totalClosing.toLocaleString('pt-BR')}\n`;
   plan += `• Em Risco: R$ ${totalAtRisk.toLocaleString('pt-BR')}\n\n`;
   
-  plan += `**💡 CONTEXTO BRASIL (dados reais):**\n`;
-  plan += `• 10% das mercadorias são perdidas por violação (IBEVAR)\n`;
-  plan += `• 80% das avarias são por embalagem inadequada\n`;
-  plan += `• ROI médio Ventapel: 2-3 meses comprovado\n\n`;
-  
-  // LUNES - Reactivación y emergencias
+  // Plan día por día
   plan += `**📅 SEGUNDA-FEIRA - Reativação e Emergências**\n`;
   if (urgent.length > 0) {
     urgent.slice(0, 3).forEach(opp => {
-      const roiCalc = calculateVentapelROI(opp);
-      plan += `🔴 **${opp.client}** (R$ ${opp.value.toLocaleString()})\n`;
+      plan += `🔴 **${opp.client}** (R$ ${opp.value.toLocaleString('pt-BR')})\n`;
       plan += `   ${opp.reason}\n`;
-      plan += `   ➤ ${opp.action}\n`;
-      plan += `   Script: "Descobri que empresas como vocês perdem ${(roiCalc.benchmark.violationRate * 100).toFixed(0)}% em violação. `;
-      plan += `Com nossa solução, economia de R$${roiCalc.projectedSavings.totalMonthlySavings.toLocaleString()}/mês garantida."\n`;
-      plan += `   [Atualizar DOR|update:dor:7:${opp.id}] `;
-      plan += `   [Agendar reunião|schedule:meeting:${opp.id}]\n\n`;
+      plan += `   ➤ ${opp.action}\n\n`;
     });
   } else {
     plan += `✅ Sem emergências - focar em prospecção\n\n`;
   }
   
-  // MARTES - Corregir inconsistencias
-  plan += `**📅 TERÇA-FEIRA - Corrigir Problemas PPVVC**\n`;
+  plan += `**📅 TERÇA-FEIRA - Corrigir Problemas PPVVCC**\n`;
   if (critical.length > 0) {
     critical.slice(0, 3).forEach(opp => {
       plan += `⚠️ **${opp.client}** - Etapa ${opp.stage}\n`;
       plan += `   ${opp.reason}\n`;
-      plan += `   ➤ ${opp.action}\n`;
-      
-      const painValue = getScaleValue(opp.scales?.dor);
-      const powerValue = getScaleValue(opp.scales?.poder);
-      
-      if (painValue < 5) {
-        plan += `   Pergunta SPIN: "Vocês sabem que ${opp.industry || 'o mercado'} perde 10% em violação? Quanto isso representa para vocês?"\n`;
-        plan += `   [Confirmar DOR|update:dor:7:${opp.id}]\n`;
-      }
-      if (powerValue < 4) {
-        plan += `   Script: "Para garantir o ROI de 3 meses, preciso falar com quem aprova investimentos em logística."\n`;
-        plan += `   [Acessar PODER|update:poder:5:${opp.id}]\n`;
-      }
-      plan += `\n`;
+      plan += `   ➤ ${opp.action}\n\n`;
     });
   } else {
-    plan += `✅ PPVVC alinhado em todas as oportunidades\n\n`;
+    plan += `✅ PPVVCC alinhado em todas as oportunidades\n\n`;
   }
   
-  // MIÉRCOLES - Deals en riesgo  
   plan += `**📅 QUARTA-FEIRA - Resgatar Deals em Risco**\n`;
   if (atRisk.length > 0) {
     atRisk.slice(0, 2).forEach(opp => {
-      const roiCalc = calculateVentapelROI(opp);
-      plan += `💣 **${opp.client}** - R$ ${opp.value.toLocaleString()}\n`;
+      plan += `💣 **${opp.client}** - R$ ${opp.value.toLocaleString('pt-BR')}\n`;
       plan += `   ${opp.reason}\n`;
-      plan += `   ➤ ${opp.action}\n`;
-      plan += `   📝 Script: "Vi que ${opp.industry || 'empresas similares'} perdem ${(roiCalc.benchmark.violationRate * 100).toFixed(0)}% em violação. `;
-      plan += `L'Oréal eliminou 100% dos furtos com nossa solução. Posso mostrar como?"\n`;
-      plan += `   [Agendar demo L'Oréal|demo:loreal:${opp.id}]\n\n`;
+      plan += `   ➤ ${opp.action}\n\n`;
     });
   } else {
     plan += `✅ Sem deals em risco alto\n\n`;
   }
   
-  // JUEVES - Avanzar negociaciones
   plan += `**📅 QUINTA-FEIRA - Fechar Negócios**\n`;
   if (closing.length > 0) {
     closing.forEach(opp => {
-      const roiCalc = calculateVentapelROI(opp);
-      plan += `💰 **${opp.client}** - R$ ${opp.value.toLocaleString()}\n`;
+      plan += `💰 **${opp.client}** - R$ ${opp.value.toLocaleString('pt-BR')}\n`;
       plan += `   ${opp.reason}\n`;
-      plan += `   ➤ ${opp.action}\n`;
-      plan += `   Argumento final: "Com investimento de R$${roiCalc.ventapelSolution.investment.toLocaleString()}, `;
-      plan += `ROI em ${roiCalc.roi.paybackMonths} meses. Cada mês sem decidir = R$${roiCalc.currentLosses.totalMonthlyLoss.toLocaleString()} perdidos."\n`;
-      
-      const controlValue = getScaleValue(opp.scales?.controle);
-      const comprasValue = getScaleValue(opp.scales?.compras);
-      
-      if (controlValue < 7) {
-        plan += `   ⚠️ CONTROLE baixo (${controlValue}/10) - Definir próximos passos\n`;
-        plan += `   [Atualizar CONTROLE|update:controle:8:${opp.id}]\n`;
-      }
-      if (comprasValue < 6) {
-        plan += `   ⚠️ COMPRAS não mapeado (${comprasValue}/10)\n`;
-        plan += `   [Mapear processo|update:compras:7:${opp.id}]\n`;
-      }
-      plan += `\n`;
+      plan += `   ➤ ${opp.action}\n\n`;
     });
   } else {
     plan += `⚠️ Nenhum fechamento previsto - PROBLEMA!\n\n`;
   }
   
-  // VIERNES - Follow ups y prospección
   plan += `**📅 SEXTA-FEIRA - Follow-ups e Prospecção**\n`;
   if (followUp.length > 0) {
     plan += `📧 Follow-ups necessários:\n`;
@@ -388,23 +346,7 @@ function generateWeeklyPlan(opportunities, vendorName = "Vendedor") {
     });
   }
   plan += `\n🎯 Meta de prospecção: 20 calls novos\n`;
-  plan += `   Foco: E-commerce (10% violação - maior problema Brasil)\n`;
-  plan += `   Script abertura: "Vocês sabem que o e-commerce brasileiro perde R$3 bilhões/ano em fraudes e violação?"\n\n`;
-  
-  // Acciones rápidas generales
-  plan += `**⚡ AÇÕES RÁPIDAS DA SEMANA:**\n`;
-  plan += `[📊 Calcular ROI todos deals|action:calculate_all_roi]\n`;
-  plan += `[📧 Gerar emails da semana|action:generate_emails]\n`;
-  plan += `[🎯 Atualizar todas PPVVC|action:update_all_ppvvc]\n`;
-  plan += `[📈 Relatório para Tomás|action:weekly_report]\n\n`;
-  
-  // Recordatorios basados en datos reales
-  plan += `**💡 ARGUMENTOS COM DADOS REAIS BRASIL:**\n`;
-  plan += `• "10% de perdas por violação é a média Brasil (IBEVAR)"\n`;
-  plan += `• "80% das avarias são por embalagem inadequada"\n`;
-  plan += `• "E-commerce perde R$3 bilhões/ano em fraudes e violação"\n`;
-  plan += `• "L'Oréal, Nike, MercadoLibre já eliminaram esse problema"\n`;
-  plan += `• "ROI garantido em 3 meses ou devolvemos seu dinheiro"\n`;
+  plan += `   Foco: E-commerce (10% violação - maior problema Brasil)\n\n`;
   
   return plan;
 }
@@ -437,56 +379,165 @@ function calculateHealthScore(scales) {
   return values.length > 0 ? sum / values.length : 0;
 }
 
-function getDaysSinceLastContact(lastUpdate) {
-  if (!lastUpdate) return 999;
-  const last = new Date(lastUpdate);
-  const now = new Date();
-  return Math.floor((now - last) / (1000 * 60 * 60 * 24));
-}
-
-// ============= DETECTAR INTENCIÓN DE ACTUALIZACIÓN =============
-function detectUpdateIntent(context) {
-  const lowerContext = context.toLowerCase();
-  const intentKeywords = ['atualizar', 'mudar', 'subir', 'aumentar', 'agora é', 'confirmado'];
-  
-  if (!intentKeywords.some(kw => lowerContext.includes(kw))) {
-    return null;
+// ============= HANDLER PRINCIPAL - EDGE RUNTIME =============
+export default async function handler(req) {
+  // Solo POST permitido
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { 
+        status: 405,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
   }
 
-  const scaleKeywords = {
-    dor: ['dor', 'pain'],
-    poder: ['poder', 'power'],
-    visao: ['visão', 'vision', 'visao'],
-    valor: ['valor', 'value'],
-    controle: ['controle', 'control'],
-    compras: ['compras', 'purchase']
-  };
+  try {
+    const body = await req.json();
+    const { 
+      context, 
+      opportunityData, 
+      specialRequestType,
+      pipelineData,
+      vendorName,
+      intelligentContext,
+      similarDeals 
+    } = body;
 
-  let foundScale = null;
-  for (const scale in scaleKeywords) {
-    if (scaleKeywords[scale].some(kw => lowerContext.includes(kw))) {
-      foundScale = scale;
-      break;
+    // CASO 1: Plan Semanal
+    if (specialRequestType === 'weekly_plan') {
+      const plan = generateWeeklyPlan(
+        pipelineData?.allOpportunities || [],
+        vendorName || 'Vendedor'
+      );
+      
+      return new Response(
+        JSON.stringify({ response: plan }),
+        { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
     }
+
+    // CASO 2: Calcular ROI
+    if (context?.toLowerCase().includes('roi') || context?.toLowerCase().includes('calcular')) {
+      if (opportunityData) {
+        const roiAnalysis = calculateVentapelROI(opportunityData);
+        
+        return new Response(
+          JSON.stringify({ response: roiAnalysis.summary }),
+          { 
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+    }
+
+    // CASO 3: Análisis de oportunidad con contexto inteligente
+    if (opportunityData && intelligentContext) {
+      let response = `📊 **Análisis Inteligente - ${opportunityData.client}**\n\n`;
+      
+      // Mostrar fuente de datos
+      response += `📌 **Fuente de datos: ${intelligentContext.dataSource}**\n\n`;
+      
+      // Si hay notas del cliente (prioridad 1)
+      if (intelligentContext.priority1_clientNotes?.hasData) {
+        response += `**📝 Basado en lo que el cliente dijo:**\n`;
+        intelligentContext.priority1_clientNotes.notes.forEach(note => {
+          response += `• ${note}\n`;
+        });
+        response += `\n`;
+      }
+      
+      // Si hay deals similares (prioridad 2)
+      if (intelligentContext.priority2_similarDeals?.hasData) {
+        response += `**🔄 Patrones de ${intelligentContext.priority2_similarDeals.count} deals similares:**\n`;
+        response += `• Valor promedio: R$ ${intelligentContext.priority2_similarDeals.avgValue.toLocaleString('pt-BR')}\n`;
+        response += `• Tiempo promedio de cierre: ${intelligentContext.priority2_similarDeals.avgCloseTime} días\n`;
+        
+        if (intelligentContext.priority2_similarDeals.commonPatterns) {
+          intelligentContext.priority2_similarDeals.commonPatterns.forEach(pattern => {
+            response += `• ${pattern}\n`;
+          });
+        }
+        response += `\n`;
+      }
+      
+      // Análisis PPVVCC
+      const healthScore = calculateHealthScore(opportunityData.scales || {});
+      response += `**🎯 Estado PPVVCC:**\n`;
+      response += `• Score general: ${healthScore.toFixed(1)}/10\n`;
+      response += `• DOR: ${getScaleValue(opportunityData.scales?.dor)}/10\n`;
+      response += `• PODER: ${getScaleValue(opportunityData.scales?.poder)}/10\n`;
+      response += `• VISÃO: ${getScaleValue(opportunityData.scales?.visao)}/10\n`;
+      response += `• VALOR: ${getScaleValue(opportunityData.scales?.valor)}/10\n`;
+      response += `• CONTROLE: ${getScaleValue(opportunityData.scales?.controle)}/10\n`;
+      response += `• COMPRAS: ${getScaleValue(opportunityData.scales?.compras)}/10\n\n`;
+      
+      // Generar recomendación
+      response += `**➡️ Próxima acción recomendada:**\n`;
+      
+      const dorScore = getScaleValue(opportunityData.scales?.dor);
+      const poderScore = getScaleValue(opportunityData.scales?.poder);
+      
+      if (dorScore < 5) {
+        response += `🎯 **Hacer que el cliente ADMITA el problema**\n`;
+        response += `Script: "¿Sabían que empresas como ustedes pierden ${(0.10 * 100).toFixed(0)}% en violación de cajas? `;
+        response += `¿Cuánto les está costando esto mensualmente?"\n`;
+      } else if (poderScore < 4) {
+        response += `👔 **Acceder al DECISOR**\n`;
+        response += `Script: "Para garantizar el ROI de 3 meses que calculamos, necesito validar con quien aprueba inversiones. `;
+        response += `¿Podemos incluirlo en la próxima reunión?"\n`;
+      } else {
+        response += `💰 **Presentar ROI y cerrar**\n`;
+        const roiCalc = calculateVentapelROI(opportunityData);
+        response += `Script: "Con una inversión de R$ ${roiCalc.ventapelSolution.investment.toLocaleString('pt-BR')}, `;
+        response += `ahorran R$ ${roiCalc.projectedSavings.totalMonthlySavings.toLocaleString('pt-BR')}/mes. `;
+        response += `ROI garantizado en ${roiCalc.roi.paybackMonths} meses. ¿Cuándo podemos empezar?"\n`;
+      }
+      
+      return new Response(
+        JSON.stringify({ response }),
+        { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // CASO 4: Respuesta genérica
+    let genericResponse = "👋 Hola! Soy tu asistente Ventapel con datos reales de Brasil.\n\n";
+    genericResponse += "**Puedo ayudarte con:**\n";
+    genericResponse += "• 📊 Análisis PPVVCC de oportunidades\n";
+    genericResponse += "• 💰 Cálculo de ROI con datos reales\n";
+    genericResponse += "• 📅 Plan semanal personalizado\n";
+    genericResponse += "• 🔍 Búsqueda de deals similares\n";
+    genericResponse += "• 🎯 Scripts de venta basados en casos de éxito\n\n";
+    genericResponse += "Escribe el nombre de un cliente para empezar el análisis.";
+    
+    return new Response(
+      JSON.stringify({ response: genericResponse }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+
+  } catch (error) {
+    console.error('Error en API assistant:', error);
+    
+    // Respuesta de error mejorada
+    return new Response(
+      JSON.stringify({ 
+        response: '❌ Error procesando la solicitud. Usando modo local.',
+        error: error.message 
+      }),
+      { 
+        status: 200, // Devolvemos 200 para que el frontend pueda manejar el error
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
   }
-
-  if (!foundScale) return null;
-
-  const valueMatch = lowerContext.match(/(\d{1,2})\s*\/\s*10|\b(\d{1,2})\b(?!.*\b(dias|horas|minutos)\b)/);
-  if (!valueMatch) return null;
-
-  const newValue = valueMatch[2] || valueMatch[1];
-  
-  if (newValue === null || isNaN(parseInt(newValue)) || parseInt(newValue) > 10) return null;
-
-  const clientMatch = lowerContext.match(/(?:em|para|de)\s+([A-Z][A-Za-z0-9\s]+)/);
-  const client = clientMatch ? clientMatch[1].trim() : null;
-
-  return {
-    scale: foundScale,
-    newValue: parseInt(newValue),
-    client: client
-  };
 }
-
-export default async function handler
