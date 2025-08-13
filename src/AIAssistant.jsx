@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, X, Target, Mail, Phone, DollarSign, TrendingUp, Brain, Send, Loader2, Bot, Sparkles, AlertCircle, FileText } from 'lucide-react';
+import { MessageCircle, X, Target, Mail, Phone, DollarSign, TrendingUp, Brain, Send, Loader2, Bot, Sparkles, AlertCircle } from 'lucide-react';
 
-// ============= COMPONENTE SIMPLIFICADO - SOLO MENSAJERO =============
+// ============= COMPONENTE SIMPLIFICADO - CLAUDE-FIRST =============
 const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, supabase }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -14,30 +14,35 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ============= FUNCIÓN PRINCIPAL - LLAMAR AL BACKEND =============
-  const processMessage = async (text, action = null) => {
-    if (!text?.trim() && !action) return;
+  // Listener para abrir el asistente desde el CRM
+  useEffect(() => {
+    const handleOpenAssistant = () => {
+      setIsOpen(true);
+    };
+    window.addEventListener('openAssistant', handleOpenAssistant);
+    return () => window.removeEventListener('openAssistant', handleOpenAssistant);
+  }, []);
 
-    // Agregar mensaje del usuario si hay texto
-    if (text) {
-      const userMessage = {
-        role: 'user',
-        content: text,
-        timestamp: new Date().toISOString()
-      };
-      setMessages(prev => [...prev, userMessage]);
-      setInput('');
-    }
+  // ============= FUNCIÓN PRINCIPAL - SIEMPRE CLAUDE =============
+  const processMessage = async (text) => {
+    if (!text?.trim()) return;
 
+    // Agregar mensaje del usuario
+    const userMessage = {
+      role: 'user',
+      content: text,
+      timestamp: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
     setIsLoading(true);
 
     try {
-      // Llamar al backend con la oportunidad actual y el input
+      // SIEMPRE enviamos a Claude - no hay 'action', solo texto
       const response = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: action,
           userInput: text,
           opportunityData: currentOpportunity,
           vendorName: currentUser
@@ -71,62 +76,77 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   };
 
-  // ============= BOTONES DE ACCIÓN RÁPIDA =============
+  // ============= BOTONES CON PROMPTS NATURALES =============
   const quickActions = currentOpportunity ? [
     {
       icon: <Brain className="w-4 h-4" />,
       label: 'Analizar',
-      action: () => processMessage('', 'analizar'),
+      prompt: 'Analiza esta oportunidad y dime cuál es el principal cuello de botella según PPVVCC',
       color: 'bg-purple-500',
       tooltip: 'Análisis PPVVCC completo'
     },
     {
       icon: <Target className="w-4 h-4" />,
       label: 'Dolor',
-      action: () => processMessage('', 'dolor'),
+      prompt: 'Genera una estrategia SPIN para elevar el dolor del cliente. Incluye un script de llamada',
       color: 'bg-red-500',
       tooltip: 'Estrategia para elevar dolor'
     },
     {
       icon: <DollarSign className="w-4 h-4" />,
       label: 'ROI',
-      action: () => processMessage('', 'roi'),
+      prompt: 'Calcula el ROI específico para esta oportunidad con datos reales del sector',
       color: 'bg-green-500',
       tooltip: 'Calcular retorno de inversión'
     },
     {
       icon: <Mail className="w-4 h-4" />,
       label: 'Email',
-      action: () => processMessage('', 'email'),
+      prompt: 'Escribe un email de seguimiento potente para este cliente, usando casos de éxito similares',
       color: 'bg-blue-500',
       tooltip: 'Generar email de venta'
     },
     {
       icon: <Phone className="w-4 h-4" />,
       label: 'Llamada',
-      action: () => processMessage('', 'llamada'),
+      prompt: 'Dame un script de llamada de 2 minutos con manejo de las 3 objeciones más comunes',
       color: 'bg-yellow-500',
       tooltip: 'Script para llamada'
     },
     {
       icon: <TrendingUp className="w-4 h-4" />,
       label: 'Estrategia',
-      action: () => processMessage('', 'estrategia'),
+      prompt: 'Crea un plan de acción detallado para los próximos 5 días para cerrar este deal',
       color: 'bg-indigo-500',
       tooltip: 'Plan completo de acción'
     }
-  ] : [
-    {
-      icon: <AlertCircle className="w-4 h-4" />,
-      label: 'Sin cliente',
-      action: () => {},
-      color: 'bg-gray-400',
-      tooltip: 'Selecciona un cliente del CRM',
-      disabled: true
-    }
-  ];
+  ] : [];
 
-  // ============= RENDER =============
+  // Sugerencias contextuales basadas en el estado de la oportunidad
+  const getContextualSuggestions = () => {
+    if (!currentOpportunity?.scales) return [];
+    
+    const suggestions = [];
+    const dorScore = currentOpportunity.scales?.dor?.score || 0;
+    const poderScore = currentOpportunity.scales?.poder?.score || 0;
+    const visaoScore = currentOpportunity.scales?.visao?.score || 0;
+    
+    if (dorScore < 5) {
+      suggestions.push("🎯 ¿Cómo puedo hacer que el cliente admita su dolor?");
+    }
+    if (poderScore < 5) {
+      suggestions.push("👤 ¿Cómo accedo al verdadero tomador de decisión?");
+    }
+    if (visaoScore < 5) {
+      suggestions.push("💡 ¿Cómo construyo una visión de solución convincente?");
+    }
+    if (currentOpportunity.value > 100000) {
+      suggestions.push("💰 El cliente dice que es muy caro, ¿cómo manejo esta objeción?");
+    }
+    
+    return suggestions.slice(0, 3); // Máximo 3 sugerencias
+  };
+
   return (
     <>
       {/* Botón flotante */}
@@ -138,7 +158,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         <Sparkles className="absolute -top-1 -right-1 w-4 h-4 text-yellow-300 animate-pulse" />
         {!isOpen && currentOpportunity && (
           <span className="absolute -top-8 right-0 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-            Coach PPVVCC
+            Coach IA PPVVCC
           </span>
         )}
       </button>
@@ -153,11 +173,11 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
               <div className="flex items-center gap-2">
                 <Bot className="w-5 h-5" />
                 <div>
-                  <h3 className="font-bold">Coach de Ventas PPVVCC</h3>
+                  <h3 className="font-bold">Ventus - Coach IA PPVVCC</h3>
                   <p className="text-xs opacity-90">
                     {currentOpportunity 
-                      ? `🎯 ${currentOpportunity.client}` 
-                      : '⚠️ Selecciona un cliente'}
+                      ? `🎯 ${currentOpportunity.client} - ${currentOpportunity.name}` 
+                      : '⚠️ Selecciona un cliente del CRM'}
                   </p>
                 </div>
               </div>
@@ -172,37 +192,33 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
             {currentOpportunity && (
               <div className="mt-2 bg-white/20 rounded-lg px-3 py-2">
                 <div className="flex justify-between items-center text-xs">
-                  <span>
-                    DOR: {currentOpportunity.scales?.dor?.score || 0}/10
-                  </span>
-                  <span>
-                    PODER: {currentOpportunity.scales?.poder?.score || 0}/10
-                  </span>
-                  <span>
-                    Etapa: {currentOpportunity.stage}
-                  </span>
+                  <span>DOR: {currentOpportunity.scales?.dor?.score || 0}/10</span>
+                  <span>PODER: {currentOpportunity.scales?.poder?.score || 0}/10</span>
+                  <span>Valor: R$ {(currentOpportunity.value || 0).toLocaleString('pt-BR')}</span>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Quick Actions */}
-          <div className="p-3 bg-gray-50 border-b">
-            <div className="grid grid-cols-3 gap-2">
-              {quickActions.slice(0, 6).map((action, idx) => (
-                <button
-                  key={idx}
-                  onClick={action.action}
-                  disabled={action.disabled || isLoading}
-                  className={`${action.color} text-white rounded-lg px-3 py-2 text-xs hover:opacity-90 transition-all flex flex-col items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed`}
-                  title={action.tooltip}
-                >
-                  {action.icon}
-                  <span className="font-medium">{action.label}</span>
-                </button>
-              ))}
+          {/* Quick Actions - Botones simplificados */}
+          {currentOpportunity && (
+            <div className="p-3 bg-gray-50 border-b">
+              <div className="grid grid-cols-3 gap-2">
+                {quickActions.map((action, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => processMessage(action.prompt)}
+                    disabled={isLoading}
+                    className={`${action.color} text-white rounded-lg px-3 py-2 text-xs hover:opacity-90 transition-all flex flex-col items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed`}
+                    title={action.tooltip}
+                  >
+                    {action.icon}
+                    <span className="font-medium">{action.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gradient-to-b from-gray-50 to-white">
@@ -216,14 +232,31 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                     <p className="text-sm text-gray-600 mb-3">
                       Analizando: <strong>{currentOpportunity.client}</strong>
                     </p>
-                    <p className="text-xs text-gray-500">
-                      Usa los botones de arriba o escribe tu pregunta.
+                    <p className="text-xs text-gray-500 mb-3">
+                      Soy tu coach IA experto en PPVVCC. Puedo ayudarte con estrategias, scripts, cálculos de ROI y más. 
+                      ¡Pregúntame lo que necesites!
                     </p>
+                    
+                    {/* Sugerencias contextuales */}
+                    {getContextualSuggestions().length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        <p className="text-xs font-semibold text-purple-700">Sugerencias basadas en esta oportunidad:</p>
+                        {getContextualSuggestions().map((suggestion, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => processMessage(suggestion)}
+                            className="w-full text-left text-xs bg-white hover:bg-purple-50 p-2 rounded-lg border border-purple-200 transition-colors"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-2">
                     <p className="text-sm text-yellow-800">
-                      ⚠️ <strong>Selecciona un cliente del CRM</strong> para empezar
+                      ⚠️ <strong>Selecciona un cliente del CRM</strong> para empezar el análisis
                     </p>
                   </div>
                 )}
@@ -243,7 +276,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                   {msg.role === 'assistant' && (
                     <div className="flex items-center gap-1 mb-1">
                       <Bot className="w-3 h-3 text-purple-500" />
-                      <span className="text-xs text-purple-500 font-medium">Coach PPVVCC</span>
+                      <span className="text-xs text-purple-500 font-medium">Ventus Coach</span>
                     </div>
                   )}
                   <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
@@ -262,7 +295,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                 <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm p-3 shadow-sm">
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
-                    <span className="text-sm text-gray-600">Analizando...</span>
+                    <span className="text-sm text-gray-600">Analizando con IA...</span>
                   </div>
                 </div>
               </div>
@@ -271,7 +304,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
+          {/* Input mejorado */}
           <div className="p-4 border-t bg-white">
             <div className="flex gap-2">
               <input
@@ -284,7 +317,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                   }
                 }}
                 placeholder={currentOpportunity 
-                  ? "Pregunta sobre el cliente o estrategia..." 
+                  ? "Pregúntame sobre estrategias, objeciones, ROI..." 
                   : "Selecciona un cliente primero..."}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm disabled:bg-gray-100"
                 disabled={isLoading || !currentOpportunity}
@@ -308,7 +341,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                   <>
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                     <span className="text-xs text-gray-500">
-                      Cliente activo: {currentOpportunity.client}
+                      Analizando: {currentOpportunity.client}
                     </span>
                   </>
                 ) : (
@@ -321,7 +354,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                 )}
               </div>
               <span className="text-xs text-gray-400">
-                Powered by PPVVCC
+                Powered by Claude AI + PPVVCC
               </span>
             </div>
           </div>
