@@ -1,465 +1,85 @@
-// api/assistant.js
-export default async function handler(req, res) {
-  // Habilitar CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
+// api/assistant.js - VERSIÓN HÍBRIDA: CLAUDE-FIRST + CAPACIDADES AVANZADAS
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+export const config = {
+  runtime: 'edge',
+  maxDuration: 30,
+};
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const { messages, context, opportunityData, pipelineData } = req.body;
-
-  // Detectar tipo de solicitud
-  const requestType = detectRequestType(context);
-
-  // System prompt mejorado con capacidades de email y más contexto
-  const systemPrompt = `
-Eres el asesor experto en ventas consultivas de Ventapel Brasil.
-Utilizas la metodología PPVVCC (Pain, Power, Vision, Value, Control, Compras) para analizar y mejorar oportunidades.
-Respondes directo, sin rodeos, como si fueras el CEO aconsejando al equipo.
-
-CAPACIDADES ESPECIALES:
-1. Generar emails de venta consultiva
-2. Crear scripts de llamadas telefónicas
-3. Preparar presentaciones y demos
-4. Analizar competencia
-5. Calcular ROI específico
-6. Diseñar estrategias de cuenta
-7. Resolver objeciones específicas
-
-REGLAS CRÍTICAS - NUNCA VIOLAR:
-1. SOLO usar datos REALES proporcionados en opportunityData o pipelineData
-2. Si no hay datos de una oportunidad, responder: "No encontré esa oportunidad en el CRM. Use 'listar' para ver todas las disponibles."
-3. NUNCA inventar clientes, valores, contactos o métricas
-4. Si opportunityData es null, NO ASUMIR ningún dato
-5. Si pipelineData.allOpportunities está vacío, decir que no hay oportunidades
-6. NUNCA crear ejemplos ficticios de clientes que no existen
-
-VALIDACIÓN DE DATOS:
-- Si opportunityData === null → "No hay oportunidad seleccionada"
-- Si searchContext?.found === false → "No encontré esa oportunidad"
-- Solo usar clientes que aparezcan en pipelineData.allOpportunities
-
-CONTEXTO VENTAPEL:
-- Vendemos soluciones de empaquetado que reducen violación de cajas (3-5% promedio industria)
-- Máquinas selladoras BP + cinta personalizada
-- ROI típico: 3-6 meses
-- Precio promedio: R$50,000 - R$200,000
-- Casos de éxito: 
-  * MercadoLibre: 40% reducción retrabalho, ROI 4 meses
-  * Natura: 60% menos violaciones, ahorro R$85k/mes
-  * Magazine Luiza: 35% reducción devoluciones
-  * Dafiti: Eliminó retrabalho manual completamente
-
-COMPETIDORES Y DIFERENCIADORES:
-- 3M: Más caro (30%), solo cinta, sin máquinas
-- Scotch: Calidad inferior, sin soporte técnico
-- Genéricos chinos: 70% más baratos pero sin garantía ni soporte
-- NUESTRO DIFERENCIAL: Solución completa (máquina + cinta + soporte) con garantía de reducción 40% o devolvemos dinero
-
-${requestType === 'email' ? getEmailTemplates() : ''}
-${requestType === 'script' ? getCallScriptTemplates() : ''}
-${requestType === 'objection' ? getObjectionHandlers() : ''}
-
-${pipelineData ? `
-ANÁLISIS DEL PIPELINE COMPLETO:
-Total oportunidades activas: ${pipelineData.allOpportunities?.length || 0}
-Valor total en pipeline: R$${pipelineData.pipelineHealth?.totalValue?.toLocaleString() || 0}
-Salud promedio del pipeline: ${pipelineData.pipelineHealth?.averageHealth || 0}/10
-Oportunidades en riesgo: ${pipelineData.pipelineHealth?.atRisk || 0}
-Valor en riesgo: R$${pipelineData.pipelineHealth?.riskValue?.toLocaleString() || 0}
-
-TOP 3 DEALS PARA CERRAR ESTE MES:
-${getTopDealsToClose(pipelineData)}
-` : ''}
-
-${opportunityData ? `
-DATOS ESPECÍFICOS DE ${opportunityData.client}:
-Valor: R$${opportunityData.value}
-Industria: ${opportunityData.industry || 'No especificada'}
-Etapa actual: ${getStageNameInPortuguese(opportunityData.stage)}
-Vendedor: ${opportunityData.vendor}
-Último contacto: ${opportunityData.last_update}
-Días sin contacto: ${getDaysSinceLastContact(opportunityData.last_update)}
-
-CONTACTOS EN LA CUENTA:
-- Power Sponsor: ${opportunityData.power_sponsor || 'No identificado ⚠️'}
-- Sponsor: ${opportunityData.sponsor || 'No identificado'}
-- Influenciador: ${opportunityData.influencer || 'No identificado'}
-- Contacto Apoyo: ${opportunityData.support_contact || 'No identificado'}
-
-ESCALAS PPVVCC ACTUALES:
-- DOR: ${opportunityData.scales?.pain || 0}/10 ${opportunityData.scales?.pain < 5 ? '🔴 CRÍTICO - Cliente no admite problema' : opportunityData.scales?.pain < 7 ? '🟡 Dolor admitido pero no urgente' : '🟢 Dolor crítico y urgente'}
-- PODER: ${opportunityData.scales?.power || 0}/10 ${opportunityData.scales?.power < 4 ? '🔴 CRÍTICO - Sin acceso al decisor' : opportunityData.scales?.power < 7 ? '🟡 Acceso parcial al poder' : '🟢 Control total del poder'}
-- VISÃO: ${opportunityData.scales?.vision || 0}/10 ${opportunityData.scales?.vision < 5 ? '🔴 No ve nuestra solución' : '🟢 Visión alineada'}
-- VALOR: ${opportunityData.scales?.value || 0}/10 ${opportunityData.scales?.value < 5 ? '🔴 ROI no validado' : '🟢 ROI claro'}
-- CONTROLE: ${opportunityData.scales?.control || 0}/10
-- COMPRAS: ${opportunityData.scales?.purchase || 0}/10
-
-ANÁLISIS SITUACIONAL:
-${generateSituationalAnalysis(opportunityData)}
-
-PRÓXIMA MEJOR ACCIÓN:
-${generateNextBestAction(opportunityData)}
-` : ''}
-
-INSTRUCCIONES PARA RESPONDER:
-${getResponseInstructions(requestType, context)}
-
-PREGUNTA DEL USUARIO: ${context}
-`;
-
-  try {
-    const apiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
-    
-    if (!apiKey) {
-      console.error('No se encontró API key de Claude');
-      return res.status(200).json({ 
-        response: generateEnhancedFallbackResponse(opportunityData, context, requestType)
-      });
+// ============= CASOS DE ÉXITO REALES VENTAPEL =============
+const CASOS_EXITO_REALES = {
+  'honda': {
+    empresa: 'Honda Argentina',
+    sector: 'Automotriz',
+    problema: 'Velocidad limitada, 1% pérdidas, problemas ergonómicos',
+    solucion: 'BP555 + Fita Gorilla 300m',
+    resultados: {
+      velocidad: '+40%',
+      perdidas: '100% eliminadas',
+      roi_meses: 3,
+      inversion: 150000,
+      ahorro_anual: 600000
     }
-
-    // Llamada a Claude API
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 3000, // Aumentado para emails largos
-        temperature: 0.7,
-        system: systemPrompt,
-        messages: messages && messages.length > 0 ? messages : [
-          { role: 'user', content: context || 'Analiza esta oportunidad' }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error de Claude API:', response.status, errorText);
-      throw new Error(`Claude API error: ${response.status}`);
+  },
+  'loreal': {
+    empresa: "L'Oréal Brasil",
+    sector: 'Cosmética',
+    problema: '+10% pérdidas por robo, cuellos de botella',
+    solucion: 'RSA + Fita Gorilla 700m',
+    resultados: {
+      robos: '100% eliminados',
+      eficiencia: '+50%',
+      roi_meses: 3,
+      inversion: 280000,
+      ahorro_anual: 2500000
     }
-
-    const data = await response.json();
-    
-    res.status(200).json({ 
-      response: data.content?.[0]?.text || generateEnhancedFallbackResponse(opportunityData, context, requestType),
-      analysis: opportunityData ? generateSituationalAnalysis(opportunityData) : null
-    });
-
-  } catch (error) {
-    console.error('Error calling Claude API:', error);
-    
-    res.status(200).json({ 
-      response: generateEnhancedFallbackResponse(opportunityData, context, requestType)
-    });
+  },
+  'nike': {
+    empresa: 'Nike Brasil',
+    sector: 'Calzado/Textil',
+    problema: '10% pérdidas en transporte',
+    solucion: 'BP755 + Fita Gorilla 300m',
+    resultados: {
+      perdidas: '100% eliminadas',
+      eficiencia: '+30%',
+      roi_meses: 2,
+      inversion: 200000,
+      ahorro_anual: 1200000
+    }
+  },
+  'mercadolibre': {
+    empresa: 'MercadoLibre',
+    sector: 'E-commerce',
+    problema: 'Alto retrabajo, pérdidas en fulfillment',
+    solucion: 'BP555e + Fita VENOM',
+    resultados: {
+      retrabajo: '-40%',
+      ahorro_mensual: 180000,
+      roi_meses: 2,
+      inversion: 360000
+    }
   }
+};
+
+// ============= HELPERS =============
+function getScaleValue(scale) {
+  if (!scale) return 0;
+  if (typeof scale === 'object' && scale.score !== undefined) return scale.score;
+  if (typeof scale === 'number') return scale;
+  return 0;
 }
 
-// Detectar tipo de solicitud
-function detectRequestType(context) {
-  const lowerContext = context?.toLowerCase() || '';
-  
-  if (lowerContext.includes('email') || lowerContext.includes('correo') || lowerContext.includes('mensaje')) {
-    return 'email';
-  }
-  if (lowerContext.includes('llamada') || lowerContext.includes('llamar') || lowerContext.includes('teléfono') || lowerContext.includes('script')) {
-    return 'script';
-  }
-  if (lowerContext.includes('objeción') || lowerContext.includes('objection') || lowerContext.includes('caro') || lowerContext.includes('precio')) {
-    return 'objection';
-  }
-  if (lowerContext.includes('demo') || lowerContext.includes('presentación')) {
-    return 'demo';
-  }
-  if (lowerContext.includes('roi') || lowerContext.includes('retorno')) {
-    return 'roi';
-  }
-  if (lowerContext.includes('competencia') || lowerContext.includes('3m') || lowerContext.includes('scotch')) {
-    return 'competition';
-  }
-  
-  return 'general';
-}
-
-// Templates de email según situación
-function getEmailTemplates() {
-  return `
-TEMPLATES DE EMAIL SEGÚN SITUACIÓN:
-
-1. PRIMER CONTACTO (DOR < 3):
-Asunto: [Empresa] redujo 40% violación de cajas - caso relevante para [Cliente]
-Estructura:
-- Gancho con caso similar a su industria
-- Problema específico que resolvemos (con números)
-- Pregunta que genere reflexión
-- CTA suave para conversar
-
-2. REACTIVACIÓN (>7 días sin contacto):
-Asunto: ¿Sigue siendo prioridad reducir los R$[cantidad] en retrabalho?
-Estructura:
-- Referencia última conversación
-- Nuevo insight o caso de éxito
-- Crear urgencia (competidor ya implementó)
-- CTA específico con fecha/hora
-
-3. AVANCE A DEMO (DOR > 6, PODER > 4):
-Asunto: Demo personalizada Ventapel - [fecha] - reducción 40% violaciones
-Estructura:
-- Confirmar dolor específico admitido
-- Agenda clara de la demo (30 min)
-- Quién debe participar
-- Resultados esperados post-demo
-
-4. PROPUESTA COMERCIAL (VALOR > 6):
-Asunto: Propuesta Ventapel [Cliente] - ROI 4.5 meses - Garantía 40% reducción
-Estructura:
-- Resumen ejecutivo con ROI
-- Inversión y condiciones
-- Garantías y casos de éxito
-- Próximos pasos claros
-
-5. FOLLOW-UP POST-DEMO:
-Asunto: Próximos pasos - Implementación Ventapel en [Cliente]
-Estructura:
-- Recap de puntos clave de la demo
-- Respuestas a preguntas pendientes
-- Timeline de implementación
-- Urgencia por disponibilidad de agenda
-`;
-}
-
-// Scripts de llamada
-function getCallScriptTemplates() {
-  return `
-SCRIPTS DE LLAMADA SEGÚN OBJETIVO:
-
-1. LLAMADA DE CALIFICACIÓN (SPIN):
-SITUACIÓN: "¿Cómo manejan hoy el empaquetado en el CD?"
-PROBLEMA: "¿Qué % de cajas llegan violadas al cliente?"
-IMPLICACIÓN: "¿Cuánto tiempo dedican a re-embalar?"
-NEED-PAYOFF: "¿Qué valor tendría eliminar ese retrabalho?"
-
-2. LLAMADA PARA ACCEDER AL PODER:
-"[Nombre], para diseñar la mejor solución necesito entender las prioridades del gerente de operaciones. 
-¿Podríamos incluirlo en una call de 20 minutos esta semana?"
-
-3. LLAMADA DE CIERRE:
-"[Nombre], ya identificamos R$[X] en ahorros mensuales.
-Tengo disponibilidad para comenzar implementación en 2 semanas.
-¿Qué necesitamos resolver para avanzar con el pedido de compra?"
-`;
-}
-
-// Manejadores de objeciones
-function getObjectionHandlers() {
-  return `
-MANEJO DE OBJECIONES COMUNES:
-
-"ES MUY CARO":
-1. Reframe a inversión: "Entiendo. ¿Comparado con los R$[X] que pierden mensualmente en retrabalho?"
-2. Mostrar ROI: "La inversión se paga en 4 meses. Después es ahorro puro."
-3. Caso similar: "MercadoLibre pensó lo mismo. Hoy ahorran R$180k/mes."
-
-"YA TENEMOS PROVEEDOR (3M)":
-1. No atacar: "3M es buena empresa. ¿Están 100% satisfechos con los resultados?"
-2. Complementar: "Muchos clientes usan ambos. Nosotros para líneas críticas, 3M para el resto."
-3. Prueba sin riesgo: "¿Probamos en una línea por 30 días? Si no reduce 40%, no cobro."
-
-"NO ES PRIORIDAD AHORA":
-1. Crear urgencia: "¿Saben que su competidor [X] ya redujo 35% sus costos con esto?"
-2. Costo de no actuar: "Cada mes sin actuar son R$[X] perdidos. En 6 meses son R$[X*6]."
-3. Facilitar: "Implementamos sin interrumpir operación. 2 horas y está funcionando."
-
-"NECESITO PENSARLO":
-1. Identificar concern real: "Perfecto. ¿Qué aspecto específico necesita evaluar?"
-2. Crear deadline: "La promoción del 15% termina el viernes. ¿Lo revisamos el jueves?"
-3. Involucrar: "¿Quién más participa en la decisión? Hagamos una call todos juntos."
-`;
-}
-
-// Instrucciones específicas según tipo de request
-function getResponseInstructions(requestType, context) {
-  const instructions = {
-    'email': `
-GENERA UN EMAIL ESPECÍFICO:
-- Asunto llamativo y específico
-- Máximo 150 palabras
-- Bullets para facilitar lectura
-- CTA claro y único
-- P.D. con urgencia o beneficio extra
-- Tono profesional pero cercano
-- Usa números concretos siempre`,
-    
-    'script': `
-GENERA UN SCRIPT DE LLAMADA:
-- Apertura de máximo 15 segundos
-- Preguntas SPIN específicas
-- Manejo de objeciones probables
-- Frases exactas palabra por palabra
-- Pausas marcadas [PAUSA]
-- Máximo 5 minutos total`,
-    
-    'objection': `
-RESPONDE LA OBJECIÓN:
-- Nunca discutas o confrontes
-- Primero valida su preocupación
-- Reframe al valor/problema
-- Usa caso de éxito similar
-- Cierra con pregunta que avance`,
-    
-    'demo': `
-PREPARA LA DEMO:
-- Agenda de 30 minutos exactos
-- 3 momentos WOW específicos
-- Casos de su industria
-- ROI calculado con sus números
-- Dejar algo pendiente para próxima call`,
-    
-    'roi': `
-CALCULA ROI ESPECÍFICO:
-- Usa números reales del cliente
-- Desglose mensual y anual
-- Comparación con no hacer nada
-- Casos similares con resultados
-- Gráfico simple con payback`,
-    
-    'competition': `
-ANALIZA COMPETENCIA:
-- Nunca hables mal de competidores
-- Resalta diferencias, no defectos
-- Posiciónate en categoría diferente
-- Casos donde coexisten
-- Tu unique selling proposition`,
-    
-    'general': `
-RESPONDE CON ANÁLISIS Y ACCIÓN:
-- Diagnóstico brutal y directo
-- Acción específica para HOY
-- Script o mensaje exacto
-- Consecuencia de no actuar
-- Probabilidad real de cierre`
-  };
-  
-  return instructions[requestType] || instructions.general;
-}
-
-// Análisis situacional mejorado
-function generateSituationalAnalysis(opportunity) {
-  if (!opportunity || !opportunity.scales) return 'Sin datos para análisis';
-  
-  const scales = opportunity.scales;
-  const avg = (scales.pain + scales.power + scales.vision + 
-               scales.value + scales.control + scales.purchase) / 6;
-  
-  let analysis = [];
-  
-  // Estado general
-  if (avg < 4) {
-    analysis.push('🔴 DEAL MORIBUNDO - Considerar descarte o intervención de emergencia');
-  } else if (avg < 6) {
-    analysis.push('🟡 DEAL TIBIO - Necesita trabajo intensivo esta semana');
-  } else {
-    analysis.push('🟢 DEAL CALIENTE - Presionar para cierre inmediato');
-  }
-  
-  // Análisis por industria
-  const industryInsights = {
-    'e-commerce': 'Black Friday/Navidad cerca - Crear urgencia con timeline de implementación',
-    'farmaceutica': 'ANVISA puede ser aliado - Mencionar compliance y trazabilidad',
-    '3pl': 'Márgenes ajustados - Enfocar en reducción costo por pedido',
-    'alimentos': 'Pérdida de producto = pérdida directa - Calcular valor producto perdido'
-  };
-  
-  if (opportunity.industry && industryInsights[opportunity.industry.toLowerCase()]) {
-    analysis.push(`\n💡 INSIGHT ${opportunity.industry}: ${industryInsights[opportunity.industry.toLowerCase()]}`);
-  }
-  
-  // Días sin contacto
-  const daysSince = getDaysSinceLastContact(opportunity.last_update);
-  if (daysSince > 7) {
-    analysis.push(`\n🚨 ${daysSince} DÍAS SIN CONTACTO - Deal enfriándose rápidamente`);
-  }
-  
-  // Multi-threading
-  const contacts = [opportunity.power_sponsor, opportunity.sponsor, opportunity.influencer].filter(Boolean);
-  if (contacts.length < 2) {
-    analysis.push('\n⚠️ SINGLE-THREADED - Alto riesgo si contacto se va o cambia prioridades');
-  }
-  
-  return analysis.join('\n');
-}
-
-// Generar siguiente mejor acción mejorada
-function generateNextBestAction(opportunity) {
-  const scales = opportunity.scales;
-  const daysSince = getDaysSinceLastContact(opportunity.last_update);
-  
-  // Prioridad 1: Deals fríos
-  if (daysSince > 7) {
-    return `
-🚨 ACCIÓN URGENTE: Reactivar YA
-EMAIL ASUNTO: "¿Sigue siendo prioridad reducir los R$${Math.round(opportunity.value * 0.15).toLocaleString()} mensuales en retrabalho?"
-CONTENIDO: Referencia última conversación + nuevo caso de éxito + crear urgencia
-FOLLOW-UP: Llamar 2 horas después del email`;
-  }
-  
-  // Prioridad 2: Dolor no admitido
-  if (scales.pain < 5) {
-    return `
-🔴 ACCIÓN: Reunión para admitir dolor
-SCRIPT: "${opportunity.client}, empresas similares pierden 3-5% por violación. 
-Con sus ${opportunity.value / 50} envíos mensuales, son R$${Math.round(opportunity.value * 0.03).toLocaleString()} perdidos.
-¿Cuál es su experiencia con este problema?"`;
-  }
-  
-  // Prioridad 3: Sin acceso al poder
-  if (scales.power < 4) {
-    return `
-🔴 ACCIÓN: Acceder al decisor esta semana
-EMAIL: "Para garantizar el ROI de R$${Math.round(opportunity.value * 2.5).toLocaleString()} anual,
-necesito 20 minutos con quien aprueba inversiones en logística.
-¿Lo incluimos en nuestra call del jueves?"`;
-  }
-  
-  // Prioridad 4: Avanzar al cierre
-  if (scales.pain >= 7 && scales.power >= 6 && scales.value >= 6) {
-    return `
-🟢 ACCIÓN: Cerrar esta semana
-LLAMADA: "Ya validamos R$${Math.round(opportunity.value * 0.2).toLocaleString()}/mes en ahorros.
-Puedo comenzar implementación el lunes.
-¿Qué necesitamos para el pedido de compra hoy?"`;
-  }
-  
-  return 'ACCIÓN: Actualizar escalas PPVVCC para determinar siguiente paso';
-}
-
-// Funciones auxiliares
-function getStageNameInPortuguese(stage) {
-  const stages = {
-    1: 'Prospecção',
-    2: 'Qualificação', 
-    3: 'Apresentação',
-    4: 'Validação/Teste',
-    5: 'Negociação',
-    6: 'Fechado'
-  };
-  return stages[stage] || 'Desconhecido';
+function calculateHealthScore(scales) {
+  if (!scales) return 0;
+  const values = [
+    getScaleValue(scales.dor),
+    getScaleValue(scales.poder),
+    getScaleValue(scales.visao),
+    getScaleValue(scales.valor),
+    getScaleValue(scales.controle),
+    getScaleValue(scales.compras)
+  ];
+  const sum = values.reduce((acc, val) => acc + val, 0);
+  return values.length > 0 ? (sum / values.length).toFixed(1) : 0;
 }
 
 function getDaysSinceLastContact(lastUpdate) {
@@ -469,216 +89,819 @@ function getDaysSinceLastContact(lastUpdate) {
   return Math.floor((now - last) / (1000 * 60 * 60 * 24));
 }
 
-function getTopDealsToClose(pipelineData) {
-  if (!pipelineData?.allOpportunities) return 'Sin datos';
-  
-  const hotDeals = pipelineData.allOpportunities
-    .filter(opp => {
-      const avg = opp.scales ? 
-        Object.values(opp.scales).reduce((a, b) => a + b, 0) / 6 : 0;
-      return avg > 6 && opp.stage >= 3;
-    })
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 3);
-  
-  return hotDeals.map((deal, idx) => 
-    `${idx + 1}. ${deal.client}: R$${deal.value.toLocaleString()} - ${deal.stage === 5 ? 'CERRAR YA' : 'Acelerar cierre'}`
-  ).join('\n');
-}
-
-// Respuesta fallback mejorada con capacidad de email
-function generateEnhancedFallbackResponse(opportunityData, context, requestType) {
-  if (requestType === 'email' && opportunityData) {
-    return generateEmailTemplate(opportunityData, context);
+// ============= BÚSQUEDA EN GOOGLE =============
+async function searchGoogleForContext(query) {
+  const SERPER_API_KEY = process.env.SERPER_API_KEY;
+  if (!SERPER_API_KEY) {
+    console.log('⚠️ Serper API no configurada');
+    return null;
   }
   
-  if (requestType === 'script' && opportunityData) {
-    return generateCallScript(opportunityData, context);
-  }
-  
-  if (!opportunityData) {
-    return `No puedo generar contenido específico sin datos de la oportunidad.
+  try {
+    const response = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': SERPER_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        q: query,
+        gl: 'br',
+        hl: 'pt',
+        num: 5,
+        type: 'search'
+      })
+    });
     
-Pero aquí está la estructura que necesitás:
+    const data = await response.json();
+    
+    if (data.organic && data.organic.length > 0) {
+      const results = data.organic.map(r => ({
+        title: r.title,
+        snippet: r.snippet,
+        link: r.link,
+        hasRevenue: r.snippet?.includes('R$') || r.snippet?.includes('milhões') || r.snippet?.includes('bilhões'),
+        hasEmployees: r.snippet?.match(/\d+\s*(funcionários|empleados|employees)/i) !== null,
+        hasExpansion: r.snippet?.toLowerCase().includes('expansão') || r.snippet?.toLowerCase().includes('novo centro'),
+        hasProblems: r.snippet?.toLowerCase().includes('problema') || r.snippet?.toLowerCase().includes('desafio')
+      }));
+      
+      // Formatear para Claude
+      return results.map((r, idx) => 
+        `${idx + 1}. ${r.title}\n   ${r.snippet}\n   ${r.hasExpansion ? '🚀 Expansión detectada' : ''}${r.hasProblems ? '⚠️ Problemas mencionados' : ''}`
+      ).join('\n\n');
+    }
+    return null;
+  } catch (error) {
+    console.error('Error buscando en Google:', error);
+    return null;
+  }
+}
 
-📧 PARA EMAIL:
-- Asunto con beneficio específico
-- Párrafo de gancho (caso similar)
-- Bullets con valor cuantificado  
-- CTA con fecha específica
-- P.D. con urgencia
+// ============= HERRAMIENTAS LOCALES (TOOLS) =============
 
-📞 PARA LLAMADA:
-- Apertura con referencia conocida
-- Preguntas SPIN en secuencia
-- Manejo de "no tengo tiempo"
-- Cierre con próximo paso acordado
-
-Cargá una oportunidad para contenido personalizado.`;
+// 1. Análisis PPVVCC
+function analyzeOpportunityLocal(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada.";
+  
+  const daysSince = getDaysSinceLastContact(opp.last_update);
+  const healthScore = calculateHealthScore(opp.scales);
+  const dorScore = getScaleValue(opp.scales?.dor);
+  const poderScore = getScaleValue(opp.scales?.poder);
+  
+  let analysis = `📊 **ANÁLISIS DE ${opp.client}**\n\n`;
+  
+  analysis += `💰 **Valor:** R$ ${(opp.value || 0).toLocaleString('pt-BR')}\n`;
+  analysis += `📈 **Etapa:** ${opp.stage} | Prob: ${opp.probability}%\n`;
+  analysis += `❤️ **Health:** ${healthScore}/10\n`;
+  analysis += `📅 **Último contacto:** ${daysSince} días\n\n`;
+  
+  // Diagnóstico principal
+  if (daysSince > 30) {
+    analysis += `🔴 **DIAGNÓSTICO: DEAL MUERTO**\n`;
+    analysis += `${daysSince} días sin contacto. Requiere reactivación urgente.\n\n`;
+  } else if (dorScore < 5) {
+    analysis += `⚠️ **DIAGNÓSTICO: SIN DOLOR = SIN VENTA**\n`;
+    analysis += `Dolor en ${dorScore}/10. Cliente no admite problema.\n\n`;
+  } else if (poderScore < 5) {
+    analysis += `⚠️ **DIAGNÓSTICO: SIN ACCESO AL DECISOR**\n`;
+    analysis += `Poder en ${poderScore}/10. No llegas a quien firma.\n\n`;
+  } else {
+    analysis += `✅ **DIAGNÓSTICO: OPORTUNIDAD VIABLE**\n\n`;
   }
   
-  // Análisis estándar si no es email ni script
-  const scales = opportunityData.scales || {};
-  const avg = scales ? 
-    (scales.pain + scales.power + scales.vision + scales.value + scales.control + scales.purchase) / 6 : 0;
+  // Acción inmediata
+  analysis += `**🎯 ACCIÓN INMEDIATA:**\n`;
+  if (daysSince > 7) {
+    analysis += `☎️ **Llamar HOY** para reactivar\n`;
+  } else if (dorScore < 5) {
+    analysis += `📞 **Aplicar técnica SPIN** para elevar dolor\n`;
+  } else if (!opp.power_sponsor) {
+    analysis += `🎯 **Identificar Power Sponsor** esta semana\n`;
+  } else {
+    analysis += `✅ **Avanzar a siguiente etapa** del pipeline\n`;
+  }
   
-  return `Análisis de ${opportunityData.client}:
-
-ESTADO: ${avg < 4 ? '🔴 CRÍTICO' : avg < 7 ? '🟡 TIBIO' : '🟢 CALIENTE'} (${avg.toFixed(1)}/10)
-
-PROBLEMA PRINCIPAL: ${
-  scales.pain < 5 ? 'Cliente no admite el dolor' :
-  scales.power < 4 ? 'Sin acceso al decisor' :
-  scales.value < 5 ? 'ROI no validado' :
-  'Listo para cerrar'
+  return analysis;
 }
 
-PRÓXIMA ACCIÓN:
-${generateNextBestAction(opportunityData)}
-
-💡 Preguntame específicamente:
-- "Email para reactivar"
-- "Script para llamada"  
-- "Cómo manejar objeción de precio"
-- "Preparar demo para ${opportunityData.client}"`;
+// 2. Estrategia de Dolor (SPIN)
+function generatePainStrategy(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada";
+  
+  const painScore = getScaleValue(opp.scales?.dor) || 0;
+  const monthlyBoxes = Math.round(opp.value / 100);
+  const monthlyLoss = Math.round(opp.value * 0.1);
+  const annualLoss = monthlyLoss * 12;
+  
+  let strategy = `🎯 **ESTRATEGIA SPIN PARA ${opp.client}**\n\n`;
+  strategy += `**Dolor actual:** ${painScore}/10 → **Meta:** 8+/10\n\n`;
+  
+  strategy += `**📞 SCRIPT DE LLAMADA (10 minutos):**\n\n`;
+  
+  strategy += `**1. SITUACIÓN (1 min):**\n`;
+  strategy += `"${opp.sponsor || 'Hola'}, vi que procesan ${monthlyBoxes.toLocaleString('pt-BR')} cajas/mes. ¿Correcto?"\n\n`;
+  
+  strategy += `**2. PROBLEMA (3 min):**\n`;
+  strategy += `• "¿Qué % de cajas llegan violadas al cliente?"\n`;
+  strategy += `• "¿Cuánto tiempo dedican a re-embalar?"\n`;
+  strategy += `• "¿Cuántos reclamos reciben por mes?"\n\n`;
+  
+  strategy += `**3. IMPLICACIÓN (4 min) - CREAR DOLOR:**\n`;
+  strategy += `• "Con 10% de violación, son ${Math.round(monthlyBoxes * 0.1).toLocaleString('pt-BR')} cajas/mes"\n`;
+  strategy += `• "A R$35 por retrabajo = R$ ${monthlyLoss.toLocaleString('pt-BR')}/mes"\n`;
+  strategy += `• "Eso es R$ ${annualLoss.toLocaleString('pt-BR')}/año tirados a la basura"\n`;
+  strategy += `• "¿Tu competencia tiene este problema?"\n\n`;
+  
+  strategy += `**4. NECESIDAD (2 min):**\n`;
+  strategy += `• "Si eliminaran 95% de violaciones, ¿qué impacto tendría?"\n`;
+  strategy += `• "¿Vale la pena invertir 3 meses de pérdidas para eliminarlo para siempre?"\n\n`;
+  
+  const caso = opp.industry?.toLowerCase().includes('commerce') ? 'MercadoLibre' : 'Nike';
+  strategy += `**💡 MENCIONAR:** "${caso} tenía el mismo problema, hoy ahorra R$ ${caso === 'MercadoLibre' ? '180.000' : '100.000'}/mes"`;
+  
+  return strategy;
 }
 
-// Generar template de email específico
-function generateEmailTemplate(opportunity, context) {
-  const scales = opportunity.scales;
-  const daysSince = getDaysSinceLastContact(opportunity.last_update);
+// 3. Cálculo de ROI
+function calculateROI(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada";
+  
+  const monthlyBoxes = Math.round(opp.value / 100);
+  const violationRate = 0.10;
+  const reworkCost = 35;
+  const monthlyLoss = Math.round(monthlyBoxes * violationRate * reworkCost);
+  
+  let investment, solution;
+  if (monthlyBoxes < 5000) {
+    investment = 45000;
+    solution = "BP222 + Gorilla 300m";
+  } else if (monthlyBoxes < 20000) {
+    investment = 95000;
+    solution = "BP555e + VENOM";
+  } else {
+    investment = 180000;
+    solution = "BP755 + Gorilla 700m";
+  }
+  
+  const monthlySavings = Math.round(monthlyLoss * 0.95);
+  const paybackMonths = Math.ceil(investment / monthlySavings);
+  const annualROI = Math.round(((monthlySavings * 12 - investment) / investment) * 100);
+  
+  let roi = `💰 **ROI PERSONALIZADO - ${opp.client}**\n\n`;
+  
+  roi += `**📊 NÚMEROS ACTUALES:**\n`;
+  roi += `• Volumen: ${monthlyBoxes.toLocaleString('pt-BR')} cajas/mes\n`;
+  roi += `• Violadas (10%): ${Math.round(monthlyBoxes * violationRate).toLocaleString('pt-BR')} cajas\n`;
+  roi += `• Pérdida mensual: R$ ${monthlyLoss.toLocaleString('pt-BR')}\n`;
+  roi += `• Pérdida anual: R$ ${(monthlyLoss * 12).toLocaleString('pt-BR')}\n\n`;
+  
+  roi += `**✅ SOLUCIÓN VENTAPEL:**\n`;
+  roi += `• Equipamiento: ${solution}\n`;
+  roi += `• Inversión: R$ ${investment.toLocaleString('pt-BR')}\n`;
+  roi += `• Reducción violaciones: 95%\n\n`;
+  
+  roi += `**📈 RESULTADOS:**\n`;
+  roi += `• Ahorro mensual: R$ ${monthlySavings.toLocaleString('pt-BR')}\n`;
+  roi += `• Ahorro anual: R$ ${(monthlySavings * 12).toLocaleString('pt-BR')}\n`;
+  roi += `• **PAYBACK: ${paybackMonths} MESES**\n`;
+  roi += `• ROI primer año: ${annualROI}%\n\n`;
+  
+  const caso = monthlyBoxes < 5000 ? CASOS_EXITO_REALES.mercadolibre : 
+               monthlyBoxes < 20000 ? CASOS_EXITO_REALES.nike : 
+               CASOS_EXITO_REALES.loreal;
+  
+  roi += `**📊 CASO SIMILAR:**\n`;
+  roi += `${caso.empresa}: ROI en ${caso.resultados.roi_meses} meses`;
+  
+  return roi;
+}
+
+// 4. Generación de Email
+function generateEmail(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada";
+  
+  const daysSince = getDaysSinceLastContact(opp.last_update);
+  const monthlyLoss = Math.round(opp.value * 0.1);
+  const caso = opp.industry?.toLowerCase().includes('commerce') ? 'MercadoLibre' : 'Nike';
+  
+  let email = `📧 **EMAIL PARA ${opp.client}**\n\n`;
+  email += `**Para:** ${opp.sponsor || opp.power_sponsor || 'Contacto'}\n`;
   
   if (daysSince > 7) {
-    return `📧 EMAIL DE REACTIVACIÓN para ${opportunity.client}:
-
-ASUNTO: ¿Sigue siendo prioridad reducir los R$${Math.round(opportunity.value * 0.15).toLocaleString()} en retrabalho?
-
-${opportunity.power_sponsor || opportunity.sponsor || 'Estimado cliente'},
-
-En nuestra última conversación del ${opportunity.last_update}, identificamos una oportunidad de ahorro de R$${Math.round(opportunity.value * 0.15).toLocaleString()} mensuales en su operación.
-
-Desde entonces, ayudamos a [empresa similar] a:
-• Reducir 40% las violaciones de cajas
-• Eliminar 3 horas diarias de retrabalho
-• ROI completo en 4 meses
-
-¿Sigue siendo prioridad resolver este tema en ${opportunity.client}?
-
-¿Podemos agendar 15 minutos esta semana para mostrarle los resultados?
-
-Saludos,
-${opportunity.vendor}
-
-P.D. Tengo un slot el jueves 10am o viernes 3pm. ¿Cuál prefiere?`;
+    email += `**Asunto:** ${opp.client} - R$ ${(monthlyLoss * 12).toLocaleString('pt-BR')}/año en pérdidas evitables\n\n`;
+    email += `Hola ${opp.sponsor?.split(' ')[0] || 'equipo'},\n\n`;
+    email += `Hace ${daysSince} días que no hablamos.\n\n`;
+    email += `Mientras tanto, están perdiendo R$ ${monthlyLoss.toLocaleString('pt-BR')}/mes en violación de cajas.\n\n`;
+  } else {
+    email += `**Asunto:** Caso ${caso} - Cómo eliminaron 95% de violaciones\n\n`;
+    email += `Hola ${opp.sponsor?.split(' ')[0] || 'equipo'},\n\n`;
   }
   
-  if (scales.pain < 5) {
-    return `📧 EMAIL PARA ADMITIR DOLOR - ${opportunity.client}:
+  email += `Datos rápidos:\n`;
+  email += `• Pérdida típica del sector: 10% de cajas violadas\n`;
+  email += `• Para ustedes: R$ ${monthlyLoss.toLocaleString('pt-BR')}/mes\n`;
+  email += `• ${caso} tenía el mismo problema\n`;
+  email += `• Hoy ahorran R$ ${caso === 'MercadoLibre' ? '180.000' : '100.000'}/mes\n\n`;
+  
+  email += `¿15 minutos esta semana para ver los números específicos?\n\n`;
+  email += `PD: Cada mes sin actuar = R$ ${monthlyLoss.toLocaleString('pt-BR')} perdidos.\n\n`;
+  email += `Saludos,\n[Tu nombre]`;
+  
+  return email;
+}
 
-ASUNTO: MercadoLibre redujo R$180k/mes en retrabalho - caso relevante para ${opportunity.client}
+// 5. Script de Llamada
+function generateCallScript(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada";
+  
+  const monthlyBoxes = Math.round(opp.value / 100);
+  const monthlyLoss = Math.round(opp.value * 0.1);
+  
+  let script = `📞 **SCRIPT PARA ${opp.client}**\n\n`;
+  
+  script += `**APERTURA (30 seg):**\n`;
+  script += `"Hola ${opp.sponsor || '[nombre]'}, soy [TU NOMBRE] de Ventapel.\n`;
+  script += `Vi que procesan ${monthlyBoxes.toLocaleString('pt-BR')} cajas/mes.\n`;
+  script += `MercadoLibre procesaba volumen similar y perdía R$ ${monthlyLoss.toLocaleString('pt-BR')}/mes.\n`;
+  script += `Hoy ahorran 95% de eso. ¿15 minutos para mostrarle cómo?"\n\n`;
+  
+  script += `**SI DICE "NO TENGO TIEMPO":**\n`;
+  script += `"Entiendo. Solo una pregunta rápida:\n`;
+  script += `¿Cuántas cajas violadas tienen por mes?\n`;
+  script += `[Esperar respuesta]\n`;
+  script += `Eso son R$ [calcular] al año. ¿No vale 15 minutos?"\n\n`;
+  
+  script += `**SI DICE "YA TENEMOS SOLUCIÓN":**\n`;
+  script += `"Excelente. ¿Qué % de efectividad tiene?\n`;
+  script += `[Esperar respuesta]\n`;
+  script += `Nosotros garantizamos 95% o devolvemos el dinero.\n`;
+  script += `¿Vale la pena comparar?"\n\n`;
+  
+  script += `**SI DICE "NO ES PRIORIDAD":**\n`;
+  script += `"¿R$ ${(monthlyLoss * 12).toLocaleString('pt-BR')}/año no es prioridad?\n`;
+  script += `Con ROI en 3 meses, ¿qué podría ser más prioritario?"\n\n`;
+  
+  script += `**CIERRE:**\n`;
+  script += `"¿Martes 10am o jueves 3pm le viene mejor?"`;
+  
+  return script;
+}
 
-${opportunity.power_sponsor || 'Estimado cliente'},
-
-Empresas de ${opportunity.industry || 'logística'} pierden en promedio 3-5% de sus envíos por violación de cajas.
-
-Para ${opportunity.client}, con su volumen, esto representa aproximadamente:
-• ${Math.round(opportunity.value / 50)} cajas violadas/mes
-• R$${Math.round(opportunity.value * 0.15).toLocaleString()} en retrabalho mensual
-• ${Math.round(opportunity.value / 50 * 0.03)} clientes insatisfechos
-
-MercadoLibre tenía números similares. Hoy ahorra R$180k/mes.
-
-¿Cómo manejan este tema en ${opportunity.client}?
-
-¿Podemos conversar 20 minutos esta semana?
-
-Saludos,
-${opportunity.vendor}`;
+// 6. Estrategia Completa
+function generateCompleteStrategy(opp) {
+  if (!opp) return "❌ No hay oportunidad seleccionada";
+  
+  const healthScore = calculateHealthScore(opp.scales);
+  const dorScore = getScaleValue(opp.scales?.dor);
+  const poderScore = getScaleValue(opp.scales?.poder);
+  const visaoScore = getScaleValue(opp.scales?.visao);
+  
+  let strategy = `🎯 **ESTRATEGIA COMPLETA - ${opp.client}**\n\n`;
+  
+  strategy += `**📊 DIAGNÓSTICO PPVVCC:**\n`;
+  strategy += `• DOR: ${dorScore}/10 ${dorScore < 5 ? '🔴 CRÍTICO' : dorScore < 8 ? '🟡 MEJORAR' : '🟢 OK'}\n`;
+  strategy += `• PODER: ${poderScore}/10 ${poderScore < 5 ? '🔴 SIN ACCESO' : poderScore < 8 ? '🟡 PARCIAL' : '🟢 TOTAL'}\n`;
+  strategy += `• VISÃO: ${visaoScore}/10\n`;
+  strategy += `• Health Total: ${healthScore}/10\n\n`;
+  
+  let priority = '';
+  let action = '';
+  
+  if (dorScore < 5) {
+    priority = '🔴 PRIORIDAD 1: ELEVAR DOLOR';
+    action = 'Sin dolor admitido NO HAY VENTA. Aplicar SPIN inmediatamente.';
+  } else if (poderScore < 5) {
+    priority = '🟡 PRIORIDAD 2: ACCEDER AL DECISOR';
+    action = 'Identificar y acceder al Power Sponsor esta semana.';
+  } else if (visaoScore < 5) {
+    priority = '🔵 PRIORIDAD 3: CONSTRUIR VISIÓN';
+    action = 'Demo con caso de éxito y ROI específico.';
+  } else {
+    priority = '✅ LISTO PARA CERRAR';
+    action = 'Proponer prueba piloto o contrato.';
   }
   
-  // Email genérico si no hay caso específico
-  return `📧 EMAIL PERSONALIZADO para ${opportunity.client}:
-
-ASUNTO: Propuesta de valor Ventapel - ${opportunity.client}
-
-${opportunity.power_sponsor || 'Estimado cliente'},
-
-[PÁRRAFO APERTURA - Referencia a última conversación o trigger event]
-
-Ventapel puede ayudar a ${opportunity.client} a:
-• Reducir 40% las violaciones de cajas
-• Ahorrar R$${Math.round(opportunity.value * 0.15).toLocaleString()}/mes en retrabalho
-• Mejorar satisfacción del cliente final
-
-[PÁRRAFO CASO DE ÉXITO - Similar a su industria]
-
-¿Podemos agendar 30 minutos esta semana?
-
-Saludos,
-${opportunity.vendor}
-
-P.D. [Urgencia o beneficio adicional]`;
-}
-
-// Generar script de llamada específico
-function generateCallScript(opportunity, context) {
-  const scales = opportunity.scales;
+  strategy += `**${priority}**\n`;
+  strategy += `${action}\n\n`;
   
-  return `📞 SCRIPT DE LLAMADA para ${opportunity.client}:
-
-APERTURA (10 segundos):
-"Hola ${opportunity.power_sponsor || opportunity.sponsor || 'María'}, soy ${opportunity.vendor} de Ventapel. 
-¿Tiene 30 segundos? Le llamo por el tema de reducción de violaciones que conversamos."
-
-[PAUSA - Esperar confirmación]
-
-GANCHO (20 segundos):
-"Perfecto. Desde nuestra última charla, ayudamos a [empresa similar] a reducir 40% sus violaciones.
-Calculé que ${opportunity.client} podría ahorrar R$${Math.round(opportunity.value * 0.15).toLocaleString()} mensuales."
-
-PREGUNTAS SPIN:
-
-SITUACIÓN:
-"¿Cómo están manejando hoy el tema de cajas violadas en el CD?"
-[ESCUCHAR - Tomar notas]
-
-PROBLEMA:
-"¿Qué porcentaje de sus ${Math.round(opportunity.value / 50)} envíos mensuales llegan dañados?"
-[Si no sabe]: "La industria maneja 3-5%. ¿Creen estar en ese rango?"
-
-IMPLICACIÓN:
-"Con ese %, ¿cuánto tiempo dedica su equipo a re-embalar productos?"
-"¿Cuál es el costo de cada devolución por daño?"
-
-NEED-PAYOFF:
-"Si pudieran eliminar ese retrabalho, ¿qué impacto tendría en su operación?"
-"¿Qué valor le asignarían a reducir 40% las devoluciones?"
-
-CIERRE (15 segundos):
-"${opportunity.power_sponsor || 'Basado en lo que me cuenta'}, veo potencial de ahorro de R$${Math.round(opportunity.value * 2.5).toLocaleString()} anual.
-¿Podemos agendar 30 minutos esta semana para mostrarle exactamente cómo?"
-
-MANEJO DE OBJECIONES:
-
-"No tengo tiempo ahora":
-→ "Entiendo perfectamente. ¿Cuándo sería mejor? ¿Jueves 10am o viernes 3pm?"
-
-"Envíeme información por email":
-→ "Claro. Para enviarle info relevante, ¿cuál es su mayor desafío: violaciones, retrabalho o devoluciones?"
-
-"Ya tenemos proveedor":
-→ "Excelente. ¿Están 100% satisfechos con los resultados? La mayoría usa ambos proveedores."
-
-CIERRE ALTERNATIVO:
-"Le envío un video de 2 minutos mostrando el antes/después en MercadoLibre. ¿Lo vemos juntos el jueves?"`;
+  strategy += `**📋 PLAN DE ACCIÓN (5 DÍAS):**\n\n`;
+  
+  strategy += `**DÍA 1-2:** ${dorScore < 5 ? 'Llamada SPIN para elevar dolor' : 'Mantener momentum'}\n`;
+  strategy += `**DÍA 3:** ${poderScore < 5 ? 'Email pidiendo acceso al decisor' : 'Confirmar próximos pasos'}\n`;
+  strategy += `**DÍA 4:** ${visaoScore < 5 ? 'Demo con ROI calculado' : 'Enviar propuesta'}\n`;
+  strategy += `**DÍA 5:** Follow-up y definir fecha de decisión\n\n`;
+  
+  strategy += `**📞 SCRIPT DE HOY:**\n`;
+  strategy += `"${opp.sponsor || 'Hola'}, `;
+  
+  if (dorScore < 5) {
+    strategy += `necesito validar algo: ¿cuántas cajas violadas tienen por mes?"`;
+  } else if (poderScore < 5) {
+    strategy += `para avanzar necesito 15 min con quien aprueba inversiones. ¿Quién sería?"`;
+  } else {
+    strategy += `ya tenemos todo listo. ¿Empezamos con prueba piloto o vamos directo al contrato?"`;
+  }
+  
+  return strategy;
 }
 
-// Para Vercel
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
-    maxDuration: 30,
-  },
-};
+// 7. Manejo de Nueva Oportunidad
+function handleNewOpportunity(context, ventapelContext) {
+  // Extraer información del contexto
+  const companyMatch = context.match(/(?:empresa|cliente|company|oportunidad con|reunión con|visitar a?)\s+([A-Z][A-Za-z0-9+\-&\s]+)/i);
+  const company = companyMatch ? companyMatch[1].trim() : '[Por definir]';
+  
+  const valueMatch = context.match(/R?\$?\s*(\d+(?:\.\d{3})*(?:,\d+)?)\s*(?:mil|k|reais)?/i);
+  let value = 0;
+  if (valueMatch) {
+    value = valueMatch[1].replace(/\./g, '').replace(',', '.');
+    if (context.match(/mil|k/i)) value = parseFloat(value) * 1000;
+  }
+  
+  let response = `🎯 **NUEVA OPORTUNIDAD IDENTIFICADA**\n\n`;
+  response += `**Empresa:** ${company}\n`;
+  if (value) response += `**Valor estimado:** R$ ${Math.round(value).toLocaleString('pt-BR')}\n`;
+  
+  response += `\n📊 **ESTRUCTURA PPVVCC INICIAL:**\n\n`;
+  
+  response += `**DOR (0/10):** ❓ Por validar con preguntas SPIN\n`;
+  response += `• ¿Qué % de cajas llegan violadas?\n`;
+  response += `• ¿Cuánto cuesta el retrabajo?\n`;
+  response += `• ¿Han medido el impacto en satisfacción?\n\n`;
+  
+  response += `**PODER (0/10):** ❓ Mapear estructura de decisión\n`;
+  response += `• ¿Quién aprueba inversiones en logística?\n`;
+  response += `• ¿Cuál es el proceso de compras?\n`;
+  response += `• ¿Hay presupuesto asignado?\n\n`;
+  
+  response += `**VISÃO (0/10):** ❓ Construir con demo\n`;
+  response += `• Mostrar caso ${company.includes('commerce') ? 'MercadoLibre' : 'Nike'}\n`;
+  response += `• Demo de equipamiento específico\n`;
+  response += `• ROI calculator en vivo\n\n`;
+  
+  response += `**🎬 PLAN PARA PRIMERA REUNIÓN:**\n`;
+  response += `1. Validar dolor con SPIN (15 min)\n`;
+  response += `2. Identificar poder de decisión (5 min)\n`;
+  response += `3. Mini-demo con caso de éxito (10 min)\n`;
+  response += `4. Calcular ROI preliminar (5 min)\n`;
+  response += `5. Agendar próximos pasos (5 min)\n\n`;
+  
+  response += `**⚡ ACCIÓN INMEDIATA:**\n`;
+  response += `📅 Agendar reunión con agenda clara\n`;
+  response += `📊 Preparar caso de éxito relevante\n`;
+  response += `💰 Tener calculadora ROI lista`;
+  
+  return response;
+}
+
+// ============= LLAMADA A CLAUDE API MEJORADA CON TOOLS =============
+async function callClaudeAPI(opportunityData, userInput, ventapelContext, toolsAvailable, webSearchResults = null) {
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+  
+  if (!ANTHROPIC_API_KEY) {
+    console.log('⚠️ Claude API no configurada, usando análisis local');
+    return { type: 'fallback', content: analyzeOpportunityLocal(opportunityData) };
+  }
+
+  // Descripción de herramientas disponibles
+  const toolDescriptions = toolsAvailable.map(t => 
+    `- **${t.name}**: ${t.description}`
+  ).join('\n');
+
+  const promptTemplate = `Eres "Ventus", un coach de ventas de clase mundial y experto absoluto en la metodología PPVVCC de Ventapel Brasil. 
+Tu CEO te describió como: "directo, sin vueltas, basado en evidencia y lógica". 
+Tu objetivo es ayudar a los vendedores a CERRAR DEALS proporcionando estrategias y acciones concretas.
+
+**REGLAS FUNDAMENTALES:**
+1. **SIEMPRE BASADO EN DATOS:** Analiza la oportunidad, casos de éxito, y cualquier información web disponible. No inventes.
+2. **ACCIÓN CONCRETA:** Proporciona siempre un paso siguiente claro y ejecutable HOY.
+3. **RESPUESTA DIRECTA:** Usa Markdown. Sé conciso pero completo. Sin adulación.
+4. **PERSONALIZACIÓN:** Adapta tu respuesta al contexto específico del cliente.
+5. **USAR INFO ACTUALIZADA:** Si hay información de web search, úsala para enriquecer la respuesta.
+
+---
+**CONTEXTO DE LA OPORTUNIDAD:**
+${opportunityData ? JSON.stringify(opportunityData, null, 2) : 'No hay oportunidad seleccionada'}
+
+**CASOS DE ÉXITO VENTAPEL:**
+${JSON.stringify(ventapelContext.casos, null, 2)}
+
+${webSearchResults ? `
+**📰 INFORMACIÓN ACTUALIZADA DE INTERNET sobre ${opportunityData?.client}:**
+${webSearchResults}
+
+INSTRUCCIONES PARA USAR ESTA INFO:
+- Si hay expansión mencionada → Es momento ideal para propuesta
+- Si hay problemas logísticos → Conectar con nuestra solución
+- Si hay datos financieros → Dimensionar la propuesta
+- SIEMPRE menciona que tienes información actualizada cuando la uses
+` : ''}
+
+**SOLICITUD DEL VENDEDOR:**
+"${userInput}"
+
+---
+**HERRAMIENTAS DISPONIBLES:**
+Puedes usar estas herramientas para obtener información precisa. Si necesitas usar una herramienta, responde ÚNICAMENTE con:
+\`\`\`json
+{"tool_to_use": "nombre_de_la_herramienta"}
+\`\`\`
+
+${toolDescriptions}
+
+---
+**INSTRUCCIONES ESPECÍFICAS:**
+
+${userInput.toLowerCase().includes('nueva oportunidad') || userInput.toLowerCase().includes('nuevo cliente') ? 
+`DETECTÉ NUEVA OPORTUNIDAD:
+- Estructurar en formato PPVVCC
+- Crear plan de acción para primera reunión
+- Identificar información faltante crítica
+- Sugerir preguntas SPIN específicas
+- Usar herramienta 'nueva_oportunidad' si necesitas estructura completa` : ''}
+
+${userInput.toLowerCase().includes('actualiz') || userInput.toLowerCase().includes('noticia') ? 
+`USA LA INFORMACIÓN WEB:
+- Menciona explícitamente que tienes info actualizada
+- Conecta las noticias con oportunidades de venta
+- Crea triggers basados en eventos recientes` : ''}
+
+1. Analiza la solicitud del vendedor en el contexto de la oportunidad
+2. Si puedes dar una respuesta completa y personalizada directamente, hazlo
+3. Si necesitas datos específicos de una herramienta (como cálculos de ROI exactos), solicítala
+4. Considera el estado PPVVCC actual para personalizar tu respuesta
+5. SIEMPRE incluye un próximo paso accionable HOY
+
+Responde de forma natural pero directa, como el CEO aconsejando al equipo de ventas.`;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 2000,
+        temperature: 0.3,
+        messages: [
+          { role: "user", content: promptTemplate }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      console.log('❌ Error en Claude API:', response.status);
+      return { type: 'fallback', content: analyzeOpportunityLocal(opportunityData) };
+    }
+
+    const data = await response.json();
+    const responseText = data.content[0].text;
+    
+    // Verificar si Claude está pidiendo una herramienta
+    if (responseText.includes('```json') && responseText.includes('tool_to_use')) {
+      try {
+        const jsonMatch = responseText.match(/```json\n?(.*?)\n?```/s);
+        if (jsonMatch) {
+          const toolRequest = JSON.parse(jsonMatch[1]);
+          if (toolRequest.tool_to_use) {
+            return { type: 'tool_request', tool: toolRequest.tool_to_use };
+          }
+        }
+      } catch (e) {
+        console.log('No es una solicitud de herramienta válida');
+      }
+    }
+    
+    return { type: 'direct_response', content: responseText };
+    
+  } catch (error) {
+    console.error('❌ Error llamando a Claude:', error);
+    return { type: 'fallback', content: analyzeOpportunityLocal(opportunityData) };
+  }
+}
+
+// Segunda llamada a Claude con resultado de herramienta
+async function callClaudeWithToolResult(opportunityData, userInput, toolName, toolResult, ventapelContext, webSearchResults = null) {
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+  
+  if (!ANTHROPIC_API_KEY) {
+    return toolResult;
+  }
+
+  const promptTemplate = `Eres "Ventus", coach de ventas experto en PPVVCC de Ventapel Brasil.
+Directo, sin vueltas, basado en evidencia.
+
+El vendedor preguntó: "${userInput}"
+
+Para responder mejor, ejecutaste la herramienta "${toolName}" que devolvió:
+
+--- RESULTADO DE LA HERRAMIENTA ---
+${toolResult}
+--- FIN DEL RESULTADO ---
+
+**CONTEXTO DEL CLIENTE:**
+${opportunityData ? JSON.stringify(opportunityData, null, 2) : 'No hay oportunidad'}
+
+**CASOS DE ÉXITO RELEVANTES:**
+${JSON.stringify(ventapelContext.casos, null, 2)}
+
+${webSearchResults ? `
+**📰 INFORMACIÓN ACTUALIZADA DE INTERNET:**
+${webSearchResults}
+` : ''}
+
+**TAREA:**
+1. Usa el resultado de la herramienta como base
+2. Enriquece con insights adicionales del contexto
+3. Si hay info web disponible, úsala para personalizar más
+4. Personaliza para este cliente específico
+5. Menciona casos de éxito similares si es relevante
+6. SIEMPRE termina con un próximo paso claro para HOY
+
+Responde en Markdown, siendo profesional pero directo como el CEO.`;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 2000,
+        temperature: 0.3,
+        messages: [
+          { role: "user", content: promptTemplate }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      console.log('❌ Error en segunda llamada a Claude');
+      return toolResult;
+    }
+
+    const data = await response.json();
+    return data.content[0].text;
+    
+  } catch (error) {
+    console.error('❌ Error en segunda llamada a Claude:', error);
+    return toolResult;
+  }
+}
+
+// ============= HANDLER PRINCIPAL - ORQUESTADOR CLAUDE-FIRST =============
+export default async function handler(req) {
+  // Configurar CORS
+  const headers = {
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,OPTIONS,PATCH,DELETE,POST,PUT',
+    'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version',
+    'Content-Type': 'application/json'
+  };
+
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers }
+    );
+  }
+
+  try {
+    const body = await req.json();
+    const { 
+      userInput, 
+      opportunityData, 
+      vendorName,
+      pipelineData,
+      searchContext,
+      isNewOpportunity,
+      ventapelContext 
+    } = body;
+
+    console.log('🧠 Backend recibió:', { 
+      userInput: userInput?.substring(0, 50), 
+      hasOpportunity: !!opportunityData,
+      vendor: vendorName,
+      isNewOpportunity: !!isNewOpportunity
+    });
+
+    // Validación básica
+    if (!opportunityData && !isNewOpportunity) {
+      // Si no hay oportunidad y no es nueva, buscar si el usuario está pidiendo info de un cliente
+      const clientNameMatch = userInput?.match(/(?:cliente|empresa|oportunidad|deal|cuenta)\s+([A-Za-z0-9\s&\-]+)/i);
+      
+      if (clientNameMatch && pipelineData?.allOpportunities) {
+        const clientName = clientNameMatch[1].trim().toLowerCase();
+        const foundOpp = pipelineData.allOpportunities.find(o => 
+          o.client?.toLowerCase().includes(clientName)
+        );
+        
+        if (!foundOpp) {
+          return new Response(
+            JSON.stringify({ 
+              response: `❌ **No encontré "${clientNameMatch[1]}" en el CRM**\n\n` +
+                       `📋 **Clientes disponibles:**\n` +
+                       pipelineData.allOpportunities.slice(0, 10).map(o => 
+                         `• ${o.client} - R$ ${(o.value || 0).toLocaleString('pt-BR')}`
+                       ).join('\n') +
+                       `\n\n💡 Escribe el nombre exacto del cliente o usa "listar" para ver todos.`
+            }),
+            { status: 200, headers }
+          );
+        }
+      }
+      
+      return new Response(
+        JSON.stringify({ 
+          response: "❌ **No hay cliente seleccionado**\n\n" +
+                   "Selecciona un cliente del CRM o dime:\n" +
+                   '• "Nueva oportunidad con [empresa]" para registrar una nueva\n' +
+                   '• "Listar oportunidades" para ver todas\n' +
+                   '• El nombre específico del cliente que quieres analizar'
+        }),
+        { status: 200, headers }
+      );
+    }
+
+    if (!userInput || userInput.trim() === '') {
+      return new Response(
+        JSON.stringify({ 
+          response: "❓ **¿En qué puedo ayudarte?**\n\n" +
+                   "Pregúntame sobre:\n" +
+                   "• Estrategias PPVVCC\n" +
+                   "• Scripts y emails de venta\n" +
+                   "• Cálculos de ROI\n" +
+                   "• Manejo de objeciones\n" +
+                   "• Información actualizada del cliente"
+        }),
+        { status: 200, headers }
+      );
+    }
+
+    // Buscar información en Google si es relevante
+    let webSearchResults = null;
+    const needsWebSearch = userInput.toLowerCase().includes('actualiz') || 
+                          userInput.toLowerCase().includes('noticia') ||
+                          userInput.toLowerCase().includes('reciente') ||
+                          userInput.toLowerCase().includes('información') ||
+                          userInput.toLowerCase().includes('expansion') ||
+                          userInput.toLowerCase().includes('facturación');
+    
+    if (needsWebSearch && opportunityData?.client) {
+      console.log('🔍 Buscando en Google para:', opportunityData.client);
+      webSearchResults = await searchGoogleForContext(
+        `${opportunityData.client} Brasil ${opportunityData.industry || ''} facturación empleados noticias 2024 2025`
+      );
+      if (webSearchResults) {
+        console.log('✅ Información web encontrada');
+      }
+    }
+
+    // Definir las herramientas disponibles
+    const availableTools = [
+      { 
+        name: 'analizar', 
+        description: 'Análisis PPVVCC completo con diagnóstico y próximos pasos',
+        function: analyzeOpportunityLocal 
+      },
+      { 
+        name: 'dolor', 
+        description: 'Estrategia SPIN y script para elevar el dolor del cliente',
+        function: generatePainStrategy 
+      },
+      { 
+        name: 'roi', 
+        description: 'Cálculo detallado de ROI con payback y casos similares',
+        function: calculateROI 
+      },
+      { 
+        name: 'email', 
+        description: 'Email de venta personalizado con casos de éxito',
+        function: generateEmail 
+      },
+      { 
+        name: 'llamada', 
+        description: 'Script de llamada con manejo de objeciones comunes',
+        function: generateCallScript 
+      },
+      { 
+        name: 'estrategia', 
+        description: 'Plan de acción completo de 5 días basado en PPVVCC',
+        function: generateCompleteStrategy 
+      },
+      {
+        name: 'nueva_oportunidad',
+        description: 'Estructurar nueva oportunidad en formato PPVVCC',
+        function: () => handleNewOpportunity(userInput, ventapelContext || { casos: CASOS_EXITO_REALES })
+      }
+    ];
+
+    // Si es nueva oportunidad, manejar especialmente
+    if (isNewOpportunity || userInput.toLowerCase().includes('nueva oportunidad') || userInput.toLowerCase().includes('nuevo cliente')) {
+      const newOppResponse = handleNewOpportunity(userInput, ventapelContext || { casos: CASOS_EXITO_REALES });
+      
+      // Enviar a Claude para enriquecer si está disponible
+      const claudeResponse = await callClaudeAPI(
+        null,
+        userInput,
+        { casos: CASOS_EXITO_REALES },
+        availableTools,
+        webSearchResults
+      );
+      
+      if (claudeResponse.type === 'direct_response') {
+        return new Response(
+          JSON.stringify({ response: claudeResponse.content }),
+          { status: 200, headers }
+        );
+      }
+      
+      return new Response(
+        JSON.stringify({ response: newOppResponse }),
+        { status: 200, headers }
+      );
+    }
+
+    // ============= PRIMERA LLAMADA A CLAUDE =============
+    console.log('🤖 Llamando a Claude para:', userInput);
+    
+    const claudeResponse = await callClaudeAPI(
+      opportunityData,
+      userInput,
+      { casos: CASOS_EXITO_REALES },
+      availableTools,
+      webSearchResults
+    );
+
+    // Procesar respuesta de Claude
+    if (claudeResponse.type === 'tool_request') {
+      // Claude pidió una herramienta
+      const toolName = claudeResponse.tool;
+      const tool = availableTools.find(t => t.name === toolName);
+      
+      if (tool) {
+        console.log(`🔧 Ejecutando herramienta: ${toolName}`);
+        const toolResult = tool.function(opportunityData);
+        
+        // ============= SEGUNDA LLAMADA A CLAUDE CON RESULTADO =============
+        console.log('🤖 Enviando resultado de herramienta a Claude');
+        const finalResponse = await callClaudeWithToolResult(
+          opportunityData,
+          userInput,
+          toolName,
+          toolResult,
+          { casos: CASOS_EXITO_REALES },
+          webSearchResults
+        );
+        
+        return new Response(
+          JSON.stringify({ response: finalResponse }),
+          { status: 200, headers }
+        );
+      } else {
+        console.log(`❌ Herramienta no encontrada: ${toolName}`);
+        return new Response(
+          JSON.stringify({ response: analyzeOpportunityLocal(opportunityData) }),
+          { status: 200, headers }
+        );
+      }
+    } else if (claudeResponse.type === 'direct_response') {
+      // Claude respondió directamente
+      console.log('✅ Claude respondió directamente');
+      return new Response(
+        JSON.stringify({ response: claudeResponse.content }),
+        { status: 200, headers }
+      );
+    } else {
+      // Fallback
+      console.log('⚠️ Usando fallback local');
+      return new Response(
+        JSON.stringify({ response: claudeResponse.content }),
+        { status: 200, headers }
+      );
+    }
+
+  } catch (error) {
+    console.error('❌ Error en backend:', error);
+    
+    return new Response(
+      JSON.stringify({ 
+        response: '❌ **Error procesando solicitud**\n\nPor favor, intenta de nuevo o reformula tu pregunta.',
+        error: error.message 
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
