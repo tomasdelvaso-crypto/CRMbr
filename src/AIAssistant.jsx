@@ -158,23 +158,13 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return () => window.removeEventListener('openAssistant', handleOpenAssistant);
   }, []);
 
-  // Cargar datos del pipeline cuando se abre
-  useEffect(() => {
-    if (isOpen && supabase) {
-      loadPipelineData();
-    }
-  }, [isOpen, supabase]);
-
-  // Actualizar análisis cuando cambia la oportunidad
-  useEffect(() => {
-    if (currentOpportunity && isOpen) {
-      // Hacer una llamada silenciosa al backend para obtener análisis actualizado
-      getUpdatedAnalysis();
-    }
-  }, [currentOpportunity, isOpen]);
-
+  // Función para cargar datos del pipeline
   const loadPipelineData = async () => {
-    if (!supabase) return;
+    // Solo cargar si tenemos supabase disponible
+    if (!supabase) {
+      console.log('Supabase no disponible, usando datos del CRM principal');
+      return;
+    }
     
     try {
       const { data, error } = await supabase
@@ -187,9 +177,11 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       }
     } catch (err) {
       console.error('Error cargando pipeline:', err);
+      // No fallar silenciosamente - el backend puede proveer estos datos
     }
   };
 
+  // Función para obtener análisis actualizado
   const getUpdatedAnalysis = async () => {
     if (!currentOpportunity) return;
     
@@ -218,6 +210,21 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       console.error('Error obteniendo análisis:', error);
     }
   };
+
+  // Cargar datos del pipeline cuando se abre
+  useEffect(() => {
+    if (isOpen && supabase) {
+      loadPipelineData();
+    }
+  }, [isOpen]); // Removemos supabase de las dependencias para evitar re-renders infinitos
+
+  // Actualizar análisis cuando cambia la oportunidad
+  useEffect(() => {
+    if (currentOpportunity && isOpen) {
+      // Hacer una llamada silenciosa al backend para obtener análisis actualizado
+      getUpdatedAnalysis();
+    }
+  }, [currentOpportunity?.id, isOpen]); // Usar solo el ID para evitar re-renders por cambios de objeto
 
   // ============= FUNCIÓN PRINCIPAL MEJORADA =============
   const processMessage = async (text) => {
