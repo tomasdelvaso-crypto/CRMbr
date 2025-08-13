@@ -2183,7 +2183,7 @@ const OpportunityCard: React.FC<{ opportunity: Opportunity }> = ({ opportunity }
     }
   }}
   currentUser={currentUser}
-  supabase={supabase}
+  supabase={supabase}  // ← 🟢 AGREGAR ESTA LÍNEA
 />
     </div>
   );
