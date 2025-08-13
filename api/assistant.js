@@ -1,4 +1,5 @@
-// api/assistant.js - BACKEND INTELIGENTE - EL CEREBRO
+// api/assistant.js - BACKEND INTELIGENTE CON CLAUDE-FIRST Y TOOL-USE
+
 export const config = {
   runtime: 'edge',
   maxDuration: 30,
@@ -81,88 +82,9 @@ function calculateHealthScore(scales) {
   return values.length > 0 ? (sum / values.length).toFixed(1) : 0;
 }
 
-// ============= LLAMADA A CLAUDE API - COACH DE VENTAS =============
-async function callClaudeAPI(opportunityData, userInput, ventapelContext) {
-  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-  
-  if (!ANTHROPIC_API_KEY) {
-    console.log('⚠️ Claude API no configurada, usando análisis local');
-    return null;
-  }
-
-  try {
-    const promptTemplate = `Eres "Ventus", un coach de ventas de clase mundial y experto absoluto en la metodología de Ventas Consultivas PPVVCC de Ventapel Brasil. Tu único objetivo es ayudar a los vendedores a CERRAR MÁS VENTAS analizando oportunidades específicas y proporcionando ESTRATEGIAS y ACCIONES CONCRETAS para avanzar en el funil.
-
-**REGLAS FUNDAMENTALES:**
-1. **FOCO EN LA ACCIÓN:** Cada respuesta debe ser un paso tangible. No des consejos genéricos. Tu meta es ayudar a subir el score en las escalas PPVVCC y pasar a la siguiente etapa del funil.
-2. **BASADO EN DATOS:** Basa tu análisis ESTRICTAMENTE en los datos proporcionados en el CONTEXTO. No inventes información.
-3. **METODOLOGÍA ES REY:** Tu cerebro funciona 100% sobre la metodología PPVVCC (DOR, PODER, VISÃO, VALOR, CONTROLE, COMPRAS).
-4. **CONCISO Y DIRECTO:** Usa Markdown (negritas, listas) para que la respuesta sea fácil de leer. Máximo 150 palabras a menos que se pida análisis profundo.
-
----
-
-**CONTEXTO DE LA OPORTUNIDAD:**
-
-**1. Oportunidad Actual:**
-${JSON.stringify(opportunityData, null, 2)}
-
-**2. Contexto Ventapel:**
-{
-  "casosExito": ${JSON.stringify(ventapelContext.casos, null, 2)},
-  "metodologia": "PPVVCC - Dor, Poder, Visão, Valor, Controle, Compras"
-}
-
-**3. Solicitud del Vendedor:**
-"${userInput}"
-
-**TAREA:**
-Basado en TODO el contexto anterior, responde siguiendo este formato de 3 pasos:
-
-1. **Diagnóstico Rápido:** En una frase, identifica el principal cuello de botella según PPVVCC.
-
-2. **Estrategia PPVVCC:** Plan de acción claro (2-3 puntos) para resolver el cuello de botella.
-
-3. **Acción Inmediata:** Proporciona UNA herramienta lista para usar:
-   - Un borrador de email corto y directo, O
-   - Un script de apertura para llamada (2-3 líneas), O
-   - 3 preguntas SPIN para la próxima reunión
-
-Comienza tu respuesta directamente, sin saludos.`;
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-3-sonnet-20240229",
-        max_tokens: 500,
-        temperature: 0.3,
-        messages: [
-          { role: "user", content: promptTemplate }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      console.log('Claude API no disponible, usando lógica local');
-      return null;
-    }
-
-    const data = await response.json();
-    return data.content[0].text;
-    
-  } catch (error) {
-    console.log('Error llamando a Claude:', error);
-    return null;
-  }
-}
-
-// ============= ANÁLISIS LOCAL PPVVCC =============
+// ============= FUNCIONES LOCALES (HERRAMIENTAS) =============
 function analyzeOpportunityLocal(opp) {
-  if (!opp) return "❌ No hay oportunidad seleccionada. Selecciona un cliente del CRM.";
+  if (!opp) return "❌ No hay oportunidad seleccionada.";
   
   const daysSince = opp.last_update ? 
     Math.floor((new Date() - new Date(opp.last_update)) / (1000 * 60 * 60 * 24)) : 999;
@@ -207,7 +129,6 @@ function analyzeOpportunityLocal(opp) {
   return analysis;
 }
 
-// ============= ESTRATEGIA DE DOLOR (SPIN) =============
 function generatePainStrategy(opp) {
   if (!opp) return "❌ No hay oportunidad seleccionada";
   
@@ -246,7 +167,6 @@ function generatePainStrategy(opp) {
   return strategy;
 }
 
-// ============= CALCULAR ROI ESPECÍFICO =============
 function calculateROI(opp) {
   if (!opp) return "❌ No hay oportunidad seleccionada";
   
@@ -302,7 +222,6 @@ function calculateROI(opp) {
   return roi;
 }
 
-// ============= GENERAR EMAIL DE VENTA =============
 function generateEmail(opp) {
   if (!opp) return "❌ No hay oportunidad seleccionada";
   
@@ -338,7 +257,6 @@ function generateEmail(opp) {
   return email;
 }
 
-// ============= GENERAR SCRIPT DE LLAMADA =============
 function generateCallScript(opp) {
   if (!opp) return "❌ No hay oportunidad seleccionada";
   
@@ -375,7 +293,6 @@ function generateCallScript(opp) {
   return script;
 }
 
-// ============= ESTRATEGIA COMPLETA =============
 function generateCompleteStrategy(opp) {
   if (!opp) return "❌ No hay oportunidad seleccionada";
   
@@ -435,7 +352,171 @@ function generateCompleteStrategy(opp) {
   return strategy;
 }
 
-// ============= HANDLER PRINCIPAL - EL CEREBRO =============
+// ============= LLAMADA A CLAUDE API MEJORADA =============
+async function callClaudeAPI(opportunityData, userInput, ventapelContext, toolsAvailable) {
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+  
+  if (!ANTHROPIC_API_KEY) {
+    console.log('⚠️ Claude API no configurada, usando análisis local');
+    return { type: 'fallback', content: analyzeOpportunityLocal(opportunityData) };
+  }
+
+  // Descripción de herramientas disponibles
+  const toolDescriptions = toolsAvailable.map(t => 
+    `- **${t.name}**: ${t.description}`
+  ).join('\n');
+
+  const promptTemplate = `Eres "Ventus", un coach de ventas de clase mundial y experto absoluto en la metodología PPVVCC de Ventapel Brasil. Tu objetivo es ayudar a los vendedores a CERRAR DEALS proporcionando estrategias y acciones concretas.
+
+**REGLAS FUNDAMENTALES:**
+1. **SIEMPRE BASADO EN DATOS:** Analiza la oportunidad y los casos de éxito. No inventes información.
+2. **ACCIÓN CONCRETA:** Proporciona siempre un paso siguiente claro y ejecutable.
+3. **RESPUESTA DIRECTA:** Usa Markdown para formato. Sé conciso pero completo.
+4. **PERSONALIZACIÓN:** Adapta tu respuesta al contexto específico del cliente.
+
+---
+**CONTEXTO DE LA OPORTUNIDAD:**
+${JSON.stringify(opportunityData, null, 2)}
+
+**CASOS DE ÉXITO VENTAPEL:**
+${JSON.stringify(ventapelContext.casos, null, 2)}
+
+**SOLICITUD DEL VENDEDOR:**
+"${userInput}"
+
+---
+**HERRAMIENTAS DISPONIBLES:**
+Puedes usar estas herramientas para obtener información precisa. Si necesitas usar una herramienta, responde ÚNICAMENTE con:
+\`\`\`json
+{"tool_to_use": "nombre_de_la_herramienta"}
+\`\`\`
+
+${toolDescriptions}
+
+---
+**INSTRUCCIONES:**
+1. Analiza la solicitud del vendedor en el contexto de la oportunidad
+2. Si puedes dar una respuesta completa y personalizada directamente, hazlo
+3. Si necesitas datos específicos de una herramienta (como cálculos de ROI exactos), solicítala
+4. Considera el estado PPVVCC actual para personalizar tu respuesta
+5. Siempre incluye un próximo paso accionable
+
+Responde de forma natural, como un coach experto que conoce bien el negocio y al cliente.`;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-3-sonnet-20240229",
+        max_tokens: 1000,
+        temperature: 0.3,
+        messages: [
+          { role: "user", content: promptTemplate }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      console.log('❌ Error en Claude API:', response.status);
+      return { type: 'fallback', content: analyzeOpportunityLocal(opportunityData) };
+    }
+
+    const data = await response.json();
+    const responseText = data.content[0].text;
+    
+    // Verificar si Claude está pidiendo una herramienta
+    if (responseText.includes('```json') && responseText.includes('tool_to_use')) {
+      try {
+        const jsonMatch = responseText.match(/```json\n?(.*?)\n?```/s);
+        if (jsonMatch) {
+          const toolRequest = JSON.parse(jsonMatch[1]);
+          if (toolRequest.tool_to_use) {
+            return { type: 'tool_request', tool: toolRequest.tool_to_use };
+          }
+        }
+      } catch (e) {
+        console.log('No es una solicitud de herramienta válida');
+      }
+    }
+    
+    return { type: 'direct_response', content: responseText };
+    
+  } catch (error) {
+    console.error('❌ Error llamando a Claude:', error);
+    return { type: 'fallback', content: analyzeOpportunityLocal(opportunityData) };
+  }
+}
+
+async function callClaudeWithToolResult(opportunityData, userInput, toolName, toolResult, ventapelContext) {
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+  
+  if (!ANTHROPIC_API_KEY) {
+    return toolResult; // Fallback: devolver el resultado de la herramienta directamente
+  }
+
+  const promptTemplate = `Eres "Ventus", coach de ventas experto en PPVVCC de Ventapel Brasil.
+
+El vendedor preguntó: "${userInput}"
+
+Para responder mejor, ejecutaste la herramienta "${toolName}" que devolvió:
+
+--- RESULTADO DE LA HERRAMIENTA ---
+${toolResult}
+--- FIN DEL RESULTADO ---
+
+**CONTEXTO DEL CLIENTE:**
+${JSON.stringify(opportunityData, null, 2)}
+
+**CASOS DE ÉXITO RELEVANTES:**
+${JSON.stringify(ventapelContext.casos, null, 2)}
+
+**TAREA:**
+1. Usa el resultado de la herramienta como base para tu respuesta
+2. Enriquece la respuesta con insights adicionales basados en el contexto
+3. Personaliza la respuesta para este cliente específico
+4. Si es relevante, menciona casos de éxito similares
+5. SIEMPRE termina con un próximo paso claro y accionable
+
+Responde en formato Markdown, siendo profesional pero cercano.`;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-3-sonnet-20240229",
+        max_tokens: 1000,
+        temperature: 0.3,
+        messages: [
+          { role: "user", content: promptTemplate }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      console.log('❌ Error en segunda llamada a Claude');
+      return toolResult; // Fallback al resultado de la herramienta
+    }
+
+    const data = await response.json();
+    return data.content[0].text;
+    
+  } catch (error) {
+    console.error('❌ Error en segunda llamada a Claude:', error);
+    return toolResult; // Fallback al resultado de la herramienta
+  }
+}
+
+// ============= HANDLER PRINCIPAL - ORQUESTADOR CLAUDE-FIRST =============
 export default async function handler(req) {
   if (req.method !== 'POST') {
     return new Response(
@@ -446,136 +527,131 @@ export default async function handler(req) {
 
   try {
     const body = await req.json();
-    const { 
-      action,
-      userInput,
+    const { userInput, opportunityData, vendorName } = body;
+
+    console.log('🧠 Backend recibió:', { 
+      userInput: userInput?.substring(0, 50), 
+      hasOpportunity: !!opportunityData,
+      vendor: vendorName 
+    });
+
+    // Validación básica
+    if (!opportunityData) {
+      return new Response(
+        JSON.stringify({ 
+          response: "❌ **No hay cliente seleccionado**\n\nSelecciona un cliente del CRM para que pueda ayudarte con estrategias específicas." 
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!userInput || userInput.trim() === '') {
+      return new Response(
+        JSON.stringify({ 
+          response: "❓ **¿En qué puedo ayudarte?**\n\nPregúntame sobre estrategias, objeciones, ROI, o cualquier aspecto de la venta." 
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Definir las herramientas disponibles
+    const availableTools = [
+      { 
+        name: 'analizar', 
+        description: 'Análisis PPVVCC completo con diagnóstico y próximos pasos',
+        function: analyzeOpportunityLocal 
+      },
+      { 
+        name: 'dolor', 
+        description: 'Estrategia SPIN y script para elevar el dolor del cliente',
+        function: generatePainStrategy 
+      },
+      { 
+        name: 'roi', 
+        description: 'Cálculo detallado de ROI con payback y casos similares',
+        function: calculateROI 
+      },
+      { 
+        name: 'email', 
+        description: 'Email de venta personalizado con casos de éxito',
+        function: generateEmail 
+      },
+      { 
+        name: 'llamada', 
+        description: 'Script de llamada con manejo de objeciones comunes',
+        function: generateCallScript 
+      },
+      { 
+        name: 'estrategia', 
+        description: 'Plan de acción completo de 5 días basado en PPVVCC',
+        function: generateCompleteStrategy 
+      }
+    ];
+
+    // ============= PRIMERA LLAMADA A CLAUDE =============
+    console.log('🤖 Llamando a Claude para:', userInput);
+    
+    const claudeResponse = await callClaudeAPI(
       opportunityData,
-      vendorName
-    } = body;
+      userInput,
+      { casos: CASOS_EXITO_REALES },
+      availableTools
+    );
 
-    console.log('🧠 Backend recibió:', { action, userInput, hasOpportunity: !!opportunityData });
-
-    let response = '';
-
-    // CAMBIO CLAVE: Si hay userInput con texto libre, SIEMPRE intentar Claude primero
-    if (userInput && opportunityData) {
-      const lowerInput = userInput.toLowerCase();
+    // Procesar respuesta de Claude
+    if (claudeResponse.type === 'tool_request') {
+      // Claude pidió una herramienta
+      const toolName = claudeResponse.tool;
+      const tool = availableTools.find(t => t.name === toolName);
       
-      // Detectar si es una pregunta compleja que requiere Claude
-      const needsClaude = 
-        lowerInput.includes('ayuda') ||
-        lowerInput.includes('pens') ||
-        lowerInput.includes('caro') ||
-        lowerInput.includes('objeción') ||
-        lowerInput.includes('precio') ||
-        lowerInput.includes('claude') ||
-        lowerInput.includes('?') ||
-        lowerInput.length > 20 || // Textos más largos probablemente necesitan análisis
-        !['analizar', 'dolor', 'roi', 'email', 'llamada', 'estrategia'].some(cmd => lowerInput.includes(cmd));
-      
-      if (needsClaude || action === 'chat') { // 'chat' para mensajes libres
-        console.log('🤖 Intentando Claude para:', userInput);
+      if (tool) {
+        console.log(`🔧 Ejecutando herramienta: ${toolName}`);
+        const toolResult = tool.function(opportunityData);
         
-        const claudeResponse = await callClaudeAPI(
+        // ============= SEGUNDA LLAMADA A CLAUDE CON RESULTADO =============
+        console.log('🤖 Enviando resultado de herramienta a Claude');
+        const finalResponse = await callClaudeWithToolResult(
           opportunityData,
           userInput,
+          toolName,
+          toolResult,
           { casos: CASOS_EXITO_REALES }
         );
         
-        if (claudeResponse) {
-          console.log('✅ Claude respondió');
-          return new Response(
-            JSON.stringify({ response: claudeResponse }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } }
-          );
-        } else {
-          console.log('⚠️ Claude no disponible, usando lógica local');
-        }
+        return new Response(
+          JSON.stringify({ response: finalResponse }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      } else {
+        console.log(`❌ Herramienta no encontrada: ${toolName}`);
+        // Si no encuentra la herramienta, usar análisis local
+        return new Response(
+          JSON.stringify({ response: analyzeOpportunityLocal(opportunityData) }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
       }
+    } else if (claudeResponse.type === 'direct_response') {
+      // Claude respondió directamente
+      console.log('✅ Claude respondió directamente');
+      return new Response(
+        JSON.stringify({ response: claudeResponse.content }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    } else {
+      // Fallback
+      console.log('⚠️ Usando fallback local');
+      return new Response(
+        JSON.stringify({ response: claudeResponse.content }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
     }
-
-    // Lógica local según acción (como fallback o para botones rápidos)
-    switch(action) {
-      case 'analizar':
-        response = analyzeOpportunityLocal(opportunityData);
-        break;
-        
-      case 'dolor':
-        response = generatePainStrategy(opportunityData);
-        break;
-        
-      case 'roi':
-        response = calculateROI(opportunityData);
-        break;
-        
-      case 'email':
-        response = generateEmail(opportunityData);
-        break;
-        
-      case 'llamada':
-        response = generateCallScript(opportunityData);
-        break;
-        
-      case 'estrategia':
-        response = generateCompleteStrategy(opportunityData);
-        break;
-        
-      case 'chat': // Para mensajes de chat libre
-      default:
-        // Si llegamos aquí y hay userInput, procesar con lógica local mejorada
-        if (userInput && opportunityData) {
-          const lowerInput = userInput.toLowerCase();
-          
-          // Manejo de objeciones comunes
-          if (lowerInput.includes('caro') || lowerInput.includes('precio')) {
-            response = `💰 **MANEJO DE OBJECIÓN: "ES MUY CARO"**\n\n`;
-            response += `**RESPUESTA TÁCTICA:**\n`;
-            response += `"Entiendo tu preocupación. Déjame mostrarte algo:\n\n`;
-            response += `• Pérdida actual: R$ ${Math.round(opportunityData.value * 0.1).toLocaleString('pt-BR')}/mes\n`;
-            response += `• En 12 meses: R$ ${Math.round(opportunityData.value * 1.2).toLocaleString('pt-BR')}\n`;
-            response += `• Nuestra solución: R$ 45.000 (única vez)\n`;
-            response += `• ROI: 3-6 meses\n\n`;
-            response += `No es un gasto, es dejar de perder dinero.\n`;
-            response += `¿Qué es más caro: invertir R$ 45k o seguir perdiendo R$ 240k/año?"\n\n`;
-            response += `**PREGUNTA DE CIERRE:**\n`;
-            response += `"Si te muestro cómo recuperas la inversión en 3 meses, ¿lo considerarías?"`;
-            
-          } else if (lowerInput.includes('ayuda') || lowerInput.includes('pens')) {
-            response = `🤔 **ANÁLISIS ESTRATÉGICO - ${opportunityData.client}**\n\n`;
-            response += `**SITUACIÓN ACTUAL:**\n`;
-            response += `• Dolor bajo (${getScaleValue(opportunityData.scales?.dor)}/10) = Sin urgencia\n`;
-            response += `• Poder bajo (${getScaleValue(opportunityData.scales?.poder)}/10) = Sin decisor\n\n`;
-            response += `**ESTRATEGIA RECOMENDADA:**\n`;
-            response += `1. **HOY:** Llamada SPIN agresiva sobre pérdidas\n`;
-            response += `2. **MAÑANA:** Email con caso Nike/MercadoLibre\n`;
-            response += `3. **PASADO:** Pedir reunión con decisor real\n\n`;
-            response += `**MENSAJE CLAVE:**\n`;
-            response += `"Cada día sin actuar = R$ 667 perdidos"`;
-            
-          } else {
-            // Fallback a análisis estándar
-            response = analyzeOpportunityLocal(opportunityData);
-          }
-        } else if (!opportunityData) {
-          response = `❌ **No hay cliente seleccionado**\n\n`;
-          response += `Selecciona un cliente del CRM para análisis completo.`;
-        } else {
-          response = `👋 Hola ${vendorName || 'vendedor'}!\n\n`;
-          response += `Soy tu Coach PPVVCC. ¿En qué puedo ayudarte?`;
-        }
-    }
-
-    return new Response(
-      JSON.stringify({ response }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
 
   } catch (error) {
     console.error('❌ Error en backend:', error);
     
     return new Response(
       JSON.stringify({ 
-        response: '❌ Error procesando. Intenta de nuevo.',
+        response: '❌ **Error procesando solicitud**\n\nPor favor, intenta de nuevo o reformula tu pregunta.',
         error: error.message 
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
