@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, X, Target, Mail, Phone, DollarSign, TrendingUp, Brain, Send, Loader2, Bot, Sparkles, AlertCircle, Activity, BarChart3, Clock, CheckCircle, XCircle, ChevronRight, Zap, AlertTriangle } from 'lucide-react';
 
-// ============= COMPONENTE PANEL DE ANÁLISIS =============
+// ============= COMPONENTE DEL PANEL DE ANÁLISIS =============
 const AnalysisPanel = ({ analysis }) => {
   if (!analysis) return null;
 
