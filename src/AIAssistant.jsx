@@ -375,7 +375,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
       {/* Ventana del Chat Mejorada - AMPLIADA */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-[600px] h-[750px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
+        <div className="fixed bottom-24 right-6 w-[600px] h-[1000px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
           
           {/* Header mejorado */}
           <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4">
