@@ -9,7 +9,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// --- TIPOS Y INTERFACES ---
+// --- TIPOS Y INTERFACES VARIAS---
 interface Scale {
   score: number;
   description: string;
