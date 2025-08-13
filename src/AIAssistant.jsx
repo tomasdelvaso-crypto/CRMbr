@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, X, Target, Mail, Phone, DollarSign, TrendingUp, Brain, Send, Loader2, Bot, Sparkles, AlertCircle, BarChart3, Users, Clock, ChevronRight } from 'lucide-react';
+import { MessageCircle, X, Target, Mail, Phone, DollarSign, TrendingUp, Brain, Send, Loader2, Bot, Sparkles, AlertCircle } from 'lucide-react';
 
+// ============= COMPONENTE SIMPLIFICADO - CLAUDE-FIRST =============
 const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, supabase }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [analysisPanel, setAnalysisPanel] = useState(null); // NUEVO: Estado para el panel
-  const [showAnalysis, setShowAnalysis] = useState(true); // NUEVO: Toggle para mostrar/ocultar
   const messagesEndRef = useRef(null);
 
   // Auto-scroll
@@ -24,7 +23,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return () => window.removeEventListener('openAssistant', handleOpenAssistant);
   }, []);
 
-  // ============= FUNCIÓN PRINCIPAL ACTUALIZADA =============
+  // ============= FUNCIÓN PRINCIPAL - SIEMPRE CLAUDE =============
   const processMessage = async (text) => {
     if (!text?.trim()) return;
 
@@ -39,17 +38,14 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     setIsLoading(true);
 
     try {
+      // SIEMPRE enviamos a Claude - no hay 'action', solo texto
       const response = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userInput: text,
           opportunityData: currentOpportunity,
-          vendorName: currentUser,
-          // NUEVO: Enviar todas las oportunidades para análisis de pipeline
-          pipelineData: { 
-            allOpportunities: [] // Aquí deberías pasar las oportunidades reales si las tienes
-          }
+          vendorName: currentUser
         })
       });
 
@@ -68,11 +64,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       
       setMessages(prev => [...prev, assistantMessage]);
       
-      // NUEVO: Actualizar el panel de análisis si viene en la respuesta
-      if (data.analysis) {
-        setAnalysisPanel(data.analysis);
-      }
-      
     } catch (error) {
       console.error('Error:', error);
       setMessages(prev => [...prev, {
@@ -83,110 +74,6 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // NUEVO: Componente para el Panel de Análisis
-  const AnalysisPanel = () => {
-    if (!analysisPanel || !showAnalysis) return null;
-
-    const { opportunity, pipeline, alerts, nextBestAction } = analysisPanel;
-
-    return (
-      <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-4 mb-4 border border-purple-200">
-        {/* Header del Panel */}
-        <div className="flex justify-between items-center mb-3">
-          <h4 className="font-bold text-sm text-purple-800 flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" />
-            Análisis PPVVCC en Tiempo Real
-          </h4>
-          <button
-            onClick={() => setShowAnalysis(!showAnalysis)}
-            className="text-purple-600 hover:text-purple-800"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Métricas de Oportunidad */}
-        {opportunity && (
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <div className="bg-white rounded-lg p-2">
-              <div className="text-xs text-gray-600">Health Score</div>
-              <div className={`text-lg font-bold ${
-                opportunity.healthScore >= 7 ? 'text-green-600' : 
-                opportunity.healthScore >= 4 ? 'text-yellow-600' : 'text-red-600'
-              }`}>
-                {opportunity.healthScore}/10
-              </div>
-            </div>
-            <div className="bg-white rounded-lg p-2">
-              <div className="text-xs text-gray-600">Probabilidad</div>
-              <div className="text-lg font-bold text-blue-600">
-                {opportunity.probability}%
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Alertas Críticas */}
-        {alerts && alerts.length > 0 && (
-          <div className="mb-3">
-            <div className="text-xs font-semibold text-gray-700 mb-1">⚠️ Alertas</div>
-            {alerts.slice(0, 2).map((alert, idx) => (
-              <div key={idx} className={`text-xs p-2 rounded mb-1 ${
-                alert.type === 'critical' ? 'bg-red-100 text-red-700' :
-                alert.type === 'urgent' ? 'bg-orange-100 text-orange-700' :
-                'bg-yellow-100 text-yellow-700'
-              }`}>
-                {alert.message}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Next Best Action */}
-        {nextBestAction && (
-          <div className="bg-green-100 rounded-lg p-3 border border-green-300">
-            <div className="text-xs font-semibold text-green-800 mb-1">
-              🎯 Próxima Acción Recomendada
-            </div>
-            <div className="text-xs text-green-700">{nextBestAction.title}</div>
-            <button
-              onClick={() => processMessage(nextBestAction.action)}
-              className="mt-2 text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 transition-colors flex items-center gap-1"
-            >
-              Ejecutar <ChevronRight className="w-3 h-3" />
-            </button>
-          </div>
-        )}
-
-        {/* Pipeline Stats (si están disponibles) */}
-        {pipeline && (
-          <div className="mt-3 pt-3 border-t border-purple-200">
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div>
-                <div className="text-gray-600">Pipeline</div>
-                <div className="font-bold text-purple-700">
-                  {pipeline.total} deals
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-600">En Riesgo</div>
-                <div className="font-bold text-red-600">
-                  {pipeline.atRisk}
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-600">Health Avg</div>
-                <div className="font-bold text-blue-600">
-                  {pipeline.averageHealth}/10
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
   };
 
   // ============= BOTONES CON PROMPTS NATURALES =============
@@ -235,38 +122,29 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   ] : [];
 
-  // Sugerencias contextuales basadas en el análisis
+  // Sugerencias contextuales basadas en el estado de la oportunidad
   const getContextualSuggestions = () => {
+    if (!currentOpportunity?.scales) return [];
+    
     const suggestions = [];
+    const dorScore = currentOpportunity.scales?.dor?.score || 0;
+    const poderScore = currentOpportunity.scales?.poder?.score || 0;
+    const visaoScore = currentOpportunity.scales?.visao?.score || 0;
     
-    // Sugerencias basadas en el análisis si existe
-    if (analysisPanel?.opportunity) {
-      const { criticalScales } = analysisPanel.opportunity;
-      if (criticalScales && criticalScales.length > 0) {
-        criticalScales.slice(0, 2).forEach(scale => {
-          suggestions.push(`🎯 ${scale.action}`);
-        });
-      }
+    if (dorScore < 5) {
+      suggestions.push("🎯 ¿Cómo puedo hacer que el cliente admita su dolor?");
+    }
+    if (poderScore < 5) {
+      suggestions.push("👤 ¿Cómo accedo al verdadero tomador de decisión?");
+    }
+    if (visaoScore < 5) {
+      suggestions.push("💡 ¿Cómo construyo una visión de solución convincente?");
+    }
+    if (currentOpportunity.value > 100000) {
+      suggestions.push("💰 El cliente dice que es muy caro, ¿cómo manejo esta objeción?");
     }
     
-    // Fallback a sugerencias basadas en escalas
-    if (!suggestions.length && currentOpportunity?.scales) {
-      const dorScore = currentOpportunity.scales?.dor?.score || 0;
-      const poderScore = currentOpportunity.scales?.poder?.score || 0;
-      const visaoScore = currentOpportunity.scales?.visao?.score || 0;
-      
-      if (dorScore < 5) {
-        suggestions.push("🎯 ¿Cómo puedo hacer que el cliente admita su dolor?");
-      }
-      if (poderScore < 5) {
-        suggestions.push("👤 ¿Cómo accedo al verdadero tomador de decisión?");
-      }
-      if (visaoScore < 5) {
-        suggestions.push("💡 ¿Cómo construyo una visión de solución convincente?");
-      }
-    }
-    
-    return suggestions.slice(0, 3);
+    return suggestions.slice(0, 3); // Máximo 3 sugerencias
   };
 
   return (
@@ -322,7 +200,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
             )}
           </div>
 
-          {/* Quick Actions */}
+          {/* Quick Actions - Botones simplificados */}
           {currentOpportunity && (
             <div className="p-3 bg-gray-50 border-b">
               <div className="grid grid-cols-3 gap-2">
@@ -342,11 +220,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
             </div>
           )}
 
-          {/* Messages Area con Panel de Análisis */}
+          {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gradient-to-b from-gray-50 to-white">
-            {/* NUEVO: Panel de Análisis al inicio */}
-            {analysisPanel && <AnalysisPanel />}
-            
             {messages.length === 0 && (
               <div className="bg-gradient-to-br from-purple-50 to-blue-50 p-4 rounded-xl">
                 <p className="font-bold text-purple-700 mb-2">
