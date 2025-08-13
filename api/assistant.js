@@ -52,7 +52,7 @@ const CASOS_EXITO_REALES = {
     problema: 'Alto retrabajo, pérdidas en fulfillment',
     solucion: 'BP555e + Fita VENOM',
     resultados: {
-      retrabajo: '-40%',
+      retrabajo: '-50%',
       ahorro_mensual: 180000,
       roi_meses: 2,
       inversion: 360000
