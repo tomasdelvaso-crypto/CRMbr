@@ -2174,6 +2174,7 @@ const OpportunityCard: React.FC<{ opportunity: Opportunity }> = ({ opportunity }
       
 <AIAssistant
   currentOpportunity={selectedOpportunity || editingOpportunity}
+   allOpportunities={opportunities}
   onOpportunityUpdate={async (updated) => {
     if (selectedOpportunity?.id === updated.id) {
       setSelectedOpportunity(updated);
