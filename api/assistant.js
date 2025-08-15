@@ -1,4 +1,4 @@
-// api/assistant.js - VERSIÓN FINAL: Motor de Análisis + IA Híbrida + Pipeline Analytics + Casos Ampliados
+// api/assistant.js - VERSIÓN MEJORADA: Casos como evidencia, no como receta
 
 export const config = {
  runtime: 'edge',
@@ -7,7 +7,6 @@ export const config = {
 
 // ============= CASOS DE ÉXITO REALES VENTAPEL - VERSIÓN AMPLIADA =============
 const CASOS_EXITO_REALES = {
- // CASOS ORIGINALES (se mantienen)
  'honda': {
    empresa: 'Honda Argentina',
    sector: 'Automotriz',
@@ -92,7 +91,6 @@ const CASOS_EXITO_REALES = {
    }
  },
 
- // NUEVOS CASOS AGREGADOS
  'pet_usa': {
    empresa: 'Pet Supplies Company',
    sector: 'E-commerce/Pet',
@@ -124,7 +122,7 @@ const CASOS_EXITO_REALES = {
      uso_cinta: '-66% (de 3 a 1 tira)',
      lesiones: '0 reportadas post-implementación',
      satisfaccion: '100% aprobación operadores',
-     roi_meses: 0, // Instantáneo
+     roi_meses: 0,
      inversion: 440000
    },
    tags: ['fulfillment', '3PL', 'picos-estacionales', 'ergonomía', 'alto-volumen', 'ROI-inmediato'],
@@ -201,7 +199,6 @@ const CASOS_EXITO_REALES = {
    }
  },
 
- // CASO INTERBRAS (preparado para cuando se cierre)
  'interbras': {
    empresa: 'Interbras',
    sector: 'Logística/Distribución',
@@ -211,8 +208,8 @@ const CASOS_EXITO_REALES = {
      cajas_reutilizadas: 'Problema resuelto con cinta 80mm',
      robos: 'En proceso de medición',
      ergonomia: 'Mejora significativa esperada',
-     roi_meses: 4, // Estimado
-     inversion: 360000 // Estimado
+     roi_meses: 4,
+     inversion: 360000
    },
    tags: ['logística', 'distribución', 'cajas-reutilizadas', 'anti-robo', 'ergonomía', 'alto-volumen'],
    metricas_detalle: {
@@ -248,12 +245,40 @@ const METRICAS_BENCHMARK = {
  },
  
  inversion_por_tamano: {
-   'pequena': { min: 15000, max: 80000, estaciones: '1-5' },
-   'mediana': { min: 80000, max: 200000, estaciones: '5-20' },
-   'grande': { min: 200000, max: 500000, estaciones: '20+' },
-   'enterprise': { min: 500000, max: 2500000, estaciones: '50+' }
+   'pequena': { min: 150000, max: 300000, estaciones: '1-5' },
+   'mediana': { min: 300000, max: 600000, estaciones: '5-20' },
+   'grande': { min: 600000, max: 2500000, estaciones: '20+' }
  }
 };
+
+// ============= HELPERS =============
+function getScaleValue(scale) {
+ if (!scale) return 0;
+ if (typeof scale === 'object' && scale.score !== undefined) return scale.score;
+ if (typeof scale === 'number') return scale;
+ return 0;
+}
+
+function calculateHealthScore(scales) {
+ if (!scales) return 0;
+ const values = [
+   getScaleValue(scales.dor || scales.pain),
+   getScaleValue(scales.poder || scales.power),
+   getScaleValue(scales.visao || scales.vision),
+   getScaleValue(scales.valor || scales.value),
+   getScaleValue(scales.controle || scales.control),
+   getScaleValue(scales.compras || scales.purchase)
+ ];
+ const sum = values.reduce((acc, val) => acc + val, 0);
+ return values.length > 0 ? (sum / values.length).toFixed(1) : 0;
+}
+
+function getDaysSinceLastContact(lastUpdate) {
+ if (!lastUpdate) return 999;
+ const last = new Date(lastUpdate);
+ const now = new Date();
+ return Math.floor((now - last) / (1000 * 60 * 60 * 24));
+}
 
 // ============= FUNCIÓN MEJORADA PARA BUSCAR CASOS RELEVANTES =============
 function findRelevantCases(opportunity) {
@@ -313,37 +338,7 @@ function findRelevantCases(opportunity) {
    .slice(0, 3);
 }
 
-// ============= HELPERS =============
-function getScaleValue(scale) {
- if (!scale) return 0;
- if (typeof scale === 'object' && scale.score !== undefined) return scale.score;
- if (typeof scale === 'number') return scale;
- return 0;
-}
-
-function calculateHealthScore(scales) {
- if (!scales) return 0;
- const values = [
-   getScaleValue(scales.dor || scales.pain),
-   getScaleValue(scales.poder || scales.power),
-   getScaleValue(scales.visao || scales.vision),
-   getScaleValue(scales.valor || scales.value),
-   getScaleValue(scales.controle || scales.control),
-   getScaleValue(scales.compras || scales.purchase)
- ];
- const sum = values.reduce((acc, val) => acc + val, 0);
- return values.length > 0 ? (sum / values.length).toFixed(1) : 0;
-}
-
-function getDaysSinceLastContact(lastUpdate) {
- if (!lastUpdate) return 999;
- const last = new Date(lastUpdate);
- const now = new Date();
- return Math.floor((now - last) / (1000 * 60 * 60 * 24));
-}
-
 // ============= MOTOR DE ANÁLISIS DE PIPELINE =============
-
 function analyzePipelineHealth(opportunities) {
  if (!opportunities || opportunities.length === 0) {
    return {
@@ -423,7 +418,6 @@ function analyzePipelineHealth(opportunities) {
 }
 
 // ============= ANÁLISIS DE OPORTUNIDAD INDIVIDUAL =============
-
 function analyzeOpportunity(opportunity) {
  if (!opportunity) return null;
 
@@ -504,7 +498,6 @@ function analyzeOpportunity(opportunity) {
 }
 
 // ============= GENERACIÓN DE ALERTAS INTELIGENTES =============
-
 function generateAlerts(opportunity, pipelineContext) {
  const alerts = [];
  if (!opportunity) return alerts;
@@ -590,8 +583,7 @@ function generateAlerts(opportunity, pipelineContext) {
  return alerts.sort((a, b) => a.priority - b.priority);
 }
 
-// ============= NEXT BEST ACTION INTELIGENTE MEJORADA =============
-
+// ============= NEXT BEST ACTION INTELIGENTE =============
 function generateNextBestAction(opportunity, pipelineContext) {
  if (!opportunity?.scales) return null;
 
@@ -605,16 +597,13 @@ function generateNextBestAction(opportunity, pipelineContext) {
  const valorScore = getScaleValue(scales.valor || scales.value);
  const controleScore = getScaleValue(scales.controle || scales.control);
 
- // Buscar casos relevantes para usar en scripts
- const relevantCases = findRelevantCases(opportunity);
- const bestCase = relevantCases[0];
-
  // Prioridad 1: Deals muertos
  if (daysSince > 30) {
    return {
      priority: 'CRÍTICA',
      title: '💀 DEAL MUERTO - Última oportunidad',
      action: 'Llamada de rescate HOY',
+     strategy: 'Crear urgencia con oferta limitada',
      script: `"${opportunity.sponsor || 'Hola'}, hace ${daysSince} días que no hablamos. Tengo una oferta especial de 20% descuento válida solo esta semana. ¿15 minutos hoy para verla?"`,
      expectedOutcome: 'Reactivar o descartar definitivamente'
    };
@@ -626,19 +615,20 @@ function generateNextBestAction(opportunity, pipelineContext) {
      priority: 'URGENTE',
      title: `🔴 ${daysSince} días sin contacto - Reactivar YA`,
      action: 'Email + Llamada en 2 horas',
+     strategy: 'Usar competencia o pérdida como trigger',
      script: `ASUNTO: "${opportunity.client} - ¿Siguen perdiendo R$ ${Math.round(opportunity.value * 0.15).toLocaleString('pt-BR')}/mes?"\n\nCONTENIDO: "Vi que ${opportunity.competitor || 'su competidor'} ya implementó nuestra solución. ¿Vale 15 minutos para ver los resultados?"`,
      expectedOutcome: 'Reunión agendada en 48h'
    };
  }
 
- // Prioridad 3: Sin dolor admitido - MEJORADO con casos
+ // Prioridad 3: Sin dolor admitido
  if (dorScore < 5) {
-   const casoSimilar = bestCase || CASOS_EXITO_REALES.loreal;
    return {
      priority: 'ALTA',
      title: '🎯 Sin DOLOR = Sin venta',
      action: 'Sesión SPIN profunda',
-     script: `"${opportunity.client}, empresas como ${casoSimilar.empresa} perdían ${casoSimilar.problema}. Con su volumen de ${Math.round(opportunity.value/100)} cajas/mes, están perdiendo mínimo R$ ${Math.round(opportunity.value * 0.03).toLocaleString('pt-BR')}/mes. ${casoSimilar.empresa} resolvió esto en ${casoSimilar.resultados.roi_meses} meses. ¿Cuál es su experiencia real con robos y retrabajo?"`,
+     strategy: 'Cuantificar pérdidas ocultas',
+     script: `"${opportunity.client}, con su volumen de ${Math.round(opportunity.value/100)} cajas/mes, ¿cuánto les cuesta cada caja que se abre en tránsito? ¿Y el tiempo de retrabajo?"`,
      expectedOutcome: 'Dolor admitido y cuantificado'
    };
  }
@@ -649,31 +639,32 @@ function generateNextBestAction(opportunity, pipelineContext) {
      priority: 'ALTA',
      title: '👔 Necesitas el DECISOR',
      action: 'Escalar esta semana',
-     script: `"${opportunity.sponsor}, para garantizar el ROI de R$ ${Math.round(opportunity.value * 2.5).toLocaleString('pt-BR')}/año como logramos con ${CASOS_EXITO_REALES.loreal.empresa}, necesito validar con quien aprueba inversiones. ¿Podemos incluirlo en una call de 20 minutos?"`,
+     strategy: 'Hacer que el contacto sea el héroe',
+     script: `"${opportunity.sponsor}, para garantizar el ROI de R$ ${Math.round(opportunity.value * 2.5).toLocaleString('pt-BR')}/año, necesito que me ayudes a preparar los números para tu jefe. ¿Lo presentamos juntos?"`,
      expectedOutcome: 'Reunión con decisor en 7 días'
    };
  }
 
- // Prioridad 5: Sin visión clara - MEJORADO con caso específico
+ // Prioridad 5: Sin visión clara
  if (visaoScore < 5) {
-   const casoDemo = relevantCases.find(c => c.tags?.includes('anti-robo')) || CASOS_EXITO_REALES.nike;
    return {
      priority: 'MEDIA',
      title: '👁️ Construir VISIÓN de solución',
      action: 'Demo personalizada',
-     script: `"Les muestro exactamente cómo ${casoDemo.empresa} eliminó ${casoDemo.problema} con ${casoDemo.solucion}. Resultados: ${casoDemo.resultados.perdidas || casoDemo.resultados.robos}. Con su volumen, el impacto sería aún mayor."`,
+     strategy: 'Mostrar el futuro sin problemas actuales',
+     script: `"Imagina tu operación sin cajas abiertas, sin reclamos, con 30% menos tiempo de cerrado. Te muestro exactamente cómo lograrlo con tu volumen específico."`,
      expectedOutcome: 'Visión clara y diferenciada'
    };
  }
 
- // Prioridad 6: Sin valor percibido - MEJORADO con benchmarks
+ // Prioridad 6: Sin valor percibido
  if (valorScore < 5) {
-   const sectorBenchmark = METRICAS_BENCHMARK.roi_por_sector[opportunity.industry] || { promedio: 3 };
    return {
      priority: 'MEDIA',
      title: '💰 Demostrar ROI concreto',
      action: 'Presentar business case',
-     script: `"Preparé un análisis específico basado en ${relevantCases.length} casos similares: inversión de R$ ${Math.round(opportunity.value * 0.5).toLocaleString('pt-BR')}, retorno en ${sectorBenchmark.promedio} meses (promedio del sector), ahorro anual de R$ ${Math.round(opportunity.value * 1.8).toLocaleString('pt-BR')}. ¿Lo revisamos juntos?"`,
+     strategy: 'Números específicos del cliente',
+     script: `"Preparé un análisis específico para ${opportunity.client}: inversión de R$ ${Math.round(opportunity.value * 0.5).toLocaleString('pt-BR')}, ahorro anual de R$ ${Math.round(opportunity.value * 1.8).toLocaleString('pt-BR')}. ¿Lo revisamos juntos?"`,
      expectedOutcome: 'ROI validado y aceptado'
    };
  }
@@ -684,6 +675,7 @@ function generateNextBestAction(opportunity, pipelineContext) {
      priority: 'OPORTUNIDAD',
      title: '🏆 CERRAR ESTA SEMANA',
      action: 'Presionar para firma',
+     strategy: 'Crear urgencia positiva',
      script: `"${opportunity.power_sponsor || opportunity.sponsor}, ya validamos todo: problema, solución y ROI. Puedo comenzar implementación el lunes. ¿Firmamos hoy para aprovechar el descuento del mes?"`,
      expectedOutcome: 'Contrato firmado en 72h'
    };
@@ -694,13 +686,13 @@ function generateNextBestAction(opportunity, pipelineContext) {
    priority: 'NORMAL',
    title: '📈 Mantener momentum',
    action: 'Avanzar metodología',
-   script: 'Siguiente paso según PPVVCC',
+   strategy: 'Siguiente paso según PPVVCC',
+   script: 'Revisar escalas y avanzar la más baja',
    expectedOutcome: 'Progreso en escalas'
  };
 }
 
-// ============= QUICK ACTIONS DINÁMICAS MEJORADAS =============
-
+// ============= QUICK ACTIONS DINÁMICAS =============
 function generateQuickActions(opportunity, alerts) {
  if (!opportunity) {
    return [
@@ -726,15 +718,12 @@ function generateQuickActions(opportunity, alerts) {
  const valorScore = getScaleValue(scales.valor || scales.value);
  const comprasScore = getScaleValue(scales.compras || scales.purchase);
 
- // Buscar casos relevantes para personalizar acciones
- const relevantCases = findRelevantCases(opportunity);
-
  // Acciones basadas en escalas bajas
  if (dorScore < 5) {
    actions.push({
      icon: '🎯',
-     label: 'Preguntas SPIN',
-     prompt: `Dame 5 preguntas SPIN específicas para que ${opportunity.client} admita problemas de violación y retrabajo. Usa ejemplos de ${relevantCases[0]?.empresa || 'L\'Oréal'}`,
+     label: 'Elevar dolor',
+     prompt: `Dame 5 preguntas SPIN específicas para que ${opportunity.client} admita sus pérdidas por cajas abiertas y retrabajo`,
      color: 'bg-red-500'
    });
  }
@@ -743,17 +732,16 @@ function generateQuickActions(opportunity, alerts) {
    actions.push({
      icon: '👔',
      label: 'Acceder al decisor',
-     prompt: `Script exacto para pedirle a ${opportunity.sponsor || 'mi contacto'} que me presente al decisor de ${opportunity.client}. Menciona el caso de ${relevantCases[0]?.empresa || 'Honda'}`,
+     prompt: `Script exacto para pedirle a ${opportunity.sponsor || 'mi contacto'} que me presente al decisor de ${opportunity.client}`,
      color: 'bg-purple-500'
    });
  }
 
  if (valorScore < 5) {
-   const bestCase = relevantCases[0] || CASOS_EXITO_REALES.loreal;
    actions.push({
      icon: '💰',
      label: 'Calcular ROI',
-     prompt: `Calcula el ROI específico para ${opportunity.client} con volumen de ${Math.round(opportunity.value/100)} cajas/mes. Usa el benchmark de ${bestCase.empresa}: ROI en ${bestCase.resultados.roi_meses} meses`,
+     prompt: `Calcula el ROI específico para ${opportunity.client} con volumen de ${Math.round(opportunity.value/100)} cajas/mes`,
      color: 'bg-green-500'
    });
  }
@@ -761,8 +749,8 @@ function generateQuickActions(opportunity, alerts) {
  if (comprasScore < 4) {
    actions.push({
      icon: '📝',
-     label: 'Estrategia compras',
-     prompt: `${opportunity.client} tiene miedo del proceso de compras. Dame una estrategia como la que usamos con ${CASOS_EXITO_REALES['3pl_canada'].empresa} para evitar la compulsa`,
+     label: 'Navegar compras',
+     prompt: `${opportunity.client} tiene proceso de compras complejo. Dame estrategia para evitar compulsa y acelerar aprobación`,
      color: 'bg-yellow-500'
    });
  }
@@ -773,14 +761,14 @@ function generateQuickActions(opportunity, alerts) {
      actions.push({
        icon: '🚨',
        label: 'Plan de rescate',
-       prompt: `${opportunity.client} está en riesgo crítico. Dame un plan de rescate de emergencia para salvar este deal de R$ ${opportunity.value.toLocaleString('pt-BR')}. Incluye casos de éxito similares`,
+       prompt: `${opportunity.client} está en riesgo crítico. Dame un plan de rescate de emergencia para salvar este deal de R$ ${opportunity.value.toLocaleString('pt-BR')}`,
        color: 'bg-red-600'
      });
    } else if (alerts[0].type === 'urgent') {
      actions.push({
        icon: '📧',
        label: 'Email reactivación',
-       prompt: `Escribe un email potente para reactivar a ${opportunity.client} después de ${getDaysSinceLastContact(opportunity.last_update)} días sin contacto. Menciona el caso de ${relevantCases[0]?.empresa || 'Nike'}`,
+       prompt: `Escribe un email potente para reactivar a ${opportunity.client} después de ${getDaysSinceLastContact(opportunity.last_update)} días sin contacto`,
        color: 'bg-orange-500'
      });
    }
@@ -791,7 +779,7 @@ function generateQuickActions(opportunity, alerts) {
    actions.push({
      icon: '📊',
      label: 'Análisis PPVVCC',
-     prompt: `Análisis completo PPVVCC de ${opportunity.client} con acciones para subir cada escala 2 puntos. Compara con casos similares del sector ${opportunity.industry}`,
+     prompt: `Análisis completo PPVVCC de ${opportunity.client} con acciones específicas para subir cada escala`,
      color: 'bg-indigo-500'
    });
  }
@@ -800,12 +788,12 @@ function generateQuickActions(opportunity, alerts) {
    actions.push({
      icon: '🎬',
      label: 'Preparar demo',
-     prompt: `¿Cómo estructuro una demo ganadora para ${opportunity.client} en ${opportunity.industry || 'su industria'}? Incluye casos de éxito relevantes`,
+     prompt: `¿Cómo estructuro una demo ganadora para ${opportunity.client} en ${opportunity.industry || 'su industria'}?`,
      color: 'bg-blue-500'
    });
  }
 
- return actions.slice(0, 6); // Máximo 6 acciones
+ return actions.slice(0, 6);
 }
 
 // ============= BÚSQUEDA EN GOOGLE (si está configurada) =============
@@ -837,15 +825,11 @@ async function searchGoogleForContext(query) {
      const results = data.organic.map(r => ({
        title: r.title,
        snippet: r.snippet,
-       link: r.link,
-       hasRevenue: r.snippet?.includes('R$') || r.snippet?.includes('milhões'),
-       hasEmployees: r.snippet?.match(/\d+\s*(funcionários|empleados)/i) !== null,
-       hasExpansion: r.snippet?.toLowerCase().includes('expansão'),
-       hasProblems: r.snippet?.toLowerCase().includes('problema')
+       link: r.link
      }));
      
      return results.map((r, idx) => 
-       `${idx + 1}. ${r.title}\n   ${r.snippet}\n   ${r.hasExpansion ? '🚀 Expansión detectada' : ''}${r.hasProblems ? '⚠️ Problemas mencionados' : ''}`
+       `${idx + 1}. ${r.title}\n   ${r.snippet}`
      ).join('\n\n');
    }
    return null;
@@ -855,8 +839,7 @@ async function searchGoogleForContext(query) {
  }
 }
 
-// ============= MOTOR DE ANÁLISIS COMPLETO MEJORADO =============
-
+// ============= MOTOR DE ANÁLISIS COMPLETO =============
 function buildCompleteAnalysis(opportunityData, pipelineData, vendorName) {
  const analysis = {
    timestamp: new Date().toISOString(),
@@ -866,7 +849,7 @@ function buildCompleteAnalysis(opportunityData, pipelineData, vendorName) {
    nextBestAction: null,
    quickActions: [],
    insights: [],
-   relevantCases: [] // NUEVO: casos relevantes
+   relevantCases: []
  };
 
  // Análisis del pipeline
@@ -895,19 +878,18 @@ function buildCompleteAnalysis(opportunityData, pipelineData, vendorName) {
    analysis.alerts = generateAlerts(opportunityData, pipelineData);
    analysis.nextBestAction = generateNextBestAction(opportunityData, pipelineData);
    analysis.quickActions = generateQuickActions(opportunityData, analysis.alerts);
-   analysis.relevantCases = findRelevantCases(opportunityData); // NUEVO
+   analysis.relevantCases = findRelevantCases(opportunityData);
    
-   // Insights de la oportunidad mejorados con casos
+   // Insights de la oportunidad
    if (analysis.opportunity.probability > 70) {
      analysis.insights.push({
        type: 'success',
        message: `✅ ${opportunityData.client}: Alta probabilidad de cierre (${analysis.opportunity.probability}%)`
      });
    } else if (analysis.opportunity.probability < 30) {
-     const similarCase = analysis.relevantCases[0];
      analysis.insights.push({
        type: 'danger',
-       message: `⚠️ ${opportunityData.client}: Baja probabilidad (${analysis.opportunity.probability}%). ${similarCase ? `Revisa el caso ${similarCase.empresa} para ideas` : ''}`
+       message: `⚠️ ${opportunityData.client}: Baja probabilidad (${analysis.opportunity.probability}%)`
      });
    }
 
@@ -916,12 +898,12 @@ function buildCompleteAnalysis(opportunityData, pipelineData, vendorName) {
      const avgRoi = analysis.relevantCases.reduce((sum, c) => sum + (c.resultados.roi_meses || 3), 0) / analysis.relevantCases.length;
      analysis.insights.push({
        type: 'info',
-       message: `📚 Encontré ${analysis.relevantCases.length} casos similares. ROI promedio: ${Math.round(avgRoi)} meses`
+       message: `📚 ${analysis.relevantCases.length} casos similares con ROI promedio: ${Math.round(avgRoi)} meses`
      });
    }
  }
 
- // Análisis del vendedor (si está disponible)
+ // Análisis del vendedor
  if (vendorName && analysis.pipeline?.vendorPerformance?.[vendorName]) {
    const vendorStats = analysis.pipeline.vendorPerformance[vendorName];
    analysis.vendor = {
@@ -935,7 +917,7 @@ function buildCompleteAnalysis(opportunityData, pipelineData, vendorName) {
  return analysis;
 }
 
-// ============= LLAMADA A CLAUDE API ENRIQUECIDA =============
+// ============= LLAMADA A CLAUDE API MEJORADA - CASOS COMO EVIDENCIA =============
 async function callClaudeAPI(opportunityData, userInput, ventapelContext, toolsAvailable, webSearchResults = null, completeAnalysis = null) {
  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
  
@@ -948,81 +930,80 @@ async function callClaudeAPI(opportunityData, userInput, ventapelContext, toolsA
    `- **${t.name}**: ${t.description}`
  ).join('\n');
 
- // Incluir casos relevantes en el contexto
- const relevantCasesContext = completeAnalysis?.relevantCases?.length > 0 
-   ? `\n**CASOS DE ÉXITO RELEVANTES PARA ${opportunityData?.client}:**\n${JSON.stringify(completeAnalysis.relevantCases, null, 2)}`
-   : '';
+ // Preparar casos relevantes como referencia opcional
+ const relevantCasesForReference = completeAnalysis?.relevantCases?.length > 0 
+   ? completeAnalysis.relevantCases.map(c => ({
+       empresa: c.empresa,
+       problema: c.problema,
+       roi_meses: c.resultados.roi_meses,
+       key_metric: c.resultados.perdidas || c.resultados.robos || c.resultados.productividad
+     }))
+   : [];
 
- const promptTemplate = `Eres "Ventus", un coach de ventas de clase mundial y experto absoluto en la metodología PPVVCC de Ventapel Brasil. 
-Tu CEO te describió como: "directo, sin vueltas, basado en evidencia y lógica". 
-Tu objetivo es ayudar a los vendedores a CERRAR DEALS proporcionando estrategias y acciones concretas.
+ const promptTemplate = `Eres "Ventus", un coach de ventas experto en metodología PPVVCC de Ventapel Brasil.
+Tu CEO te describió como: "directo, sin vueltas, basado en evidencia y lógica". NO uses adulación ni frases motivacionales vacías.
 
-**REGLAS FUNDAMENTALES:**
-1. **SIEMPRE BASADO EN DATOS:** Usa el análisis completo, casos de éxito, y cualquier información disponible. No inventes.
-2. **ACCIÓN CONCRETA:** Proporciona siempre un paso siguiente claro y ejecutable HOY.
-3. **RESPUESTA DIRECTA:** Usa Markdown. Sé conciso pero completo. Sin adulación.
-4. **PERSONALIZACIÓN:** Adapta tu respuesta al contexto específico del cliente y el análisis.
-5. **CASOS DE ÉXITO:** Cuando sea relevante, menciona casos similares para dar credibilidad.
+**ESTRUCTURA OBLIGATORIA DE TUS RESPUESTAS:**
+
+1. **DIAGNÓSTICO** - Qué está pasando realmente (análisis de la situación)
+2. **ESTRATEGIA** - Por qué es importante actuar (el principio detrás)
+3. **TÁCTICA** - Qué hacer específicamente (acciones concretas)
+4. **EVIDENCIA** - Solo si aplica, menciona UN caso relevante como prueba (opcional)
+
+**REGLAS CRÍTICAS:**
+- NUNCA empieces con "En el caso de X empresa..." 
+- PRIMERO explica QUÉ hacer y POR QUÉ
+- Los casos son EVIDENCIA OPCIONAL al final, no el punto de partida
+- Si mencionas un caso, que sea para reforzar credibilidad, no como receta
+- Personaliza TODO al contexto específico del cliente actual
 
 ---
-**ANÁLISIS COMPLETO DEL SISTEMA:**
-${completeAnalysis ? JSON.stringify(completeAnalysis, null, 2) : 'No hay análisis disponible'}
+**CONTEXTO ACTUAL:**
 
-**CONTEXTO DE LA OPORTUNIDAD:**
-${opportunityData ? JSON.stringify(opportunityData, null, 2) : 'No hay oportunidad seleccionada'}
+Cliente: ${opportunityData?.client || 'No seleccionado'}
+Industria: ${opportunityData?.industry || 'No especificada'}
+Valor deal: R$ ${opportunityData?.value?.toLocaleString('pt-BR') || '0'}
+Stage: ${opportunityData?.stage || 0}/6
 
-**CASOS DE ÉXITO VENTAPEL (${Object.keys(CASOS_EXITO_REALES).length} casos):**
-${JSON.stringify(ventapelContext.casos, null, 2)}
+**ANÁLISIS PPVVCC:**
+${completeAnalysis?.opportunity ? `
+- Health Score: ${completeAnalysis.opportunity.healthScore}/10
+- Probabilidad: ${completeAnalysis.opportunity.probability}%
+- Días sin contacto: ${completeAnalysis.opportunity.daysSince}
+- Escalas:
+  • DOR: ${completeAnalysis.opportunity.scaleBreakdown.dor}/10
+  • PODER: ${completeAnalysis.opportunity.scaleBreakdown.poder}/10
+  • VISÃO: ${completeAnalysis.opportunity.scaleBreakdown.visao}/10
+  • VALOR: ${completeAnalysis.opportunity.scaleBreakdown.valor}/10
+  • CONTROLE: ${completeAnalysis.opportunity.scaleBreakdown.controle}/10
+  • COMPRAS: ${completeAnalysis.opportunity.scaleBreakdown.compras}/10
+` : 'No disponible'}
 
-${relevantCasesContext}
-
-**MÉTRICAS DE BENCHMARK DEL SECTOR:**
-${JSON.stringify(METRICAS_BENCHMARK, null, 2)}
+${completeAnalysis?.alerts?.length > 0 ? `
+**ALERTAS ACTIVAS:**
+${completeAnalysis.alerts.slice(0, 3).map(a => `- ${a.message}`).join('\n')}
+` : ''}
 
 ${webSearchResults ? `
-**📰 INFORMACIÓN ACTUALIZADA DE INTERNET:**
+**INFO ACTUALIZADA DE INTERNET:**
 ${webSearchResults}
 ` : ''}
 
-**SOLICITUD DEL VENDEDOR:**
+**CASOS DISPONIBLES COMO REFERENCIA (usar solo si aporta valor):**
+${relevantCasesForReference.length > 0 ? JSON.stringify(relevantCasesForReference, null, 2) : 'Ninguno relevante'}
+
+---
+**PREGUNTA DEL VENDEDOR:**
 "${userInput}"
 
 ---
-**HERRAMIENTAS DISPONIBLES:**
-Si necesitas datos específicos de una herramienta, responde ÚNICAMENTE con:
-\`\`\`json
-{"tool_to_use": "nombre_de_la_herramienta"}
-\`\`\`
-
-${toolDescriptions}
-
----
-**INSTRUCCIONES BASADAS EN EL ANÁLISIS:**
-
-${completeAnalysis?.alerts?.length > 0 ? `
-ALERTAS CRÍTICAS DETECTADAS:
-${completeAnalysis.alerts.map(a => `- ${a.message}`).join('\n')}
-DEBES abordar estas alertas en tu respuesta.
-` : ''}
-
-${completeAnalysis?.nextBestAction ? `
-PRÓXIMA MEJOR ACCIÓN RECOMENDADA:
-${completeAnalysis.nextBestAction.title}
-Considera esto al formular tu respuesta.
-` : ''}
-
-${completeAnalysis?.relevantCases?.length > 0 ? `
-CASOS SIMILARES ENCONTRADOS: ${completeAnalysis.relevantCases.map(c => c.empresa).join(', ')}
-Usa estos casos para dar ejemplos concretos y creíbles.
-` : ''}
-
-${completeAnalysis?.opportunity?.probability < 30 ? `
-⚠️ OPORTUNIDAD EN RIESGO CRÍTICO (${completeAnalysis.opportunity.probability}% probabilidad)
-Tu respuesta debe enfocarse en SALVAR o CALIFICAR OUT este deal.
-` : ''}
-
-Responde de forma natural pero directa, como el CEO aconsejando al equipo de ventas.
-SIEMPRE termina con una acción específica para HOY.`;
+**INSTRUCCIONES FINALES:**
+1. Responde DIRECTAMENTE a la pregunta
+2. Estructura: Diagnóstico → Estrategia → Táctica → Evidencia (si aplica)
+3. Termina SIEMPRE con UNA acción específica para HOY
+4. Si mencionas un caso, que sea breve y al final: "Esto funcionó con [empresa] que logró [resultado]"
+5. Máximo 300 palabras total
+6. Sin sermones, sin motivación barata, solo estrategia pura`;
 
  try {
    const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1050,21 +1031,6 @@ SIEMPRE termina con una acción específica para HOY.`;
    const data = await response.json();
    const responseText = data.content[0].text;
    
-   // Verificar si Claude está pidiendo una herramienta
-   if (responseText.includes('```json') && responseText.includes('tool_to_use')) {
-     try {
-       const jsonMatch = responseText.match(/```json\n?(.*?)\n?```/s);
-       if (jsonMatch) {
-         const toolRequest = JSON.parse(jsonMatch[1]);
-         if (toolRequest.tool_to_use) {
-           return { type: 'tool_request', tool: toolRequest.tool_to_use };
-         }
-       }
-     } catch (e) {
-       console.log('No es una solicitud de herramienta válida');
-     }
-   }
-   
    return { type: 'direct_response', content: responseText };
    
  } catch (error) {
@@ -1073,7 +1039,7 @@ SIEMPRE termina con una acción específica para HOY.`;
  }
 }
 
-// Fallback inteligente mejorado con casos
+// ============= FALLBACK INTELIGENTE =============
 function generateSmartFallback(opportunityData, userInput, analysis) {
  if (!opportunityData) {
    return "❌ No hay oportunidad seleccionada. Selecciona un cliente del CRM para comenzar el análisis.";
@@ -1083,14 +1049,6 @@ function generateSmartFallback(opportunityData, userInput, analysis) {
  
  if (analysis?.opportunity) {
    response += `**Estado:** Health ${analysis.opportunity.healthScore}/10 | Probabilidad ${analysis.opportunity.probability}%\n\n`;
- }
- 
- if (analysis?.relevantCases?.length > 0) {
-   response += `**📚 Casos similares encontrados:**\n`;
-   analysis.relevantCases.slice(0, 2).forEach(caso => {
-     response += `• ${caso.empresa} (${caso.sector}): ROI en ${caso.resultados.roi_meses} meses\n`;
-   });
-   response += '\n';
  }
  
  if (analysis?.alerts?.length > 0) {
@@ -1111,65 +1069,16 @@ function generateSmartFallback(opportunityData, userInput, analysis) {
    }
  }
  
+ // Casos al final si hay
+ if (analysis?.relevantCases?.length > 0) {
+   response += `\n**📚 Referencia:**\n`;
+   response += `${analysis.relevantCases[0].empresa} enfrentó algo similar y logró ROI en ${analysis.relevantCases[0].resultados.roi_meses} meses.`;
+ }
+ 
  return response;
 }
 
-// Segunda llamada a Claude con resultado de herramienta
-async function callClaudeWithToolResult(opportunityData, userInput, toolName, toolResult, ventapelContext, webSearchResults, completeAnalysis) {
- const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
- 
- if (!ANTHROPIC_API_KEY) {
-   return toolResult; // Devolver resultado de la herramienta directamente
- }
-
- const promptTemplate = `Eres "Ventus", coach de ventas experto en PPVVCC de Ventapel Brasil.
- 
-El vendedor pidió: "${userInput}"
-
-Ejecuté la herramienta "${toolName}" y obtuve este resultado:
-
-${toolResult}
-
-Ahora, usando este resultado y el contexto de ${opportunityData?.client || 'la oportunidad'}, proporciona una respuesta completa y accionable.
-
-${completeAnalysis?.relevantCases?.length > 0 ? `
-Casos similares relevantes: ${completeAnalysis.relevantCases.map(c => `${c.empresa} (ROI ${c.resultados.roi_meses} meses)`).join(', ')}
-` : ''}
-
-Responde de forma directa y termina con una acción específica para HOY.`;
-
- try {
-   const response = await fetch("https://api.anthropic.com/v1/messages", {
-     method: "POST",
-     headers: {
-       "Content-Type": "application/json",
-       "x-api-key": ANTHROPIC_API_KEY,
-       "anthropic-version": "2023-06-01"
-     },
-     body: JSON.stringify({
-       model: "claude-3-5-sonnet-20241022",
-       max_tokens: 2000,
-       temperature: 0.3,
-       messages: [
-         { role: "user", content: promptTemplate }
-       ]
-     })
-   });
-
-   if (!response.ok) {
-     return toolResult;
-   }
-
-   const data = await response.json();
-   return data.content[0].text;
-   
- } catch (error) {
-   console.error('Error en segunda llamada a Claude:', error);
-   return toolResult;
- }
-}
-
-// ============= HANDLER PRINCIPAL - ORQUESTADOR CON ANÁLISIS =============
+// ============= HANDLER PRINCIPAL =============
 export default async function handler(req) {
  // Configurar CORS
  const headers = {
@@ -1208,7 +1117,7 @@ export default async function handler(req) {
      pipelineSize: pipelineData?.allOpportunities?.length || 0
    });
 
-   // ============= PASO 1: EJECUTAR MOTOR DE ANÁLISIS =============
+   // PASO 1: EJECUTAR MOTOR DE ANÁLISIS
    console.log('📊 Ejecutando motor de análisis completo...');
    const completeAnalysis = buildCompleteAnalysis(opportunityData, pipelineData, vendorName);
    
@@ -1216,14 +1125,14 @@ export default async function handler(req) {
    if (!opportunityData && !isNewOpportunity && !pipelineData?.allOpportunities?.length) {
      return new Response(
        JSON.stringify({ 
-         response: "❌ **No hay datos disponibles**\n\nNo hay oportunidades en el CRM o no se ha seleccionado ninguna.\n\nPara comenzar:\n• Selecciona un cliente del CRM\n• O crea una nueva oportunidad",
+         response: "❌ **No hay datos disponibles**\n\nSelecciona un cliente del CRM o crea una nueva oportunidad.",
          analysis: completeAnalysis
        }),
        { status: 200, headers }
      );
    }
 
-   // Si no hay input, dar un resumen basado en el análisis
+   // Si no hay input, dar resumen
    if (!userInput || userInput.trim() === '') {
      let summaryResponse = '';
      
@@ -1231,25 +1140,14 @@ export default async function handler(req) {
        summaryResponse = `📊 **Resumen del Pipeline**\n\n`;
        summaryResponse += `• Total: ${completeAnalysis.pipeline.total} oportunidades\n`;
        summaryResponse += `• Valor: R$ ${completeAnalysis.pipeline.totalValue.toLocaleString('pt-BR')}\n`;
-       summaryResponse += `• En riesgo: ${completeAnalysis.pipeline.atRisk} deals (R$ ${completeAnalysis.pipeline.riskValue.toLocaleString('pt-BR')})\n`;
-       summaryResponse += `• Health promedio: ${completeAnalysis.pipeline.averageHealth}/10\n\n`;
-       
-       if (completeAnalysis.pipeline.topDeals.length > 0) {
-         summaryResponse += `**🔥 Top Deals para Cerrar:**\n`;
-         completeAnalysis.pipeline.topDeals.slice(0, 3).forEach((deal, idx) => {
-           summaryResponse += `${idx + 1}. ${deal.client}: R$ ${deal.value.toLocaleString('pt-BR')} - ${deal.action}\n`;
-         });
-       }
+       summaryResponse += `• En riesgo: ${completeAnalysis.pipeline.atRisk} deals\n`;
+       summaryResponse += `• Health promedio: ${completeAnalysis.pipeline.averageHealth}/10\n`;
      }
      
      if (opportunityData && completeAnalysis.nextBestAction) {
        summaryResponse += `\n**Para ${opportunityData.client}:**\n`;
        summaryResponse += `${completeAnalysis.nextBestAction.title}\n`;
        summaryResponse += `👉 ${completeAnalysis.nextBestAction.action}`;
-       
-       if (completeAnalysis.relevantCases?.length > 0) {
-         summaryResponse += `\n\n💡 Caso similar: ${completeAnalysis.relevantCases[0].empresa} logró ROI en ${completeAnalysis.relevantCases[0].resultados.roi_meses} meses`;
-       }
      }
      
      return new Response(
@@ -1261,70 +1159,56 @@ export default async function handler(req) {
      );
    }
 
-   // ============= PASO 2: BÚSQUEDA WEB SI ES NECESARIA =============
+   // PASO 2: BÚSQUEDA WEB SI ES NECESARIA
    let webSearchResults = null;
    const needsWebSearch = userInput.toLowerCase().includes('actualiz') || 
                          userInput.toLowerCase().includes('noticia') ||
-                         userInput.toLowerCase().includes('reciente') ||
-                         userInput.toLowerCase().includes('información');
+                         userInput.toLowerCase().includes('reciente');
    
    if (needsWebSearch && opportunityData?.client) {
      console.log('🔍 Buscando en Google para:', opportunityData.client);
      webSearchResults = await searchGoogleForContext(
-       `${opportunityData.client} Brasil ${opportunityData.industry || ''} facturación noticias 2024 2025`
+       `${opportunityData.client} Brasil ${opportunityData.industry || ''} noticias 2024 2025`
      );
    }
 
-   // ============= PASO 3: DEFINIR HERRAMIENTAS DISPONIBLES =============
+   // PASO 3: DEFINIR HERRAMIENTAS DISPONIBLES
    const availableTools = [
      { 
        name: 'analizar', 
        description: 'Análisis PPVVCC completo con diagnóstico y próximos pasos',
        function: () => {
-         // Versión enriquecida que usa el análisis completo
-         let result = `📊 **ANÁLISIS COMPLETO DE ${opportunityData?.client || 'PIPELINE'}**\n\n`;
+         let result = `📊 **ANÁLISIS DE ${opportunityData?.client || 'PIPELINE'}**\n\n`;
          
          if (completeAnalysis.opportunity) {
-           result += `**Health Score:** ${completeAnalysis.opportunity.healthScore}/10\n`;
-           result += `**Probabilidad:** ${completeAnalysis.opportunity.probability}%\n`;
-           result += `**Días sin contacto:** ${completeAnalysis.opportunity.daysSince}\n\n`;
+           result += `**Diagnóstico:**\n`;
+           result += `Health Score: ${completeAnalysis.opportunity.healthScore}/10\n`;
+           result += `Probabilidad: ${completeAnalysis.opportunity.probability}%\n`;
+           result += `Días sin contacto: ${completeAnalysis.opportunity.daysSince}\n\n`;
            
            if (completeAnalysis.opportunity.criticalScales.length > 0) {
-             result += `**⚠️ ESCALAS CRÍTICAS:**\n`;
+             result += `**Escalas críticas a trabajar:**\n`;
              completeAnalysis.opportunity.criticalScales.forEach(scale => {
-               result += `• ${scale.name}: ${scale.value}/10 - ${scale.issue}\n`;
-               result += `  → ${scale.action}\n`;
+               result += `• ${scale.name}: ${scale.value}/10\n`;
+               result += `  → Acción: ${scale.action}\n`;
              });
            }
-         }
-         
-         if (completeAnalysis.relevantCases?.length > 0) {
-           result += `\n**📚 CASOS SIMILARES:**\n`;
-           completeAnalysis.relevantCases.forEach(caso => {
-             result += `• ${caso.empresa} (${caso.sector}): ${caso.problema} → ROI ${caso.resultados.roi_meses} meses\n`;
-           });
-         }
-         
-         if (completeAnalysis.alerts.length > 0) {
-           result += `\n**🚨 ALERTAS:**\n`;
-           completeAnalysis.alerts.forEach(alert => {
-             result += `• ${alert.message}\n`;
-           });
-         }
-         
-         if (completeAnalysis.nextBestAction) {
-           result += `\n**🎯 PRÓXIMA ACCIÓN:**\n`;
-           result += completeAnalysis.nextBestAction.script || completeAnalysis.nextBestAction.action;
+           
+           if (completeAnalysis.nextBestAction) {
+             result += `\n**Estrategia recomendada:**\n`;
+             result += `${completeAnalysis.nextBestAction.strategy}\n\n`;
+             result += `**Próxima acción:**\n`;
+             result += completeAnalysis.nextBestAction.action;
+           }
          }
          
          return result;
        }
-     },
-     // Otras herramientas se mantienen pero pueden usar casos relevantes
+     }
    ];
 
-   // ============= PASO 4: LLAMADA A CLAUDE CON ANÁLISIS COMPLETO =============
-   console.log('🤖 Llamando a Claude con análisis completo y casos relevantes...');
+   // PASO 4: LLAMADA A CLAUDE
+   console.log('🤖 Llamando a Claude con estructura mejorada...');
    
    const claudeResponse = await callClaudeAPI(
      opportunityData,
@@ -1332,44 +1216,14 @@ export default async function handler(req) {
      { casos: CASOS_EXITO_REALES },
      availableTools,
      webSearchResults,
-     completeAnalysis // Pasamos el análisis completo a Claude
+     completeAnalysis
    );
 
-   // Procesar respuesta de Claude
-   let chatResponseContent;
-   
-   if (claudeResponse.type === 'tool_request') {
-     // Claude pidió una herramienta
-     const toolName = claudeResponse.tool;
-     const tool = availableTools.find(t => t.name === toolName);
-     
-     if (tool) {
-       console.log(`🔧 Ejecutando herramienta: ${toolName}`);
-       const toolResult = tool.function(opportunityData);
-       
-       // Segunda llamada a Claude con el resultado
-       console.log('🤖 Enviando resultado de herramienta a Claude');
-       chatResponseContent = await callClaudeWithToolResult(
-         opportunityData,
-         userInput,
-         toolName,
-         toolResult,
-         { casos: CASOS_EXITO_REALES },
-         webSearchResults,
-         completeAnalysis
-       );
-     } else {
-       chatResponseContent = claudeResponse.content;
-     }
-   } else {
-     chatResponseContent = claudeResponse.content;
-   }
-
-   // ============= PASO 5: DEVOLVER RESPUESTA ESTRUCTURADA =============
+   // PASO 5: DEVOLVER RESPUESTA ESTRUCTURADA
    return new Response(
      JSON.stringify({ 
-       response: chatResponseContent,
-       analysis: completeAnalysis // El frontend puede usar esto para el panel
+       response: claudeResponse.content,
+       analysis: completeAnalysis
      }),
      { status: 200, headers }
    );
