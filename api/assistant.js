@@ -79,7 +79,7 @@ const CASOS_EXITO_REALES = {
    problema: 'Alto retrabajo, pérdidas en fulfillment',
    solucion: 'BP555e + Fita VENOM',
    resultados: {
-     retrabajo: '-50%',
+     retrabajo: '-100%',
      ahorro_mensual: 180000,
      roi_meses: 2,
      inversion: 360000
@@ -91,6 +91,29 @@ const CASOS_EXITO_REALES = {
    }
  },
 
+'correo_argentino': {
+  empresa: 'Correo Argentino',
+  sector: 'Logística/Postal',
+  problema: 'Robos de celulares en tránsito, departamento de seguridad cuestionaba la cinta gomada por posible violación sin evidencia',
+  solucion: 'BP555e + Fita VENOM + protocolo de cierre estandarizado + proceso de verificación inmediata',
+  resultados: {
+    robos: 'Detección inmediata de violaciones',
+    evidencia: '100% trazabilidad de apertura',
+    proceso: 'Estandarización completa del cierre',
+    roi_meses: 2, // Estimado típico para seguridad
+    inversion: 180000 // Estimado basado en volumen postal
+  },
+  tags: ['logística', 'postal', 'anti-robo', 'celulares', 'alta-seguridad', 'trazabilidad', 'protocolo'],
+  metricas_detalle: {
+    region: 'Argentina',
+    tipo_carga: 'Celulares y electrónicos',
+    solucion_clave: 'Protocolo de detección: cliente reporta inmediatamente cualquier anomalía en peso o apariencia',
+    mejora_proceso: 'Cierre estandarizado permite detección visual inmediata de violación',
+    departamento_involucrado: 'Seguridad y prevención de robos'
+  },
+  aprendizaje_clave: 'La cinta gomada SIEMPRE deja evidencia de violación. El éxito depende de: 1) Estandarizar el método de cierre, 2) Entrenar al receptor para detectar anomalías, 3) Protocolo de reporte inmediato'
+}
+ 
  'pet_usa': {
    empresa: 'Pet Supplies Company',
    sector: 'E-commerce/Pet',
