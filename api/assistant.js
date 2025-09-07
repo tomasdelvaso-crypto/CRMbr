@@ -112,7 +112,7 @@ const CASOS_EXITO_REALES = {
     departamento_involucrado: 'Seguridad y prevención de robos'
   },
   aprendizaje_clave: 'La cinta gomada SIEMPRE deja evidencia de violación. El éxito depende de: 1) Estandarizar el método de cierre, 2) Entrenar al receptor para detectar anomalías, 3) Protocolo de reporte inmediato'
-}
+},
  
  'pet_usa': {
    empresa: 'Pet Supplies Company',
