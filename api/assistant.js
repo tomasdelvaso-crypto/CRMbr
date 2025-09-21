@@ -1,4 +1,4 @@
-// api/assistant.js - VERSÃO EM PORTUGUÊS COMPLETA
+// api/assistant.js - VERSÃO ENRIQUECIDA COM CONTEXTO COMPLETO
 
 export const config = {
  runtime: 'edge',
@@ -112,9 +112,7 @@ const CASOS_EXITO_REAIS = {
     departamento_envolvido: 'Segurança e prevenção de roubos'
   },
   aprendizado_chave: 'A fita gomada SEMPRE deixa evidência de violação. O êxito depende de: 1) Padronizar o método de fechamento, 2) Treinar o receptor para detectar anomalias, 3) Protocolo de reporte imediato'
-},
- 
- // ... (outros casos mantidos como no original)
+}
 };
 
 // ============= MÉTRICAS AGREGADAS PARA BENCHMARKING =============
@@ -154,6 +152,15 @@ function getScaleValue(scale) {
  return 0;
 }
 
+// NOVA FUNÇÃO: Extrair descrição da escala
+function getScaleDescription(scale) {
+  if (!scale) return '';
+  if (typeof scale === 'object' && scale.description !== undefined) {
+    return scale.description || '';
+  }
+  return '';
+}
+
 function calculateHealthScore(scales) {
  if (!scales) return 0;
  const values = [
@@ -182,9 +189,15 @@ function findRelevantCases(opportunity) {
  const relevantCases = [];
  const oppTags = [];
  
- // Gerar tags da oportunidade atual
+ // Gerar tags da oportunidade atual - ENRIQUECIDA com novos campos
  if (opportunity.industry) {
    oppTags.push(opportunity.industry.toLowerCase());
+ }
+ if (opportunity.product) {
+   // Adicionar tags baseadas no produto
+   if (opportunity.product.toLowerCase().includes('bp')) oppTags.push('máquina');
+   if (opportunity.product.toLowerCase().includes('fita')) oppTags.push('fita');
+   if (opportunity.product.toLowerCase().includes('venom')) oppTags.push('anti-roubo');
  }
  if (opportunity.value > 500000) {
    oppTags.push('enterprise', 'alto-volume');
@@ -312,7 +325,7 @@ function analyzePipelineHealth(opportunities) {
  };
 }
 
-// ============= ANÁLISE DE OPORTUNIDADE INDIVIDUAL =============
+// ============= ANÁLISE DE OPORTUNIDADE INDIVIDUAL - ENRIQUECIDA =============
 function analyzeOpportunity(opportunity) {
  if (!opportunity) return null;
 
@@ -343,12 +356,23 @@ function analyzeOpportunity(opportunity) {
  const controleScore = getScaleValue(scales.controle || scales.control);
  const comprasScore = getScaleValue(scales.compras || scales.purchase);
 
+ // NOVO: Coletar descrições das escalas
+ const scaleDescriptions = {
+   dor: getScaleDescription(scales.dor || scales.pain),
+   poder: getScaleDescription(scales.poder || scales.power),
+   visao: getScaleDescription(scales.visao || scales.vision),
+   valor: getScaleDescription(scales.valor || scales.value),
+   controle: getScaleDescription(scales.controle || scales.control),
+   compras: getScaleDescription(scales.compras || scales.purchase)
+ };
+
  if (dorScore < 5) {
    criticalScales.push({
      name: 'DOR',
      value: dorScore,
      issue: 'Cliente não admite o problema',
-     action: 'Aplicar técnica SPIN para elevar dor'
+     action: 'Aplicar técnica SPIN para elevar dor',
+     description: scaleDescriptions.dor
    });
  }
  if (poderScore < 4) {
@@ -356,7 +380,10 @@ function analyzeOpportunity(opportunity) {
      name: 'PODER',
      value: poderScore,
      issue: 'Sem acesso ao decisor',
-     action: 'Identificar e acessar o Power Sponsor'
+     action: opportunity.power_sponsor 
+       ? `Conseguir reunião com ${opportunity.power_sponsor}` 
+       : 'Identificar e acessar o Power Sponsor',
+     description: scaleDescriptions.poder
    });
  }
  if (visaoScore < 4) {
@@ -364,7 +391,8 @@ function analyzeOpportunity(opportunity) {
      name: 'VISÃO',
      value: visaoScore,
      issue: 'Cliente não vê a solução',
-     action: 'Demo com caso de êxito relevante'
+     action: 'Demo com caso de êxito relevante',
+     description: scaleDescriptions.visao
    });
  }
  if (valorScore < 4) {
@@ -372,7 +400,8 @@ function analyzeOpportunity(opportunity) {
      name: 'VALOR',
      value: valorScore,
      issue: 'ROI não percebido',
-     action: 'Calcular e apresentar ROI específico'
+     action: 'Calcular e apresentar ROI específico',
+     description: scaleDescriptions.valor
    });
  }
 
@@ -388,11 +417,21 @@ function analyzeOpportunity(opportunity) {
      valor: valorScore,
      controle: controleScore,
      compras: comprasScore
-   }
+   },
+   scaleDescriptions, // NOVO: Descrições das escalas
+   contacts: { // NOVO: Mapa de contatos
+     power_sponsor: opportunity.power_sponsor,
+     sponsor: opportunity.sponsor,
+     influencer: opportunity.influencer,
+     support_contact: opportunity.support_contact
+   },
+   product: opportunity.product, // NOVO: Produto
+   next_action: opportunity.next_action, // NOVO: Próxima ação
+   expected_close: opportunity.expected_close // NOVO: Fechamento esperado
  };
 }
 
-// ============= GERAÇÃO DE ALERTAS INTELIGENTES =============
+// ============= GERAÇÃO DE ALERTAS INTELIGENTES - ENRIQUECIDA =============
 function generateAlerts(opportunity, pipelineContext) {
  const alerts = [];
  if (!opportunity) return alerts;
@@ -401,37 +440,56 @@ function generateAlerts(opportunity, pipelineContext) {
  const healthScore = parseFloat(calculateHealthScore(opportunity.scales));
  const scales = opportunity.scales || {};
 
- // Alerta por dias sem contato
+ // Alerta por dias sem contato - ENRIQUECIDO com nome do contato
  if (daysSince > 30) {
+   const contactName = opportunity.sponsor || opportunity.power_sponsor || 'o contato';
    alerts.push({
      type: 'critical',
      priority: 1,
-     message: `💀 NEGÓCIO MORTO: ${daysSince} dias sem contato`,
-     action: 'Ligar HOJE com oferta especial ou descartar'
+     message: `💀 NEGÓCIO MORTO: ${daysSince} dias sem falar com ${contactName}`,
+     action: `Ligar HOJE para ${contactName} com oferta especial ou descartar`
    });
  } else if (daysSince > 14) {
    alerts.push({
      type: 'urgent',
      priority: 2,
      message: `🔴 URGENTE: ${daysSince} dias sem contato - Negócio esfriando`,
-     action: 'Email de reativação + ligação em 24h'
+     action: opportunity.next_action || 'Email de reativação + ligação em 24h'
    });
  } else if (daysSince > 7) {
    alerts.push({
      type: 'warning',
      priority: 3,
      message: `⚠️ ATENÇÃO: ${daysSince} dias sem contato`,
-     action: 'Enviar email com novo caso de êxito'
+     action: opportunity.next_action || 'Enviar email com novo caso de êxito'
    });
  }
 
- // Alerta por valor em risco
+ // NOVO: Alerta por fechamento próximo sem decisor
+ if (opportunity.expected_close) {
+   const daysToClose = Math.floor((new Date(opportunity.expected_close) - new Date()) / (1000 * 60 * 60 * 24));
+   const poderScore = getScaleValue(scales.poder || scales.power);
+   
+   if (daysToClose <= 30 && poderScore < 5 && !opportunity.power_sponsor) {
+     alerts.push({
+       type: 'urgent',
+       priority: 1,
+       message: `⚡ Fechamento previsto em ${daysToClose} dias SEM ACESSO AO DECISOR`,
+       action: 'URGENTE: Mapear e acessar Power Sponsor esta semana'
+     });
+   }
+ }
+
+ // Alerta por valor em risco - ENRIQUECIDO com nome do produto
  if (healthScore < 4 && opportunity.value > 100000) {
+   const productInfo = opportunity.product ? ` (${opportunity.product})` : '';
    alerts.push({
      type: 'critical',
      priority: 1,
-     message: `💣 R$ ${opportunity.value.toLocaleString('pt-BR')} EM RISCO CRÍTICO (Saúde: ${healthScore}/10)`,
-     action: 'Reunião de emergência com decisor ou escalar para CEO'
+     message: `💣 R$ ${opportunity.value.toLocaleString('pt-BR')}${productInfo} EM RISCO CRÍTICO (Saúde: ${healthScore}/10)`,
+     action: opportunity.power_sponsor 
+       ? `Reunião de emergência com ${opportunity.power_sponsor} ou escalar para CEO`
+       : 'Reunião de emergência com decisor ou escalar para CEO'
    });
  } else if (healthScore < 5 && opportunity.value > 50000) {
    alerts.push({
@@ -456,11 +514,12 @@ function generateAlerts(opportunity, pipelineContext) {
  }
 
  if (opportunity.stage >= 4 && poderScore < 4) {
+   const contactToUse = opportunity.sponsor || opportunity.influencer || 'alguém interno';
    alerts.push({
      type: 'warning',
      priority: 2,
      message: `⛔ FREIO: Tentando fechar sem acesso ao PODER (${poderScore}/10)`,
-     action: 'Conseguir sponsor para chegar ao decisor'
+     action: `Pedir para ${contactToUse} te apresentar ao decisor`
    });
  }
 
@@ -474,11 +533,21 @@ function generateAlerts(opportunity, pipelineContext) {
    });
  }
 
+ // NOVO: Alerta baseado na próxima ação registrada
+ if (opportunity.next_action && daysSince > 2) {
+   alerts.push({
+     type: 'warning',
+     priority: 3,
+     message: `📅 Ação pendente: "${opportunity.next_action}"`,
+     action: 'Executar ação registrada ou atualizar plano'
+   });
+ }
+
  // Ordenar por prioridade
  return alerts.sort((a, b) => a.priority - b.priority);
 }
 
-// ============= NEXT BEST ACTION INTELIGENTE =============
+// ============= NEXT BEST ACTION INTELIGENTE - ENRIQUECIDA =============
 function generateNextBestAction(opportunity, pipelineContext) {
  if (!opportunity?.scales) return null;
 
@@ -492,15 +561,31 @@ function generateNextBestAction(opportunity, pipelineContext) {
  const valorScore = getScaleValue(scales.valor || scales.value);
  const controleScore = getScaleValue(scales.controle || scales.control);
 
+ // NOVO: Usar o nome real dos contatos quando disponível
+ const contactName = opportunity.sponsor || 'o contato';
+ const decisionMaker = opportunity.power_sponsor || 'o decisor';
+
  // Prioridade 1: Negócios mortos
  if (daysSince > 30) {
    return {
      priority: 'CRÍTICA',
      title: '💀 NEGÓCIO MORTO - Última oportunidade',
-     action: 'Ligação de resgate HOJE',
+     action: `Ligação de resgate HOJE para ${contactName}`,
      strategy: 'Criar urgência com oferta limitada',
-     script: `"${opportunity.sponsor || 'Olá'}, faz ${daysSince} dias que não conversamos. Tenho uma oferta especial de 20% de desconto válida apenas esta semana. 15 minutos hoje para você ver?"`,
+     script: `"${contactName}, faz ${daysSince} dias que não conversamos. Tenho uma oferta especial de 20% de desconto válida apenas esta semana. 15 minutos hoje para você ver?"`,
      expectedOutcome: 'Reativar ou descartar definitivamente'
+   };
+ }
+
+ // NOVO: Se há próxima ação registrada e não foi executada
+ if (opportunity.next_action && daysSince > 2) {
+   return {
+     priority: 'ALTA',
+     title: '📋 Executar ação planejada',
+     action: opportunity.next_action,
+     strategy: 'Manter compromissos e momentum',
+     script: `Execute: "${opportunity.next_action}" conforme combinado`,
+     expectedOutcome: 'Manter credibilidade e avançar processo'
    };
  }
 
@@ -509,7 +594,7 @@ function generateNextBestAction(opportunity, pipelineContext) {
    return {
      priority: 'URGENTE',
      title: `🔴 ${daysSince} dias sem contato - Reativar JÁ`,
-     action: 'Email + Ligação em 2 horas',
+     action: `Email + Ligação em 2 horas para ${contactName}`,
      strategy: 'Usar concorrência ou perda como gatilho',
      script: `ASSUNTO: "${opportunity.client} - Vocês ainda estão perdendo R$ ${Math.round(opportunity.value * 0.15).toLocaleString('pt-BR')}/mês?"\n\nCONTEÚDO: "Vi que ${opportunity.competitor || 'seu concorrente'} já implementou nossa solução. Vale 15 minutos para ver os resultados?"`,
      expectedOutcome: 'Reunião agendada em 48h'
@@ -518,11 +603,12 @@ function generateNextBestAction(opportunity, pipelineContext) {
 
  // Prioridade 3: Sem dor admitida
  if (dorScore < 5) {
+   const dorDescription = getScaleDescription(scales.dor || scales.pain);
    return {
      priority: 'ALTA',
      title: '🎯 Sem DOR = Sem venda',
-     action: 'Sessão SPIN profunda',
-     strategy: 'Quantificar perdas ocultas',
+     action: `Sessão SPIN profunda com ${contactName}`,
+     strategy: dorDescription ? `Explorar: "${dorDescription}"` : 'Quantificar perdas ocultas',
      script: `"${opportunity.client}, com seu volume de ${Math.round(opportunity.value/100)} caixas/mês, quanto lhes custa cada caixa que se abre em trânsito? E o tempo de retrabalho?"`,
      expectedOutcome: 'Dor admitida e quantificada'
    };
@@ -530,24 +616,28 @@ function generateNextBestAction(opportunity, pipelineContext) {
 
  // Prioridade 4: Sem acesso ao poder
  if (poderScore < 4) {
+   const sponsor = opportunity.sponsor || contactName;
    return {
      priority: 'ALTA',
      title: '👑 Você precisa do DECISOR',
-     action: 'Escalar esta semana',
-     strategy: 'Fazer o contato ser o herói',
-     script: `"${opportunity.sponsor}, para garantir o ROI de R$ ${Math.round(opportunity.value * 2.5).toLocaleString('pt-BR')}/ano, preciso que me ajude a preparar os números para seu chefe. Apresentamos juntos?"`,
+     action: opportunity.power_sponsor 
+       ? `Agendar reunião com ${opportunity.power_sponsor} esta semana`
+       : 'Mapear e acessar o Power Sponsor',
+     strategy: `Fazer ${sponsor} ser o herói`,
+     script: `"${sponsor}, para garantir o ROI de R$ ${Math.round(opportunity.value * 2.5).toLocaleString('pt-BR')}/ano, preciso que me ajude a preparar os números para ${decisionMaker}. Apresentamos juntos?"`,
      expectedOutcome: 'Reunião com decisor em 7 dias'
    };
  }
 
  // Prioridade 5: Sem visão clara
  if (visaoScore < 5) {
+   const productFocus = opportunity.product || 'nossa solução completa';
    return {
      priority: 'MÉDIA',
      title: '👁️ Construir VISÃO da solução',
-     action: 'Demo personalizada',
+     action: `Demo personalizada de ${productFocus}`,
      strategy: 'Mostrar o futuro sem os problemas atuais',
-     script: `"Imagina sua operação sem caixas abertas, sem reclamações, com 30% menos tempo de fechamento. Vou te mostrar exatamente como conseguir isso com seu volume específico."`,
+     script: `"Imagina sua operação sem caixas abertas, sem reclamações, com 30% menos tempo de fechamento. Vou te mostrar exatamente como conseguir isso com ${productFocus} no seu volume específico."`,
      expectedOutcome: 'Visão clara e diferenciada'
    };
  }
@@ -557,7 +647,7 @@ function generateNextBestAction(opportunity, pipelineContext) {
    return {
      priority: 'MÉDIA',
      title: '💰 Demonstrar ROI concreto',
-     action: 'Apresentar business case',
+     action: `Apresentar business case para ${decisionMaker}`,
      strategy: 'Números específicos do cliente',
      script: `"Preparei uma análise específica para ${opportunity.client}: investimento de R$ ${Math.round(opportunity.value * 0.5).toLocaleString('pt-BR')}, economia anual de R$ ${Math.round(opportunity.value * 1.8).toLocaleString('pt-BR')}. Revisamos juntos?"`,
      expectedOutcome: 'ROI validado e aceito'
@@ -566,12 +656,13 @@ function generateNextBestAction(opportunity, pipelineContext) {
 
  // Prioridade 7: Pronto para fechar
  if (dorScore >= 7 && poderScore >= 6 && valorScore >= 6 && controleScore >= 6) {
+   const closer = opportunity.power_sponsor || opportunity.sponsor || 'o responsável';
    return {
      priority: 'OPORTUNIDADE',
      title: '🏆 FECHAR ESTA SEMANA',
      action: 'Pressionar para assinatura',
      strategy: 'Criar urgência positiva',
-     script: `"${opportunity.power_sponsor || opportunity.sponsor}, já validamos tudo: problema, solução e ROI. Posso começar a implementação segunda-feira. Assinamos hoje para aproveitar o desconto do mês?"`,
+     script: `"${closer}, já validamos tudo: problema, solução e ROI. Posso começar a implementação segunda-feira. Assinamos hoje para aproveitar o desconto do mês?"`,
      expectedOutcome: 'Contrato assinado em 72h'
    };
  }
@@ -587,7 +678,7 @@ function generateNextBestAction(opportunity, pipelineContext) {
  };
 }
 
-// ============= QUICK ACTIONS DINÂMICAS =============
+// ============= QUICK ACTIONS DINÂMICAS - ENRIQUECIDAS =============
 function generateQuickActions(opportunity, alerts) {
  if (!opportunity) {
    return [
@@ -613,39 +704,44 @@ function generateQuickActions(opportunity, alerts) {
  const valorScore = getScaleValue(scales.valor || scales.value);
  const comprasScore = getScaleValue(scales.compras || scales.purchase);
 
- // Ações baseadas em escalas baixas
+ // Ações baseadas em escalas baixas - ENRIQUECIDAS
  if (dorScore < 5) {
+   const contactToAsk = opportunity.sponsor || opportunity.influencer || 'o contato';
    actions.push({
      icon: '🎯',
      label: 'Elevar dor',
-     prompt: `Dê-me 5 perguntas SPIN específicas para que ${opportunity.client} admita suas perdas por caixas abertas e retrabalho`,
+     prompt: `Dê-me 5 perguntas SPIN específicas para que ${contactToAsk} de ${opportunity.client} admita suas perdas por caixas abertas e retrabalho`,
      color: 'bg-red-500'
    });
  }
 
  if (poderScore < 4) {
+   const sponsor = opportunity.sponsor || 'meu contato';
+   const powerSponsor = opportunity.power_sponsor || 'o decisor';
    actions.push({
      icon: '👑',
      label: 'Acessar decisor',
-     prompt: `Script exato para pedir a ${opportunity.sponsor || 'meu contato'} que me apresente ao decisor de ${opportunity.client}`,
+     prompt: `Script exato para pedir a ${sponsor} que me apresente a ${powerSponsor} de ${opportunity.client}`,
      color: 'bg-purple-500'
    });
  }
 
  if (valorScore < 5) {
+   const product = opportunity.product || 'nossa solução';
    actions.push({
      icon: '💰',
      label: 'Calcular ROI',
-     prompt: `Calcule o ROI específico para ${opportunity.client} com volume de ${Math.round(opportunity.value/100)} caixas/mês`,
+     prompt: `Calcule o ROI específico de ${product} para ${opportunity.client} com volume de ${Math.round(opportunity.value/100)} caixas/mês`,
      color: 'bg-green-500'
    });
  }
 
  if (comprasScore < 4) {
+   const procurement = opportunity.support_contact || 'o setor de compras';
    actions.push({
      icon: '📋',
      label: 'Navegar compras',
-     prompt: `${opportunity.client} tem processo de compras complexo. Dê-me estratégia para evitar cotação e acelerar aprovação`,
+     prompt: `${opportunity.client} tem processo de compras complexo com ${procurement}. Dê-me estratégia para evitar cotação e acelerar aprovação`,
      color: 'bg-yellow-500'
    });
  }
@@ -660,30 +756,33 @@ function generateQuickActions(opportunity, alerts) {
        color: 'bg-red-600'
      });
    } else if (alerts[0].type === 'urgent') {
+     const contactName = opportunity.sponsor || opportunity.power_sponsor || 'o cliente';
      actions.push({
        icon: '📧',
        label: 'Email reativação',
-       prompt: `Escreva um email poderoso para reativar ${opportunity.client} depois de ${getDaysSinceLastContact(opportunity.last_update)} dias sem contato`,
+       prompt: `Escreva um email poderoso para reativar ${contactName} de ${opportunity.client} depois de ${getDaysSinceLastContact(opportunity.last_update)} dias sem contato`,
        color: 'bg-orange-500'
      });
    }
  }
 
- // Ações gerais sempre disponíveis
+ // Ações gerais sempre disponíveis - ENRIQUECIDAS
  if (actions.length < 5) {
    actions.push({
      icon: '📊',
      label: 'Análise PPVVCC',
-     prompt: `Análise completa PPVVCC de ${opportunity.client} com ações específicas para subir cada escala`,
+     prompt: `Análise completa PPVVCC de ${opportunity.client} com ações específicas para subir cada escala. Considere que estamos vendendo ${opportunity.product || 'solução de fechamento'}`,
      color: 'bg-indigo-500'
    });
  }
 
  if (actions.length < 6) {
+   const product = opportunity.product || 'nossa solução';
+   const contact = opportunity.sponsor || opportunity.power_sponsor || 'o cliente';
    actions.push({
      icon: '🎬',
      label: 'Preparar demo',
-     prompt: `Como estruturo uma demo vencedora para ${opportunity.client} em ${opportunity.industry || 'sua indústria'}?`,
+     prompt: `Como estruturo uma demo vencedora de ${product} para ${contact} de ${opportunity.client} em ${opportunity.industry || 'sua indústria'}?`,
      color: 'bg-blue-500'
    });
  }
@@ -691,7 +790,7 @@ function generateQuickActions(opportunity, alerts) {
  return actions.slice(0, 6);
 }
 
-// ============= CHAMADA À CLAUDE API MELHORADA - CASOS COMO EVIDÊNCIA =============
+// ============= CHAMADA À CLAUDE API MELHORADA - CONTEXTO COMPLETO =============
 async function callClaudeAPI(opportunityData, userInput, ventapelContext, toolsAvailable, webSearchResults = null, completeAnalysis = null) {
  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
  
@@ -734,6 +833,7 @@ Cliente: ${opportunityData?.client || 'Não selecionado'}
 Indústria: ${opportunityData?.industry || 'Não especificada'}
 Valor negócio: R$ ${opportunityData?.value?.toLocaleString('pt-BR') || '0'}
 Etapa: ${opportunityData?.stage || 0}/6
+Produto/Solução: ${opportunityData?.product || 'Não especificado'}
 
 **ANÁLISE PPVVCC:**
 ${completeAnalysis?.opportunity ? `
@@ -748,6 +848,30 @@ ${completeAnalysis?.opportunity ? `
   • CONTROLE: ${completeAnalysis.opportunity.scaleBreakdown.controle}/10
   • COMPRAS: ${completeAnalysis.opportunity.scaleBreakdown.compras}/10
 ` : 'Não disponível'}
+
+**CONTEXTO COMPLETO DA OPORTUNIDADE:**
+${opportunityData ? `
+- CONTATOS MAPEADOS:
+  • Power Sponsor (Decisor): ${opportunityData.power_sponsor || 'Não identificado'}
+  • Sponsor (Patrocinador): ${opportunityData.sponsor || 'Não identificado'}
+  • Influenciador: ${opportunityData.influencer || 'Não identificado'}
+  • Contato de Suporte: ${opportunityData.support_contact || 'Não identificado'}
+
+- INFORMAÇÕES OPERACIONAIS:
+  • Próxima Ação Registrada: ${opportunityData.next_action || 'Nenhuma'}
+  • Data de Fechamento Esperada: ${opportunityData.expected_close ? new Date(opportunityData.expected_close).toLocaleDateString('pt-BR') : 'Não definida'}
+  • Produto/Solução: ${opportunityData.product || 'Não especificado'}
+
+- DESCRIÇÕES DETALHADAS DAS ESCALAS:
+${completeAnalysis?.opportunity?.scaleDescriptions ? `
+  • DOR: "${completeAnalysis.opportunity.scaleDescriptions.dor || 'Sem descrição'}"
+  • PODER: "${completeAnalysis.opportunity.scaleDescriptions.poder || 'Sem descrição'}"
+  • VISÃO: "${completeAnalysis.opportunity.scaleDescriptions.visao || 'Sem descrição'}"
+  • VALOR: "${completeAnalysis.opportunity.scaleDescriptions.valor || 'Sem descrição'}"
+  • CONTROLE: "${completeAnalysis.opportunity.scaleDescriptions.controle || 'Sem descrição'}"
+  • COMPRAS: "${completeAnalysis.opportunity.scaleDescriptions.compras || 'Sem descrição'}"
+` : 'Descrições não disponíveis'}
+` : 'Contexto não disponível'}
 
 ${completeAnalysis?.alerts?.length > 0 ? `
 **ALERTAS ATIVOS:**
@@ -769,12 +893,14 @@ ${relevantCasesForReference.length > 0 ? JSON.stringify(relevantCasesForReferenc
 ---
 **INSTRUÇÕES FINAIS:**
 1. Responda DIRETAMENTE à pergunta em PORTUGUÊS DO BRASIL
-2. Estrutura: Diagnóstico → Estratégia → Tática → Evidência (se aplicável)
-3. Termine SEMPRE com UMA ação específica para HOJE
-4. Se mencionar um caso, que seja breve e no final: "Isso funcionou com [empresa] que conseguiu [resultado]"
-5. Máximo 300 palavras total
-6. Sem sermões, sem motivação barata, apenas estratégia pura
-7. Use terminologia de vendas brasileira: ROI, follow-up, pipeline, deal, sponsor`;
+2. Use SEMPRE os nomes reais dos contatos quando disponíveis (não diga "o decisor", diga o nome)
+3. Estrutura: Diagnóstico → Estratégia → Tática → Evidência (se aplicável)
+4. Termine SEMPRE com UMA ação específica para HOJE
+5. Se mencionar um caso, que seja breve e no final: "Isso funcionou com [empresa] que conseguiu [resultado]"
+6. Máximo 300 palavras total
+7. Sem sermões, sem motivação barata, apenas estratégia pura
+8. Use terminologia de vendas brasileira: ROI, follow-up, pipeline, deal, sponsor
+9. Considere o contexto detalhado da oportunidade (contatos, próxima ação, produto) para personalizar a resposta`;
 
  try {
    const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -810,7 +936,7 @@ ${relevantCasesForReference.length > 0 ? JSON.stringify(relevantCasesForReferenc
  }
 }
 
-// ============= FALLBACK INTELIGENTE =============
+// ============= FALLBACK INTELIGENTE - ENRIQUECIDO =============
 function generateSmartFallback(opportunityData, userInput, analysis) {
  if (!opportunityData) {
    return "❌ Nenhuma oportunidade selecionada. Selecione um cliente do CRM para começar a análise.";
@@ -818,8 +944,22 @@ function generateSmartFallback(opportunityData, userInput, analysis) {
 
  let response = `📊 **Análise de ${opportunityData.client}**\n\n`;
  
+ // Adicionar informações do produto se disponível
+ if (opportunityData.product) {
+   response += `**Produto:** ${opportunityData.product}\n`;
+ }
+ 
  if (analysis?.opportunity) {
-   response += `**Estado:** Saúde ${analysis.opportunity.healthScore}/10 | Probabilidade ${analysis.opportunity.probability}%\n\n`;
+   response += `**Estado:** Saúde ${analysis.opportunity.healthScore}/10 | Probabilidade ${analysis.opportunity.probability}%\n`;
+   
+   // Adicionar informações dos contatos se disponível
+   if (analysis.opportunity.contacts) {
+     const contacts = analysis.opportunity.contacts;
+     if (contacts.power_sponsor || contacts.sponsor) {
+       response += `**Contatos-chave:** ${contacts.power_sponsor || contacts.sponsor}\n`;
+     }
+   }
+   response += '\n';
  }
  
  if (analysis?.alerts?.length > 0) {
@@ -838,6 +978,11 @@ function generateSmartFallback(opportunityData, userInput, analysis) {
      response += `**Script sugerido:**\n`;
      response += `"${analysis.nextBestAction.script}"\n`;
    }
+ }
+ 
+ // Se há próxima ação registrada no CRM
+ if (opportunityData.next_action) {
+   response += `\n**📋 Ação planejada no CRM:** ${opportunityData.next_action}\n`;
  }
  
  // Casos no final se houver
@@ -885,7 +1030,9 @@ export default async function handler(req) {
      userInput: userInput?.substring(0, 50), 
      hasOpportunity: !!opportunityData,
      vendor: vendorName,
-     pipelineSize: pipelineData?.allOpportunities?.length || 0
+     pipelineSize: pipelineData?.allOpportunities?.length || 0,
+     hasContacts: !!(opportunityData?.power_sponsor || opportunityData?.sponsor),
+     hasProduct: !!opportunityData?.product
    });
 
    // PASSO 1: EXECUTAR MOTOR DE ANÁLISE
@@ -917,6 +1064,9 @@ export default async function handler(req) {
      
      if (opportunityData && completeAnalysis.nextBestAction) {
        summaryResponse += `\n**Para ${opportunityData.client}:**\n`;
+       if (opportunityData.product) {
+         summaryResponse += `Produto: ${opportunityData.product}\n`;
+       }
        summaryResponse += `${completeAnalysis.nextBestAction.title}\n`;
        summaryResponse += `👉 ${completeAnalysis.nextBestAction.action}`;
      }
@@ -943,7 +1093,7 @@ export default async function handler(req) {
      );
    }
 
-   // PASSO 3: DEFINIR FERRAMENTAS DISPONÍVEIS
+   // PASSO 3: DEFINIR FERRAMENTAS DISPONÍVEIS - ENRIQUECIDAS
    const availableTools = [
      { 
        name: 'analisar', 
@@ -951,16 +1101,34 @@ export default async function handler(req) {
        function: () => {
          let result = `📊 **ANÁLISE DE ${opportunityData?.client || 'PIPELINE'}**\n\n`;
          
+         if (opportunityData?.product) {
+           result += `**Produto:** ${opportunityData.product}\n\n`;
+         }
+         
          if (completeAnalysis.opportunity) {
            result += `**Diagnóstico:**\n`;
            result += `Score de Saúde: ${completeAnalysis.opportunity.healthScore}/10\n`;
            result += `Probabilidade: ${completeAnalysis.opportunity.probability}%\n`;
-           result += `Dias sem contato: ${completeAnalysis.opportunity.daysSince}\n\n`;
+           result += `Dias sem contato: ${completeAnalysis.opportunity.daysSince}\n`;
+           
+           // Adicionar contatos se disponível
+           if (completeAnalysis.opportunity.contacts) {
+             const contacts = completeAnalysis.opportunity.contacts;
+             if (contacts.power_sponsor || contacts.sponsor || contacts.influencer) {
+               result += `\n**Contatos mapeados:**\n`;
+               if (contacts.power_sponsor) result += `• Decisor: ${contacts.power_sponsor}\n`;
+               if (contacts.sponsor) result += `• Sponsor: ${contacts.sponsor}\n`;
+               if (contacts.influencer) result += `• Influenciador: ${contacts.influencer}\n`;
+             }
+           }
            
            if (completeAnalysis.opportunity.criticalScales.length > 0) {
-             result += `**Escalas críticas a trabalhar:**\n`;
+             result += `\n**Escalas críticas a trabalhar:**\n`;
              completeAnalysis.opportunity.criticalScales.forEach(scale => {
                result += `• ${scale.name}: ${scale.value}/10\n`;
+               if (scale.description) {
+                 result += `  Observação: "${scale.description}"\n`;
+               }
                result += `  → Ação: ${scale.action}\n`;
              });
            }
@@ -979,7 +1147,7 @@ export default async function handler(req) {
    ];
 
    // PASSO 4: CHAMADA À CLAUDE
-   console.log('🤖 Chamando Claude com estrutura melhorada...');
+   console.log('🤖 Chamando Claude com estrutura melhorada e contexto completo...');
    
    const claudeResponse = await callClaudeAPI(
      opportunityData,
@@ -1013,7 +1181,7 @@ export default async function handler(req) {
  }
 }
 
-// ============= MOTOR DE ANÁLISE COMPLETO =============
+// ============= MOTOR DE ANÁLISE COMPLETO - ENRIQUECIDO =============
 function buildCompleteAnalysis(opportunityData, pipelineData, vendorName) {
  const analysis = {
    timestamp: new Date().toISOString(),
@@ -1046,7 +1214,7 @@ function buildCompleteAnalysis(opportunityData, pipelineData, vendorName) {
    }
  }
 
- // Análise da oportunidade atual
+ // Análise da oportunidade atual - ENRIQUECIDA
  if (opportunityData) {
    analysis.opportunity = analyzeOpportunity(opportunityData);
    analysis.alerts = generateAlerts(opportunityData, pipelineData);
@@ -1054,17 +1222,37 @@ function buildCompleteAnalysis(opportunityData, pipelineData, vendorName) {
    analysis.quickActions = generateQuickActions(opportunityData, analysis.alerts);
    analysis.relevantCases = findRelevantCases(opportunityData);
    
-   // Insights da oportunidade
+   // Insights da oportunidade - ENRIQUECIDOS
    if (analysis.opportunity.probability > 70) {
+     const contactInfo = opportunityData.power_sponsor ? ` com ${opportunityData.power_sponsor}` : '';
      analysis.insights.push({
        type: 'success',
-       message: `✅ ${opportunityData.client}: Alta probabilidade de fechamento (${analysis.opportunity.probability}%)`
+       message: `✅ ${opportunityData.client}: Alta probabilidade de fechamento (${analysis.opportunity.probability}%)${contactInfo}`
      });
    } else if (analysis.opportunity.probability < 30) {
      analysis.insights.push({
        type: 'danger',
        message: `⚠️ ${opportunityData.client}: Baixa probabilidade (${analysis.opportunity.probability}%)`
      });
+   }
+
+   // NOVO: Insight sobre próxima ação pendente
+   if (opportunityData.next_action && getDaysSinceLastContact(opportunityData.last_update) > 2) {
+     analysis.insights.push({
+       type: 'info',
+       message: `📋 Ação pendente: "${opportunityData.next_action}"`
+     });
+   }
+
+   // NOVO: Insight sobre fechamento próximo
+   if (opportunityData.expected_close) {
+     const daysToClose = Math.floor((new Date(opportunityData.expected_close) - new Date()) / (1000 * 60 * 60 * 24));
+     if (daysToClose <= 30 && daysToClose > 0) {
+       analysis.insights.push({
+         type: 'info',
+         message: `📅 Fechamento esperado em ${daysToClose} dias`
+       });
+     }
    }
 
    // Insight baseado em casos similares
