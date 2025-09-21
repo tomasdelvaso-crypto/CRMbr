@@ -1,20 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, X, Target, Mail, Phone, DollarSign, TrendingUp, Brain, Send, Loader2, Bot, Sparkles, AlertCircle, Activity, BarChart3, Clock, CheckCircle, XCircle, ChevronRight, Zap, AlertTriangle } from 'lucide-react';
 
-// ============= COMPONENTE PANEL DE ANÁLISIS =============
+// ============= COMPONENTE PAINEL DE ANÁLISE =============
 const AnalysisPanel = ({ analysis }) => {
   if (!analysis) return null;
 
   const { opportunity, pipeline, alerts, nextBestAction, insights } = analysis;
   
-  // Colores según el health score
+  // Cores conforme o health score
   const getHealthColor = (score) => {
     if (score >= 7) return 'text-green-600';
     if (score >= 4) return 'text-yellow-600';
     return 'text-red-600';
   };
 
-  // Color según prioridad de alerta
+  // Cor conforme prioridade do alerta
   const getAlertColor = (type) => {
     switch(type) {
       case 'critical': return 'bg-red-100 text-red-800 border-red-300';
@@ -27,7 +27,7 @@ const AnalysisPanel = ({ analysis }) => {
 
   return (
     <div className="bg-gradient-to-b from-gray-50 to-white border-b overflow-hidden">
-      {/* Métricas principales */}
+      {/* Métricas principais */}
       {opportunity && (
         <div className="p-3 border-b border-gray-100">
           <div className="grid grid-cols-3 gap-2 text-center">
@@ -36,25 +36,25 @@ const AnalysisPanel = ({ analysis }) => {
               <div className={`text-lg font-bold ${getHealthColor(opportunity.healthScore)}`}>
                 {opportunity.healthScore}/10
               </div>
-              <div className="text-xs text-gray-500">Health</div>
+              <div className="text-xs text-gray-500">Saúde</div>
             </div>
             <div className="bg-white rounded-lg p-2 border border-gray-200">
               <Target className="w-4 h-4 mx-auto mb-1 text-blue-600" />
               <div className="text-lg font-bold text-blue-600">
                 {opportunity.probability}%
               </div>
-              <div className="text-xs text-gray-500">Probabilidad</div>
+              <div className="text-xs text-gray-500">Probabilidade</div>
             </div>
             <div className="bg-white rounded-lg p-2 border border-gray-200">
               <Clock className="w-4 h-4 mx-auto mb-1 text-gray-600" />
               <div className="text-lg font-bold text-gray-700">
                 {opportunity.daysSince}d
               </div>
-              <div className="text-xs text-gray-500">Sin contacto</div>
+              <div className="text-xs text-gray-500">Sem contato</div>
             </div>
           </div>
 
-          {/* Breakdown de escalas */}
+          {/* Detalhamento das escalas */}
           {opportunity.scaleBreakdown && (
             <div className="mt-2 grid grid-cols-6 gap-1">
               {Object.entries(opportunity.scaleBreakdown).map(([key, value]) => (
@@ -70,7 +70,7 @@ const AnalysisPanel = ({ analysis }) => {
         </div>
       )}
 
-      {/* Alertas principales */}
+      {/* Alertas principais */}
       {alerts && alerts.length > 0 && (
         <div className="p-2 space-y-1">
           {alerts.slice(0, 2).map((alert, idx) => (
@@ -89,7 +89,7 @@ const AnalysisPanel = ({ analysis }) => {
         </div>
       )}
 
-      {/* Next Best Action destacada */}
+      {/* Próxima Melhor Ação destacada */}
       {nextBestAction && (
         <div className="p-2 border-t border-gray-100">
           <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-2 border border-purple-200">
@@ -107,7 +107,7 @@ const AnalysisPanel = ({ analysis }) => {
         </div>
       )}
 
-      {/* Mini Pipeline Stats (si no hay oportunidad seleccionada) */}
+      {/* Mini Estatísticas do Pipeline (se não há oportunidade selecionada) */}
       {!opportunity && pipeline && (
         <div className="p-3">
           <div className="grid grid-cols-2 gap-2">
@@ -124,7 +124,7 @@ const AnalysisPanel = ({ analysis }) => {
           </div>
           {pipeline.atRisk > 0 && (
             <div className="mt-2 text-xs bg-red-50 text-red-700 p-2 rounded-lg">
-              ⚠️ {pipeline.atRisk} deals en riesgo (R$ {(pipeline.riskValue / 1000).toFixed(0)}k)
+              ⚠️ {pipeline.atRisk} negócios em risco (R$ {(pipeline.riskValue / 1000).toFixed(0)}k)
             </div>
           )}
         </div>
@@ -133,7 +133,7 @@ const AnalysisPanel = ({ analysis }) => {
   );
 };
 
-// ============= COMPONENTE PRINCIPAL MEJORADO =============
+// ============= COMPONENTE PRINCIPAL MELHORADO =============
 const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, supabase }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -149,7 +149,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Listener para abrir el asistente desde el CRM
+  // Listener para abrir o assistente do CRM
   useEffect(() => {
     const handleOpenAssistant = () => {
       setIsOpen(true);
@@ -158,11 +158,11 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     return () => window.removeEventListener('openAssistant', handleOpenAssistant);
   }, []);
 
-  // Función para cargar datos del pipeline
+  // Função para carregar dados do pipeline
   const loadPipelineData = async () => {
-    // Solo cargar si tenemos supabase disponible
+    // Só carregar se temos supabase disponível
     if (!supabase) {
-      console.log('Supabase no disponible, usando datos del CRM principal');
+      console.log('Supabase não disponível, usando dados do CRM principal');
       return;
     }
     
@@ -176,12 +176,12 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         setPipelineData({ allOpportunities: data });
       }
     } catch (err) {
-      console.error('Error cargando pipeline:', err);
-      // No fallar silenciosamente - el backend puede proveer estos datos
+      console.error('Erro carregando pipeline:', err);
+      // Não falhar silenciosamente - o backend pode prover esses dados
     }
   };
 
-  // Función para obtener análisis actualizado
+  // Função para obter análise atualizada
   const getUpdatedAnalysis = async () => {
     if (!currentOpportunity) return;
     
@@ -190,7 +190,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userInput: '',  // Sin input para solo obtener análisis
+          userInput: '',  // Sem input para só obter análise
           opportunityData: currentOpportunity,
           vendorName: currentUser,
           pipelineData: pipelineData
@@ -207,30 +207,30 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         }
       }
     } catch (error) {
-      console.error('Error obteniendo análisis:', error);
+      console.error('Erro obtendo análise:', error);
     }
   };
 
-  // Cargar datos del pipeline cuando se abre
+  // Carregar dados do pipeline quando abre
   useEffect(() => {
     if (isOpen && supabase) {
       loadPipelineData();
     }
-  }, [isOpen]); // Removemos supabase de las dependencias para evitar re-renders infinitos
+  }, [isOpen]);
 
-  // Actualizar análisis cuando cambia la oportunidad
+  // Atualizar análise quando muda a oportunidade
   useEffect(() => {
     if (currentOpportunity && isOpen) {
-      // Hacer una llamada silenciosa al backend para obtener análisis actualizado
+      // Fazer uma chamada silenciosa ao backend para obter análise atualizada
       getUpdatedAnalysis();
     }
-  }, [currentOpportunity?.id, isOpen]); // Usar solo el ID para evitar re-renders por cambios de objeto
+  }, [currentOpportunity?.id, isOpen]);
 
-  // ============= FUNCIÓN PRINCIPAL MEJORADA =============
+  // ============= FUNÇÃO PRINCIPAL MELHORADA =============
   const processMessage = async (text) => {
     if (!text?.trim()) return;
 
-    // Agregar mensaje del usuario
+    // Adicionar mensagem do usuário
     const userMessage = {
       role: 'user',
       content: text,
@@ -253,21 +253,21 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       });
 
       if (!response.ok) {
-        throw new Error('Error en el servidor');
+        throw new Error('Erro no servidor');
       }
 
       const data = await response.json();
       
-      // Agregar respuesta del asistente
+      // Adicionar resposta do assistente
       const assistantMessage = {
         role: 'assistant',
-        content: data.response || 'No pude procesar tu solicitud',
+        content: data.response || 'Não consegui processar sua solicitação',
         timestamp: new Date().toISOString()
       };
       
       setMessages(prev => [...prev, assistantMessage]);
       
-      // ACTUALIZAR ANÁLISIS Y ACCIONES DINÁMICAS
+      // ATUALIZAR ANÁLISE E AÇÕES DINÂMICAS
       if (data.analysis) {
         setAnalysis(data.analysis);
         if (data.analysis.quickActions) {
@@ -276,10 +276,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       }
       
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Erro:', error);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: '❌ Error de conexión. Intenta de nuevo.',
+        content: '❌ Erro de conexão. Tente novamente.',
         timestamp: new Date().toISOString()
       }]);
     } finally {
@@ -287,54 +287,54 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     }
   };
 
-  // Usar acciones dinámicas del backend o fallback a las estáticas
+  // Usar ações dinâmicas do backend ou fallback para as estáticas
   const effectiveActions = dynamicActions.length > 0 ? dynamicActions : [
     {
       icon: '🎯',
-      label: 'Dolor',
-      prompt: 'Genera una estrategia SPIN para elevar el dolor del cliente',
+      label: 'Dor',
+      prompt: 'Gere uma estratégia SPIN para elevar a dor do cliente',
       color: 'bg-red-500'
     },
     {
       icon: '💰',
       label: 'ROI',
-      prompt: 'Calcula el ROI específico para esta oportunidad',
+      prompt: 'Calcule o ROI específico para esta oportunidade',
       color: 'bg-green-500'
     },
     {
       icon: '📧',
       label: 'Email',
-      prompt: 'Escribe un email de seguimiento potente',
+      prompt: 'Escreva um email de follow-up poderoso',
       color: 'bg-blue-500'
     },
     {
       icon: '📞',
-      label: 'Llamada',
-      prompt: 'Dame un script de llamada con manejo de objeciones',
+      label: 'Ligação',
+      prompt: 'Me dê um roteiro de ligação com manejo de objeções',
       color: 'bg-yellow-500'
     },
     {
       icon: '📈',
-      label: 'Estrategia',
-      prompt: 'Crea un plan de acción para los próximos 5 días',
+      label: 'Estratégia',
+      prompt: 'Crie um plano de ação para os próximos 5 dias',
       color: 'bg-indigo-500'
     },
     {
       icon: '📊',
-      label: 'Análisis',
-      prompt: 'Análisis PPVVCC completo con acciones concretas',
+      label: 'Análise',
+      prompt: 'Análise PPVVCC completa com ações concretas',
       color: 'bg-purple-500'
     }
   ];
 
-  // Obtener sugerencias contextuales mejoradas
+  // Obter sugestões contextuais melhoradas
   const getContextualSuggestions = () => {
-    // Si hay insights del análisis, usarlos
+    // Se há insights da análise, usá-los
     if (analysis?.insights && analysis.insights.length > 0) {
       return analysis.insights.slice(0, 3).map(insight => insight.message);
     }
     
-    // Fallback a sugerencias básicas
+    // Fallback para sugestões básicas
     if (!currentOpportunity?.scales) return [];
     
     const suggestions = [];
@@ -342,13 +342,13 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     const poderScore = currentOpportunity.scales?.poder?.score || 0;
     
     if (dorScore < 5) {
-      suggestions.push("🎯 ¿Cómo puedo hacer que el cliente admita su dolor?");
+      suggestions.push("🎯 Como posso fazer o cliente admitir sua dor?");
     }
     if (poderScore < 5) {
-      suggestions.push("👤 ¿Cómo accedo al verdadero tomador de decisión?");
+      suggestions.push("👤 Como acesso o verdadeiro tomador de decisão?");
     }
     if (currentOpportunity.value > 100000) {
-      suggestions.push("💰 El cliente dice que es muy caro, ¿cómo manejo esta objeción?");
+      suggestions.push("💰 O cliente diz que está muito caro, como manejo esta objeção?");
     }
     
     return suggestions.slice(0, 3);
@@ -356,7 +356,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
   return (
     <>
-      {/* Botón flotante mejorado */}
+      {/* Botão flutuante melhorado */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="fixed bottom-6 right-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all z-50 group hover:scale-110"
@@ -373,11 +373,11 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         )}
       </button>
 
-      {/* Ventana del Chat Mejorada - AMPLIADA */}
+      {/* Janela do Chat Melhorada - AMPLIADA */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-[600px] h-[1000px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
+        <div className="fixed bottom-24 right-6 w-[600px] h-[800px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
           
-          {/* Header mejorado */}
+          {/* Header melhorado */}
           <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
@@ -387,7 +387,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                   <p className="text-xs opacity-90">
                     {currentOpportunity 
                       ? `🎯 ${currentOpportunity.client} - ${currentOpportunity.name}` 
-                      : '📊 Análisis de Pipeline'}
+                      : '📊 Análise do Pipeline'}
                   </p>
                 </div>
               </div>
@@ -399,11 +399,11 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
               </button>
             </div>
             
-            {/* Mini stats en el header */}
+            {/* Mini stats no header */}
             {currentOpportunity && (
               <div className="mt-2 bg-white/20 rounded-lg px-3 py-2">
                 <div className="flex justify-between items-center text-xs">
-                  <span>Stage: {currentOpportunity.stage}/6</span>
+                  <span>Etapa: {currentOpportunity.stage}/6</span>
                   <span>Prob: {currentOpportunity.probability || 0}%</span>
                   <span>R$ {(currentOpportunity.value || 0).toLocaleString('pt-BR')}</span>
                 </div>
@@ -411,10 +411,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
             )}
           </div>
 
-          {/* PANEL DE ANÁLISIS EN VIVO */}
+          {/* PAINEL DE ANÁLISE AO VIVO */}
           <AnalysisPanel analysis={analysis} />
 
-          {/* Quick Actions Dinámicas */}
+          {/* Ações Rápidas Dinâmicas */}
           {currentOpportunity && effectiveActions.length > 0 && (
             <div className="p-3 bg-gray-50 border-b">
               <div className="grid grid-cols-3 gap-2">
@@ -434,33 +434,33 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
             </div>
           )}
 
-          {/* Messages con diseño mejorado - ÁREA AMPLIADA */}
+          {/* Mensagens com design melhorado - ÁREA AMPLIADA */}
           <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gradient-to-b from-gray-50 to-white">
             {messages.length === 0 && (
               <div className="bg-gradient-to-br from-purple-50 to-blue-50 p-6 rounded-xl">
                 <p className="font-bold text-purple-700 mb-2">
-                  👋 ¡Hola {currentUser}!
+                  👋 Olá {currentUser}!
                 </p>
                 {currentOpportunity ? (
                   <>
                     <p className="text-sm text-gray-600 mb-3">
-                      Analizando: <strong>{currentOpportunity.client}</strong>
+                      Analisando: <strong>{currentOpportunity.client}</strong>
                     </p>
                     {analysis && (
                       <div className="text-xs bg-white rounded-lg p-2 mb-3 border border-purple-200">
-                        <span className="font-semibold text-purple-700">Estado actual:</span>
+                        <span className="font-semibold text-purple-700">Estado atual:</span>
                         <div className="mt-1">
-                          • Health: {analysis.opportunity?.healthScore || 'N/A'}/10<br/>
-                          • Probabilidad: {analysis.opportunity?.probability || 'N/A'}%<br/>
-                          • {analysis.alerts?.length || 0} alertas activas
+                          • Saúde: {analysis.opportunity?.healthScore || 'N/A'}/10<br/>
+                          • Probabilidade: {analysis.opportunity?.probability || 'N/A'}%<br/>
+                          • {analysis.alerts?.length || 0} alertas ativos
                         </div>
                       </div>
                     )}
                     
-                    {/* Sugerencias contextuales */}
+                    {/* Sugestões contextuais */}
                     {getContextualSuggestions().length > 0 && (
                       <div className="mt-3 space-y-2">
-                        <p className="text-xs font-semibold text-purple-700">Sugerencias inteligentes:</p>
+                        <p className="text-xs font-semibold text-purple-700">Sugestões inteligentes:</p>
                         {getContextualSuggestions().map((suggestion, idx) => (
                           <button
                             key={idx}
@@ -476,11 +476,11 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                 ) : (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-2">
                     <p className="text-sm text-yellow-800">
-                      ⚠️ <strong>Selecciona un cliente del CRM</strong> para análisis completo
+                      ⚠️ <strong>Selecione um cliente do CRM</strong> para análise completa
                     </p>
                     {pipelineData && (
                       <p className="text-xs text-yellow-700 mt-1">
-                        Pipeline actual: {pipelineData.allOpportunities?.length || 0} oportunidades
+                        Pipeline atual: {pipelineData.allOpportunities?.length || 0} oportunidades
                       </p>
                     )}
                   </div>
@@ -520,7 +520,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                 <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm p-3 shadow-sm">
                   <div className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
-                    <span className="text-sm text-gray-600">Analizando con IA...</span>
+                    <span className="text-sm text-gray-600">Analisando com IA...</span>
                     <Brain className="w-4 h-4 text-purple-500 animate-pulse" />
                   </div>
                 </div>
@@ -530,7 +530,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input mejorado con indicadores */}
+          {/* Input melhorado com indicadores */}
           <div className="p-4 border-t bg-white">
             <div className="flex gap-2">
               <input
@@ -543,8 +543,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                   }
                 }}
                 placeholder={currentOpportunity 
-                  ? "Pregúntame sobre estrategias, objeciones, ROI..." 
-                  : "Selecciona un cliente o pregunta sobre el pipeline..."}
+                  ? "Pergunte sobre estratégias, objeções, ROI..." 
+                  : "Selecione um cliente ou pergunte sobre o pipeline..."}
                 className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-base disabled:bg-gray-100"
                 disabled={isLoading}
               />
@@ -571,7 +571,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                     </span>
                     {analysis && analysis.opportunity && (
                       <span className="text-xs text-gray-400">
-                        | Health {analysis.opportunity.healthScore}/10
+                        | Saúde {analysis.opportunity.healthScore}/10
                       </span>
                     )}
                   </>
