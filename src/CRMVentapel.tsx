@@ -3,13 +3,13 @@ import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, 
 import { createClient } from '@supabase/supabase-js';
 import AIAssistant from './AIAssistant';
 
-// --- CONFIGURACIÓN DE SUPABASE ---
+// --- CONFIGURAÇÃO DE SUPABASE ---
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// --- TIPOS Y INTERFACES ---
+// --- TIPOS E INTERFACES ---
 interface Scale {
   score: number;
   description: string;
@@ -274,7 +274,7 @@ const OpportunityHealthScore: React.FC<{ opportunity: Opportunity }> = ({ opport
   );
 };
 
-// --- DEFINICIONES DE ETAPAS Y ESCALAS ---
+// --- DEFINIÇÕES DE ETAPAS E ESCALAS ---
 const stages: StageRequirement[] = [
   { 
     id: 1, 
@@ -320,7 +320,7 @@ const stages: StageRequirement[] = [
   { 
     id: 4, 
     name: 'Validação/Teste', 
-    probability: 60, // Corregido según el manual
+    probability: 60,
     color: 'bg-orange-500',
     requirements: ['Score VALOR ≥ 6', 'Teste/POC executado', 'ROI validado'],
     checklist: {
@@ -334,7 +334,7 @@ const stages: StageRequirement[] = [
   { 
     id: 5, 
     name: 'Negociação', 
-    probability: 80, // Corregido según el manual
+    probability: 80,
     color: 'bg-green-500',
     requirements: ['Score CONTROLE ≥ 7', 'Score COMPRAS ≥ 6', 'Proposta enviada'],
     checklist: {
@@ -461,7 +461,7 @@ const scaleDefinitions = {
     { level: 3, text: "Pessoa de Contato admite razões e sintomas causadores de dor" },
     { level: 4, text: "Pessoa de Contato admite dor" },
     { level: 5, text: "Vendedor documenta dor e Pessoa de Contato concorda" },
-    { level: 6, text: "Pessoa de Contato e outros necessidades do Tomador de Decisão" },
+    { level: 6, text: "Pessoa de Contato formaliza necessidades do Tomador de Decisão" },
     { level: 7, text: "Tomador de Decisão admite necessidades" },
     { level: 8, text: "Tomador de Decisão admite razões e sintomas causadores de dor" },
     { level: 9, text: "Tomador de Decisão admite dor" },
@@ -471,7 +471,7 @@ const scaleDefinitions = {
     { level: 0, text: "Tomador de Decisão não foi identificado ainda" },
     { level: 1, text: "Processo de decisão revelado por Pessoa de Contato" },
     { level: 2, text: "Tomador de Decisão Potencial identificado" },
-    { level: 3, text: "Pedido de acesso a Tomador de Decisão concedido por Pessoa de Contato" },
+    { level: 3, text: "Pedido de acesso a Tomador de Decisão acordado por Pessoa de Contato" },
     { level: 4, text: "Tomador de Decisão acessado" },
     { level: 5, text: "Tomador de Decisão concorda em explorar oportunidade" },
     { level: 6, text: "Processo de decisão e compra confirmado pelo Tomador de Decisão" },
@@ -499,7 +499,7 @@ const scaleDefinitions = {
     { level: 2, text: "Pessoa de Contato concorda em explorar a proposta de valor" },
     { level: 3, text: "Tomador de Decisão concorda em explorar a proposta de valor" },
     { level: 4, text: "Critérios para definição de valor estabelecidos com Tomador de Decisão" },
-    { level: 5, text: "Valor descoberto conduzido e visão Tomador de Decisão" },
+    { level: 5, text: "Valor descoberto está associado à visão Tomador de Decisão" },
     { level: 6, text: "Análise de valor conduzida por vendedor (demo)" },
     { level: 7, text: "Análise de valor conduzida pelo Pessoa de Contato (trial)" },
     { level: 8, text: "Tomador de Decisão concorda com análise de Valor" },
@@ -508,10 +508,10 @@ const scaleDefinitions = {
   ],
   controle: [
     { level: 0, text: "Nenhum follow documentado de conversa com Pessoa de Contato" },
-    { level: 1, text: "1a visão (SPI) enviada para Pessoa de Contato" },
-    { level: 2, text: "1a visão concordada ou modificada por Pessoa de Contato (SPIN)" },
-    { level: 3, text: "1a visão enviada para Tomador de Decisão (SPI)" },
-    { level: 4, text: "1a visão concordada ou modificada por Tomador de Decisão (SPIN)" },
+    { level: 1, text: "1ª visão (SPI) enviada para Pessoa de Contato" },
+    { level: 2, text: "1ª visão concordada ou modificada por Pessoa de Contato (SPIN)" },
+    { level: 3, text: "1ª visão enviada para Tomador de Decisão (SPI)" },
+    { level: 4, text: "1ª visão concordada ou modificada por Tomador de Decisão (SPIN)" },
     { level: 5, text: "Vendedor recebe aprovação para explorar Valor" },
     { level: 6, text: "Plano de avaliação enviado para Tomador de Decisão" },
     { level: 7, text: "Tomador de Decisão concorda ou modifica a Avaliação" },
@@ -534,147 +534,147 @@ const scaleDefinitions = {
   ]
 };
 
-// ===== NUEVA SECCIÓN: PREGUNTAS SPIN =====
+// ===== PERGUNTAS SPIN EM PORTUGUÊS =====
 const spinQuestions = {
   dor: {
     situacao: [
-      "¿Cómo realizan el proceso de cierre de cajas hoy?",
-      "¿Cuántas cajas procesan por día/mes?",
-      "¿Qué tipo de cinta usan actualmente?",
-      "¿Tienen procesos manuales o automatizados?"
+      "Como realizam o processo de fechamento de caixas hoje?",
+      "Quantas caixas processam por dia/mês?",
+      "Que tipo de fita usam atualmente?",
+      "Têm processos manuais ou automatizados?"
     ],
     problema: [
-      "¿Sucede que las cajas se abren antes de llegar al cliente?",
-      "¿Con qué frecuencia necesitan rehacer el trabajo por problemas de cierre?",
-      "¿Tienen reclamos de clientes por cajas violadas o dañadas?",
-      "¿Cuánto tiempo pierden en retrabajo?"
+      "Acontece de as caixas se abrirem antes de chegar ao cliente?",
+      "Com que frequência precisam refazer o trabalho por problemas de fechamento?",
+      "Têm reclamações de clientes por caixas violadas ou danificadas?",
+      "Quanto tempo perdem em retrabalho?"
     ],
     implicacao: [
-      "¿Cuál es el nivel de reclamos de clientes por mes?",
-      "¿Cuánto cuesta cada retrabajo en tiempo y dinero?",
-      "¿Cómo afecta esto a la imagen de la empresa?",
-      "¿Qué impacto tiene en los contratos con marketplaces?"
+      "Qual é o nível de reclamações de clientes por mês?",
+      "Quanto custa cada retrabalho em tempo e dinheiro?",
+      "Como isso afeta a imagem da empresa?",
+      "Que impacto tem nos contratos com marketplaces?"
     ],
     needPayoff: [
-      "¿Cómo sería si pudieran eliminar 100% las violaciones?",
-      "¿Qué impacto tendría en sus KPIs reducir el retrabajo a cero?",
-      "¿Cuánto ahorrarían mensualmente con cero devoluciones?",
-      "¿Cómo mejoraría su NPS con el cliente final?"
+      "Como seria se pudessem eliminar 100% as violações?",
+      "Que impacto teria em seus KPIs reduzir o retrabalho a zero?",
+      "Quanto economizariam mensalmente com zero devoluções?",
+      "Como melhoraria seu NPS com o cliente final?"
     ]
   },
   poder: {
     situacao: [
-      "¿Cómo es el proceso de decisión en su empresa?",
-      "¿Quiénes participan en decisiones de inversión en logística?",
-      "¿Tienen un comité de compras?"
+      "Como é o processo de decisão na sua empresa?",
+      "Quem participa em decisões de investimento em logística?",
+      "Têm um comitê de compras?"
     ],
     problema: [
-      "¿Hay alineación entre áreas sobre esta necesidad?",
-      "¿Qué obstáculos ven para implementar cambios?",
-      "¿El área de finanzas entiende el ROI de mejorar el packaging?"
+      "Há alinhamento entre áreas sobre esta necessidade?",
+      "Que obstáculos veem para implementar mudanças?",
+      "A área de finanças entende o ROI de melhorar o packaging?"
     ],
     implicacao: [
-      "¿Qué pasa si no se toma una decisión pronto?",
-      "¿Cómo afecta esto a otras áreas de la empresa?",
-      "¿Están perdiendo contratos por problemas de entrega?"
+      "O que acontece se não tomarem uma decisão em breve?",
+      "Como isso afeta outras áreas da empresa?",
+      "Estão perdendo contratos por problemas de entrega?"
     ],
     needPayoff: [
-      "¿Qué valor tendría tener apoyo total del directorio?",
-      "¿Cómo aceleraría esto la implementación?",
-      "¿Qué significaría para su área resolver esto rápido?"
+      "Que valor teria ter apoio total da diretoria?",
+      "Como isso aceleraria a implementação?",
+      "O que significaria para sua área resolver isso rapidamente?"
     ]
   },
   visao: {
     situacao: [
-      "¿Conocen soluciones de cierre con cinta activada por agua?",
-      "¿Han visto sistemas automatizados de cierre?",
-      "¿Qué soluciones han evaluado antes?"
+      "Conhecem soluções de fechamento com fita ativada por água?",
+      "Já viram sistemas automatizados de fechamento?",
+      "Que soluções avaliaram antes?"
     ],
     problema: [
-      "¿Por qué las soluciones anteriores no funcionaron?",
-      "¿Qué limitaciones tiene su sistema actual?",
-      "¿Hay resistencia al cambio en el equipo?"
+      "Por que as soluções anteriores não funcionaram?",
+      "Que limitações tem seu sistema atual?",
+      "Há resistência à mudança na equipe?"
     ],
     implicacao: [
-      "¿Cuánto están perdiendo por no modernizar?",
-      "¿La competencia está más avanzada en esto?",
-      "¿Afecta su capacidad de crecer?"
+      "Quanto estão perdendo por não modernizar?",
+      "A concorrência está mais avançada nisso?",
+      "Afeta sua capacidade de crescer?"
     ],
     needPayoff: [
-      "¿Cómo sería tener un sistema 100% inviolable?",
-      "¿Qué significaría cerrar 40% más rápido?",
-      "¿Cuánto mejoraría la ergonomía del equipo?"
+      "Como seria ter um sistema 100% inviolável?",
+      "O que significaria fechar 40% mais rápido?",
+      "Quanto melhoraria a ergonomia da equipe?"
     ]
   },
   valor: {
     situacao: [
-      "¿Cómo evalúan inversiones en mejoras operativas?",
-      "¿Qué ROI esperan de proyectos logísticos?",
-      "¿Tienen presupuesto asignado para esto?"
+      "Como avaliam investimentos em melhorias operacionais?",
+      "Que ROI esperam de projetos logísticos?",
+      "Têm orçamento designado para isso?"
     ],
     problema: [
-      "¿El costo actual de fallas es conocido por finanzas?",
-      "¿Calcularon el costo total del sistema actual?",
-      "¿Incluyen costos ocultos como retrabajo?"
+      "O custo atual de falhas é conhecido por finanças?",
+      "Calcularam o custo total do sistema atual?",
+      "Incluem custos ocultos como retrabalho?"
     ],
     implicacao: [
-      "¿Cuánto pierden anualmente por no optimizar?",
-      "¿Esto afecta márgenes o competitividad?",
-      "¿Podrían perder clientes grandes por esto?"
+      "Quanto perdem anualmente por não otimizar?",
+      "Isso afeta margens ou competitividade?",
+      "Poderiam perder clientes grandes por isso?"
     ],
     needPayoff: [
-      "¿Qué significaría un ROI de 3 meses?",
-      "¿Cómo impactaría ahorrar R$ 50k/mes?",
-      "¿Esto justificaría la inversión ante el board?"
+      "O que significaria um ROI de 3 meses?",
+      "Como impactaria economizar R$ 50k/mês?",
+      "Isso justificaria o investimento perante o board?"
     ]
   },
   controle: {
     situacao: [
-      "¿Cómo gestionan proyectos de mejora?",
-      "¿Tienen un cronograma definido?",
-      "¿Quién lidera este proyecto internamente?"
+      "Como gerenciam projetos de melhoria?",
+      "Têm um cronograma definido?",
+      "Quem lidera este projeto internamente?"
     ],
     problema: [
-      "¿Hay otros proveedores en evaluación?",
-      "¿Qué podría retrasar la decisión?",
-      "¿Tienen experiencias negativas previas?"
+      "Há outros fornecedores em avaliação?",
+      "O que poderia atrasar a decisão?",
+      "Têm experiências negativas anteriores?"
     ],
     implicacao: [
-      "¿Qué pasa si se retrasa la implementación?",
-      "¿Perderán el presupuesto si no deciden pronto?",
-      "¿La competencia podría adelantarse?"
+      "O que acontece se atrasar a implementação?",
+      "Perderão o orçamento se não decidirem logo?",
+      "A concorrência poderia se adiantar?"
     ],
     needPayoff: [
-      "¿Qué valor tiene implementar antes del peak?",
-      "¿Cómo ayudaría tener un partner confiable?",
-      "¿Prefieren un proveedor que lidere el proceso?"
+      "Que valor tem implementar antes do pico?",
+      "Como ajudaria ter um parceiro confiável?",
+      "Preferem um fornecedor que lidere o processo?"
     ]
   },
   compras: {
     situacao: [
-      "¿Cómo funciona el proceso de compras aquí?",
-      "¿Qué documentación necesitan para aprobar?",
-      "¿Tienen proveedores homologados?"
+      "Como funciona o processo de compras aqui?",
+      "Que documentação precisam para aprovar?",
+      "Têm fornecedores homologados?"
     ],
     problema: [
-      "¿Hay requisitos especiales de compliance?",
-      "¿Procurement entiende el valor técnico?",
-      "¿Necesitan comparar 3 cotizaciones?"
+      "Há requisitos especiais de compliance?",
+      "Procurement entende o valor técnico?",
+      "Precisam comparar 3 cotações?"
     ],
     implicacao: [
-      "¿Procurement podría frenar aunque operaciones apruebe?",
-      "¿Hay riesgo de que elijan por precio sin ver valor?",
-      "¿Esto podría alargarse meses?"
+      "Procurement poderia frear mesmo que operações aprove?",
+      "Há risco de escolherem por preço sem ver valor?",
+      "Isso poderia se alongar por meses?"
     ],
     needPayoff: [
-      "¿Cómo sería si pudiéramos acelerar la aprobación?",
-      "¿Ayudaría tener un business case armado?",
-      "¿Prefieren leasing vs compra directa?"
+      "Como seria se pudéssemos acelerar a aprovação?",
+      "Ajudaria ter um business case pronto?",
+      "Preferem leasing vs compra direta?"
     ]
   }
 };
 
-// ===== NUEVO COMPONENTE: Panel de Preguntas SPIN =====
+// ===== COMPONENTE: Painel de Perguntas SPIN =====
 interface SPINQuestionsPanelProps {
   scaleId: string;
   onQuestionUsed?: (question: string) => void;
@@ -716,7 +716,7 @@ const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQues
         <div className="flex items-center space-x-2">
           <FileQuestion className="w-4 h-4 text-yellow-700" />
           <span className="text-sm font-medium text-yellow-800">
-            Preguntas SPIN Sugeridas
+            Perguntas SPIN Sugeridas
           </span>
           <span className="text-xs bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">
             {getUsedCount()}/{getTotalCount()} usadas
@@ -727,25 +727,25 @@ const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQues
       
       {expanded && (
         <div className="mt-3 space-y-3">
-          {Object.entries(questions).map(([tipo, preguntas]) => (
+          {Object.entries(questions).map(([tipo, perguntas]) => (
             <div key={tipo} className="bg-white rounded-lg p-3">
               <h5 className="text-xs font-bold text-yellow-700 uppercase mb-2 flex items-center">
-                {tipo === 'situacao' ? '🔍 SITUACIÓN' :
+                {tipo === 'situacao' ? '🔍 SITUAÇÃO' :
                  tipo === 'problema' ? '⚠️ PROBLEMA' :
-                 tipo === 'implicacao' ? '💥 IMPLICACIÓN' :
+                 tipo === 'implicacao' ? '💥 IMPLICAÇÃO' :
                  '✅ NEED-PAYOFF'}
               </h5>
               <div className="space-y-1">
-                {preguntas.map((pregunta, idx) => (
+                {perguntas.map((pergunta, idx) => (
                   <label key={idx} className="flex items-start cursor-pointer hover:bg-yellow-50 p-2 rounded transition-colors">
                     <input
                       type="checkbox"
-                      checked={usedQuestions.has(pregunta)}
-                      onChange={() => toggleQuestion(pregunta)}
+                      checked={usedQuestions.has(pergunta)}
+                      onChange={() => toggleQuestion(pergunta)}
                       className="mt-0.5 mr-2 text-yellow-600 focus:ring-yellow-500"
                     />
-                    <span className={`text-xs ${usedQuestions.has(pregunta) ? 'line-through text-gray-500' : 'text-gray-700'}`}>
-                      {pregunta}
+                    <span className={`text-xs ${usedQuestions.has(pergunta) ? 'line-through text-gray-500' : 'text-gray-700'}`}>
+                      {pergunta}
                     </span>
                   </label>
                 ))}
@@ -754,8 +754,8 @@ const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQues
           ))}
           <div className="mt-2 p-2 bg-blue-50 rounded-lg">
             <p className="text-xs text-blue-700">
-              💡 <strong>Tip:</strong> Marca las preguntas mientras hablas con el cliente. 
-              Las respuestas clave agrégalas en las observaciones de la escala.
+              💡 <strong>Dica:</strong> Marque as perguntas enquanto fala com o cliente. 
+              As respostas chave adicione nas observações da escala.
             </p>
           </div>
         </div>
@@ -764,7 +764,7 @@ const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQues
   );
 };
 
-// ===== FUNCIÓN PARA CALCULAR PROGRESO SPIN =====
+// ===== FUNÇÃO PARA CALCULAR PROGRESSO SPIN =====
 const calculateSPINProgress = (opportunity: Opportunity) => {
   let questionsAnswered = 0;
   let totalQuestions = 0;
@@ -775,7 +775,7 @@ const calculateSPINProgress = (opportunity: Opportunity) => {
     }
   });
   
-  // Contar total de preguntas SPIN disponibles
+  // Contar total de perguntas SPIN disponíveis
   Object.values(spinQuestions).forEach(category => {
     Object.values(category).forEach(questions => {
       totalQuestions += questions.length;
@@ -835,8 +835,8 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
     } catch (err) {
-      console.error('Error al cargar vendedores:', err);
-      setError('Error al cargar vendedores');
+      console.error('Erro ao carregar vendedores:', err);
+      setError('Erro ao carregar vendedores');
     }
   }, [currentUser]);
 
@@ -847,8 +847,8 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const data = await supabaseService.fetchOpportunities();
       setOpportunities(data);
     } catch (err) {
-      console.error('Error al cargar oportunidades:', err);
-      setError('Error al cargar oportunidades. Por favor, inténtelo de nuevo.');
+      console.error('Erro ao carregar oportunidades:', err);
+      setError('Erro ao carregar oportunidades. Por favor, tente novamente.');
       setOpportunities([]);
     } finally {
       setLoading(false);
@@ -860,13 +860,13 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setError(null);
       
       if (!formData.name?.trim() || !formData.client?.trim() || !formData.value) {
-        setError('Por favor, complete los campos obligatorios: Nombre, Cliente y Valor');
+        setError('Por favor, preencha os campos obrigatórios: Nome, Cliente e Valor');
         return false;
       }
       
       let safeScales = formData.scales;
       if (!safeScales || typeof safeScales !== 'object') {
-        console.warn('⚠️ Scales inválidas, usando valores por defecto');
+        console.warn('⚠️ Scales inválidas, usando valores padrão');
         safeScales = emptyScales();
       }
       
@@ -890,14 +890,14 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         industry: formData.industry?.trim() || null
       };
 
-      console.log('📝 Intentando crear oportunidad:', newOpportunity);
+      console.log('📝 Tentando criar oportunidade:', newOpportunity);
       await supabaseService.insertOpportunity(newOpportunity);
       await loadOpportunities();
       return true;
       
     } catch (err) {
-      console.error('❌ Error al crear oportunidad:', err);
-      setError(`Error al crear oportunidad: ${(err as Error).message || 'Verifique los datos'}`);
+      console.error('❌ Erro ao criar oportunidade:', err);
+      setError(`Erro ao criar oportunidade: ${(err as Error).message || 'Verifique os dados'}`);
       return false;
     }
   }, [loadOpportunities, currentUser]);
@@ -908,7 +908,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       let safeScales = formData.scales;
       if (!safeScales || typeof safeScales !== 'object') {
-        console.warn('⚠️ Scales inválidas en update, usando valores por defecto');
+        console.warn('⚠️ Scales inválidas em update, usando valores padrão');
         safeScales = emptyScales();
       }
       
@@ -932,20 +932,20 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         industry: formData.industry?.trim() || null
       };
 
-      console.log('📝 Actualizando oportunidad:', updatedData);
+      console.log('📝 Atualizando oportunidade:', updatedData);
       await supabaseService.updateOpportunity(id, updatedData);
       await loadOpportunities();
       return true;
       
     } catch (err) {
-      console.error('❌ Error al actualizar oportunidad:', err);
-      setError(`Error al actualizar: ${(err as Error).message || 'Verifique los datos'}`);
+      console.error('❌ Erro ao atualizar oportunidade:', err);
+      setError(`Erro ao atualizar: ${(err as Error).message || 'Verifique os dados'}`);
       return false;
     }
   }, [loadOpportunities, currentUser]);
 
   const deleteOpportunity = useCallback(async (id: number): Promise<void> => {
-    if (!confirm('¿Está seguro de que desea eliminar esta oportunidad?')) {
+    if (!confirm('Tem certeza de que deseja excluir esta oportunidade?')) {
       return;
     }
 
@@ -954,8 +954,8 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await supabaseService.deleteOpportunity(id);
       setOpportunities(prev => prev.filter(opp => opp.id !== id));
     } catch (err) {
-      console.error('Error al eliminar oportunidad:', err);
-      setError('Error al eliminar oportunidad. Por favor, inténtelo de nuevo.');
+      console.error('Erro ao excluir oportunidade:', err);
+      setError('Erro ao excluir oportunidade. Por favor, tente novamente.');
       await loadOpportunities();
     }
   }, [loadOpportunities]);
@@ -963,7 +963,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const moveStage = useCallback(async (opportunity: Opportunity, newStage: number): Promise<void> => {
     const stage = stages.find(s => s.id === newStage);
     if (!stage) {
-      console.error('Etapa no encontrada:', newStage);
+      console.error('Etapa não encontrada:', newStage);
       return;
     }
 
@@ -984,8 +984,8 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           : opp
       ));
     } catch (err) {
-      console.error('Error al mover etapa:', err);
-      setError('Error al actualizar etapa. Por favor, inténtelo de nuevo.');
+      console.error('Erro ao mover etapa:', err);
+      setError('Erro ao atualizar etapa. Por favor, tente novamente.');
       await loadOpportunities();
     }
   }, [loadOpportunities]);
@@ -999,7 +999,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'opportunities' },
         (payload) => {
-          console.log('Cambio detectado:', payload);
+          console.log('Mudança detectada:', payload);
           loadOpportunities();
         }
       )
@@ -1039,7 +1039,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 };
 
-// --- HOOKS UTILITARIOS ---
+// --- HOOKS UTILITÁRIOS ---
 const useFilters = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStage, setFilterStage] = useState('all');
@@ -1074,11 +1074,11 @@ const ErrorAlert: React.FC<{ error: string; onClose: () => void }> = ({ error, o
 const LoadingSpinner: React.FC = () => (
   <div className="text-center py-12 bg-white rounded-xl border">
     <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
-    <p className="mt-4 text-gray-600">Cargando oportunidades...</p>
+    <p className="mt-4 text-gray-600">Carregando oportunidades...</p>
   </div>
 );
 
-// --- FUNCIONES AUXILIARES ---
+// --- FUNÇÕES AUXILIARES ---
 const checkStageRequirements = (opportunity: Opportunity, stageId: number): boolean => {
   if (!opportunity.scales) return false;
 
@@ -1388,7 +1388,7 @@ const CRMVentapel: React.FC = () => {
                                   setEditingOpportunity(opp);
                                 }}
                                 className="text-blue-600 hover:text-blue-800"
-                                title="Ver detalles"
+                                title="Ver detalhes"
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
@@ -1398,7 +1398,7 @@ const CRMVentapel: React.FC = () => {
                                   openAssistantWithOpportunity(opp);
                                 }}
                                 className="text-purple-600 hover:text-purple-800"
-                                title="Analizar con Coach IA"
+                                title="Analisar com Coach IA"
                               >
                                 <Brain className="w-4 h-4" />
                               </button>
@@ -1460,7 +1460,7 @@ const CRMVentapel: React.FC = () => {
             <div className="flex items-center space-x-3 mb-2">
               <h3 className="text-xl font-bold text-gray-900">{opportunity.name}</h3>
               <OpportunityHealthScore opportunity={opportunity} />
-              {/* NUEVO: Indicador SPIN */}
+              {/* Indicador SPIN */}
               <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center">
                 <FileQuestion className="w-3 h-3 mr-1" />
                 SPIN: {calculateSPINProgress(opportunity)}%
@@ -1483,21 +1483,21 @@ const CRMVentapel: React.FC = () => {
                   setSelectedOpportunity(opportunity);
                 }}
                 className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                title="Editar oportunidad"
+                title="Editar oportunidade"
               >
                 <Edit3 className="w-4 h-4" />
               </button>
               <button
                 onClick={() => openAssistantWithOpportunity(opportunity)}
                 className="p-2 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"
-                title="Analizar con Coach IA"
+                title="Analisar com Coach IA"
               >
                 <Brain className="w-4 h-4" />
               </button>
               <button
                 onClick={() => deleteOpportunity(opportunity.id)}
                 className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                title="Eliminar oportunidad"
+                title="Excluir oportunidade"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -1537,7 +1537,7 @@ const CRMVentapel: React.FC = () => {
 
         <div className="mb-6 p-4 bg-gray-50 rounded-lg">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-gray-700">🎯 Gestão de Estágio</h4>
+            <h4 className="font-semibold text-gray-700">🎯 Gestão de Etapa</h4>
             <div className="flex space-x-2">
               {prevStage && (
                 <button
@@ -1784,18 +1784,18 @@ const CRMVentapel: React.FC = () => {
 
     const handleSubmit = async () => {
       if (!formData.name?.trim()) {
-        alert('❌ Por favor, ingrese el nombre de la oportunidad');
+        alert('❌ Por favor, insira o nome da oportunidade');
         return;
       }
       
       if (!formData.client?.trim()) {
-        alert('❌ Por favor, ingrese el nombre del cliente');
+        alert('❌ Por favor, insira o nome do cliente');
         return;
       }
       
       const valueNum = parseFloat(formData.value?.toString() || '0');
       if (isNaN(valueNum) || valueNum <= 0) {
-        alert('❌ Por favor, ingrese un valor válido mayor a 0');
+        alert('❌ Por favor, insira um valor válido maior que 0');
         return;
       }
 
@@ -1961,7 +1961,7 @@ const CRMVentapel: React.FC = () => {
                           value={formData.product}
                           onChange={(e) => setFormData({...formData, product: e.target.value})}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          placeholder="Ex: Máquinas BP + Cinta"
+                          placeholder="Ex: Máquinas BP + Fita"
                           disabled={submitting}
                         />
                       </div>
@@ -2150,7 +2150,7 @@ const CRMVentapel: React.FC = () => {
                                   />
                                 </div>
 
-                                {/* INTEGRACIÓN DEL PANEL SPIN */}
+                                {/* INTEGRAÇÃO DO PAINEL SPIN */}
                                 <SPINQuestionsPanel 
                                   scaleId={scale.id}
                                   onQuestionUsed={(question) => {
