@@ -797,112 +797,33 @@ async function callClaudeAPI(opportunityData, userInput, ventapelContext, toolsA
  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
  
  if (!ANTHROPIC_API_KEY) {
-   console.log('⚠️ Claude API não configurada, usando análise local');
+   console.log('⚠️ Claude API não configurada, usando fallback');
    return { type: 'fallback', content: generateSmartFallback(opportunityData, userInput, completeAnalysis) };
  }
 
- // Preparar casos relevantes como referência opcional
- const relevantCasesForReference = completeAnalysis?.relevantCases?.length > 0 
-   ? completeAnalysis.relevantCases.map(c => ({
-       empresa: c.empresa,
-       problema: c.problema,
-       roi_meses: c.resultados.roi_meses,
-       metrica_chave: c.resultados.perdas || c.resultados.roubos || c.resultados.produtividade
-     }))
-   : [];
+ // ============= NUEVO: CONSTRUIR PROMPT MODULAR =============
+ const promptBuilder = new PromptBuilder()
+   .addSystemRole()
+   .addOpportunityContext(opportunityData)
+   .addScalesAnalysis(completeAnalysis)
+   .addContacts(opportunityData)
+   .addOperationalInfo(opportunityData)
+   .addScaleDescriptions(completeAnalysis)
+   .addAlerts(completeAnalysis)
+   .addRelevantCases(completeAnalysis?.relevantCases)
+   .addWebSearchResults(webSearchResults)
+   .addUserQuestion(userInput)
+   .addFinalInstructions();
 
- const promptTemplate = `Você é "Ventus", um coach de vendas expert em metodologia PPVVCC da Ventapel Brasil.
-Seu CEO te descreveu como: "direto, sem rodeios, baseado em evidência e lógica". NÃO use adulação nem frases motivacionais vazias.
-
-**ESTRUTURA OBRIGATÓRIA DAS SUAS RESPOSTAS:**
-
-1. **DIAGNÓSTICO** - O que está acontecendo realmente (análise da situação)
-2. **ESTRATÉGIA** - Por que é importante agir (o princípio por trás)
-3. **TÁTICA** - O que fazer especificamente (ações concretas)
-4. **EVIDÊNCIA** - Só se aplicável, mencione UM caso relevante como prova (opcional)
-
-**REGRAS CRÍTICAS:**
-- NUNCA comece com "No caso da empresa X..." 
-- PRIMEIRO explique O QUÊ fazer e POR QUÊ
-- Os casos são EVIDÊNCIA OPCIONAL no final, não o ponto de partida
-- Se mencionar um caso, que seja para reforçar credibilidade, não como receita
-- Personalize TUDO ao contexto específico do cliente atual
-
----
-**CONTEXTO ATUAL:**
-
-Cliente: ${opportunityData?.client || 'Não selecionado'}
-Indústria: ${opportunityData?.industry || 'Não especificada'}
-Valor negócio: R$ ${opportunityData?.value?.toLocaleString('pt-BR') || '0'}
-Etapa: ${opportunityData?.stage || 0}/6
-Produto/Solução: ${opportunityData?.product || 'Não especificado'}
-
-**ANÁLISE PPVVCC:**
-${completeAnalysis?.opportunity ? `
-- Score de Saúde: ${completeAnalysis.opportunity.healthScore}/10
-- Probabilidade: ${completeAnalysis.opportunity.probability}%
-- Dias sem contato: ${completeAnalysis.opportunity.daysSince}
-- Escalas:
-  • DOR: ${completeAnalysis.opportunity.scaleBreakdown.dor}/10
-  • PODER: ${completeAnalysis.opportunity.scaleBreakdown.poder}/10
-  • VISÃO: ${completeAnalysis.opportunity.scaleBreakdown.visao}/10
-  • VALOR: ${completeAnalysis.opportunity.scaleBreakdown.valor}/10
-  • CONTROLE: ${completeAnalysis.opportunity.scaleBreakdown.controle}/10
-  • COMPRAS: ${completeAnalysis.opportunity.scaleBreakdown.compras}/10
-` : 'Não disponível'}
-
-**CONTEXTO COMPLETO DA OPORTUNIDADE:**
-${opportunityData ? `
-- CONTATOS MAPEADOS:
-  • Power Sponsor (Decisor): ${opportunityData.power_sponsor || 'Não identificado'}
-  • Sponsor (Patrocinador): ${opportunityData.sponsor || 'Não identificado'}
-  • Influenciador: ${opportunityData.influencer || 'Não identificado'}
-  • Contato de Suporte: ${opportunityData.support_contact || 'Não identificado'}
-
-- INFORMAÇÕES OPERACIONAIS:
-  • Próxima Ação Registrada: ${opportunityData.next_action || 'Nenhuma'}
-  • Data de Fechamento Esperada: ${opportunityData.expected_close ? new Date(opportunityData.expected_close).toLocaleDateString('pt-BR') : 'Não definida'}
-  • Produto/Solução: ${opportunityData.product || 'Não especificado'}
-
-- DESCRIÇÕES DETALHADAS DAS ESCALAS:
-${completeAnalysis?.opportunity?.scaleDescriptions ? `
-  • DOR: "${completeAnalysis.opportunity.scaleDescriptions.dor || 'Sem descrição'}"
-  • PODER: "${completeAnalysis.opportunity.scaleDescriptions.poder || 'Sem descrição'}"
-  • VISÃO: "${completeAnalysis.opportunity.scaleDescriptions.visao || 'Sem descrição'}"
-  • VALOR: "${completeAnalysis.opportunity.scaleDescriptions.valor || 'Sem descrição'}"
-  • CONTROLE: "${completeAnalysis.opportunity.scaleDescriptions.controle || 'Sem descrição'}"
-  • COMPRAS: "${completeAnalysis.opportunity.scaleDescriptions.compras || 'Sem descrição'}"
-` : 'Descrições não disponíveis'}
-` : 'Contexto não disponível'}
-
-${completeAnalysis?.alerts?.length > 0 ? `
-**ALERTAS ATIVOS:**
-${completeAnalysis.alerts.slice(0, 3).map(a => `- ${a.message}`).join('\n')}
-` : ''}
-
-${webSearchResults ? `
-**INFORMAÇÕES ATUALIZADAS DA INTERNET:**
-${webSearchResults}
-` : ''}
-
-**CASOS DISPONÍVEIS COMO REFERÊNCIA (usar apenas se agregar valor):**
-${relevantCasesForReference.length > 0 ? JSON.stringify(relevantCasesForReference, null, 2) : 'Nenhum relevante'}
-
----
-**PERGUNTA DO VENDEDOR:**
-"${userInput}"
-
----
-**INSTRUÇÕES FINAIS:**
-1. Responda DIRETAMENTE à pergunta em PORTUGUÊS DO BRASIL
-2. Use SEMPRE os nomes reais dos contatos quando disponíveis (não diga "o decisor", diga o nome)
-3. Estrutura: Diagnóstico → Estratégia → Tática → Evidência (se aplicável)
-4. Termine SEMPRE com UMA ação específica para HOJE
-5. Se mencionar um caso, que seja breve e no final: "Isso funcionou com [empresa] que conseguiu [resultado]"
-6. Máximo 300 palavras total
-7. Sem sermões, sem motivação barata, apenas estratégia pura
-8. Use terminologia de vendas brasileira: ROI, follow-up, pipeline, deal, sponsor
-9. Considere o contexto detalhado da oportunidade (contatos, próxima ação, produto) para personalizar a resposta`;
+ const promptTemplate = promptBuilder.build();
+ 
+ // Log para monitoreo de tokens
+ const estimatedTokens = promptBuilder.estimateTokens();
+ console.log(`📊 Prompt: ${promptBuilder.getSectionCount()} seções, ~${estimatedTokens} tokens estimados`);
+ 
+ if (estimatedTokens > 3000) {
+   console.warn('⚠️ Prompt muito longo, considere otimizar');
+ }
 
  try {
    const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -914,7 +835,7 @@ ${relevantCasesForReference.length > 0 ? JSON.stringify(relevantCasesForReferenc
      },
      body: JSON.stringify({
        model: "claude-3-5-sonnet-20241022",
-       max_tokens: 2000,
+       max_tokens: 1500,
        temperature: 0.3,
        messages: [
          { role: "user", content: promptTemplate }
@@ -923,17 +844,27 @@ ${relevantCasesForReference.length > 0 ? JSON.stringify(relevantCasesForReferenc
    });
 
    if (!response.ok) {
-     console.log('❌ Erro na Claude API:', response.status);
+     const errorBody = await response.text().catch(() => 'No error body');
+     console.log(`❌ Erro na Claude API: ${response.status} - ${errorBody}`);
      return { type: 'fallback', content: generateSmartFallback(opportunityData, userInput, completeAnalysis) };
    }
 
    const data = await response.json();
    const responseText = data.content[0].text;
    
+   // Log de uso para tracking de costos
+   if (data.usage) {
+     const inputCost = (data.usage.input_tokens / 1_000_000) * 3;
+     const outputCost = (data.usage.output_tokens / 1_000_000) * 15;
+     const totalCost = (inputCost + outputCost).toFixed(4);
+     
+     console.log(`💰 Custo: $${totalCost} (${data.usage.input_tokens} in + ${data.usage.output_tokens} out)`);
+   }
+   
    return { type: 'direct_response', content: responseText };
    
  } catch (error) {
-   console.error('❌ Erro chamando Claude:', error);
+   console.error('❌ Erro chamando Claude:', error.message);
    return { type: 'fallback', content: generateSmartFallback(opportunityData, userInput, completeAnalysis) };
  }
 }
