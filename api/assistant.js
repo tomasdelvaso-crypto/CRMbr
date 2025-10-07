@@ -5,6 +5,8 @@ export const config = {
  maxDuration: 30,
 };
 
+import PromptBuilder from './lib/promptBuilder.js';
+
 // ============= CASOS DE ÊXITO REAIS VENTAPEL - VERSÃO AMPLIADA =============
 const CASOS_EXITO_REAIS = {
  'honda': {
