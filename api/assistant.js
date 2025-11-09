@@ -7,6 +7,26 @@ export const config = {
 
 import PromptBuilder from './lib/promptBuilder.js';
 
+// Detectar si es una pregunta de seguimiento/aclaración
+function isFollowUpQuestion(message, previousMessages) {
+  const msg = message.toLowerCase();
+  const followUpPatterns = [
+    'por que', 'por qué', 'porque', 
+    'como assim', 'cómo así',
+    'explica', 'explique',
+    'de onde', 'de dónde',
+    'qual cálculo', 'qué cálculo',
+    '?', // cualquier pregunta corta es probablemente seguimiento
+  ];
+  
+  // Si es una pregunta corta (menos de 50 caracteres) probablemente es seguimiento
+  if (message.length < 50 && message.includes('?')) {
+    return true;
+  }
+  
+  return followUpPatterns.some(pattern => msg.includes(pattern));
+}
+
 // ============= CASOS DE ÊXITO REAIS VENTAPEL - VERSÃO AMPLIADA =============
 const CASOS_EXITO_REAIS = {
  'honda': {
