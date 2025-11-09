@@ -1099,17 +1099,90 @@ export default async function handler(req) {
      }
    ];
 
-   // PASSO 4: CHAMADA À CLAUDE
-   console.log('🤖 Chamando Claude com estrutura melhorada e contexto completo...');
-   
-   const claudeResponse = await callClaudeAPI(
-     opportunityData,
-     userInput,
-     { casos: CASOS_EXITO_REAIS },
-     availableTools,
-     webSearchResults,
-     completeAnalysis
-   );
+// PASSO 4: CHAMADA À CLAUDE - VERSIÓN MEJORADA
+
+// Detectar si es pregunta de seguimiento
+function isFollowUpQuestion(message) {
+  const msg = message.toLowerCase();
+  const followUpPatterns = [
+    'por que', 'por qué', 'porque', 
+    'como assim', 'cómo así',
+    'explica', 'explique',
+    'de onde', 'de dónde', 
+    'qual cálculo', 'qué cálculo',
+    'cadê', 'onde',
+  ];
+  
+  // Si es pregunta corta (menos de 50 chars) con "?" es seguimiento
+  if (message.length < 50 && message.includes('?')) {
+    return true;
+  }
+  
+  return followUpPatterns.some(pattern => msg.includes(pattern));
+}
+
+console.log('🤖 Preparando llamada a Claude...');
+
+const isFollowUp = isFollowUpQuestion(userInput);
+
+if (isFollowUp) {
+  console.log('📍 Detectada pregunta de seguimiento');
+  
+  // Para preguntas de seguimiento, usar un prompt DIFERENTE
+  const followUpPrompt = `
+Contexto: Estás ayudando con ${opportunityData?.client || 'un cliente'}.
+Valor del negocio: R$ ${opportunityData?.value || 'no especificado'}
+
+El vendedor pregunta: "${userInput}"
+
+Esta es una pregunta DE SEGUIMIENTO. Probablemente quiere que expliques algo que dijiste antes.
+
+REGLAS:
+1. Si pregunta sobre un número, EXPLICA de dónde salió o di "fue una estimativa"
+2. Si no tienes la información, di "No tengo ese dato específico"
+3. NUNCA inventes números nuevos
+4. Responde SOLO lo que pregunta, máximo 100 palabras
+
+Responde en português brasileiro.`;
+
+  const claudeResponse = await callClaudeAPI(
+    null, // sin opportunity completa
+    followUpPrompt,
+    {}, // sin casos
+    [], // sin tools
+    null, // sin web search
+    null // sin análisis
+  );
+  
+  return new Response(
+    JSON.stringify({ 
+      response: claudeResponse.content,
+      analysis: completeAnalysis
+    }),
+    { status: 200, headers }
+  );
+  
+} else {
+  // Flujo normal para preguntas completas
+  console.log('🤖 Chamando Claude com estrutura melhorada e contexto completo...');
+  
+  const claudeResponse = await callClaudeAPI(
+    opportunityData,
+    userInput,
+    { casos: CASOS_EXITO_REAIS },
+    availableTools,
+    webSearchResults,
+    completeAnalysis
+  );
+  
+  return new Response(
+    JSON.stringify({ 
+      response: claudeResponse.content,
+      analysis: completeAnalysis
+    }),
+    { status: 200, headers }
+  );
+}
 
    // PASSO 5: RETORNAR RESPOSTA ESTRUTURADA
    return new Response(
