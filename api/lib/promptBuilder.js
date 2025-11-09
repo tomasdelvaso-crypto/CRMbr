@@ -153,34 +153,26 @@ ${webResults}`);
     return this;
   }
 
-  addFinalInstructions() {
-    // CAMBIO CLAVE: Aquí ponemos la pregunta AL FINAL con instrucciones claras
-    this.sections.push(`
+// En addFinalInstructions(), agregar esta línea crucial:
+addFinalInstructions() {
+  this.sections.push(`
 ---
 **PERGUNTA DO VENDEDOR:**
 "${this.userQuestion}"
 
 **INSTRUÇÕES FINAIS:**
 1. Responda DIRETAMENTE à pergunta acima, usando TODO o contexto e análise fornecidos anteriormente
-2. Use SEMPRE os nomes reais dos contatos quando disponíveis (não diga "o decisor", diga o nome)
-3. Adapte o formato da resposta ao tipo de pergunta:
-   - Para estratégia: foque no POR QUÊ e COMO convencer
-   - Para táticas: liste ações específicas e numeradas
-   - Para análises: use métricas e identifique gargalos
-   - Para objeções: dê argumentos e frases exatas
-4. Termine SEMPRE com UMA ação específica para HOJE
-5. Se mencionar um caso, que seja breve e no final: "Isso funcionou com [empresa] que conseguiu [resultado]"
-6. Máximo 300 palavras total
-7. Sem sermões, sem motivação barata, apenas estratégia pura
+2. **NUNCA INVENTE NÚMEROS** - Use apenas valores reais do contexto ou diga "não tenho essa informação"
+3. Se a pergunta for sobre um valor específico (como "por que R$ X?"), EXPLIQUE o cálculo ou admita que foi estimativa
+4. Use SEMPRE os nomes reais dos contatos quando disponíveis
+5. Adapte o formato da resposta ao tipo de pergunta
+6. Termine com UMA ação específica para HOJE
+7. Máximo 300 palavras total
 8. Use terminologia de vendas brasileira: ROI, follow-up, pipeline, deal, sponsor
-9. NÃO use estruturas rígidas - responda naturalmente como um coach experiente conversando`);
-    return this;
-  }
-
-  build() {
-    return this.sections.join('\n');
-  }
-
+9. NÃO use estruturas rígidas - responda naturalmente`);
+  return this;
+}
+  
   // Método para estimar tokens (importante para custos)
   estimateTokens() {
     const text = this.build();
