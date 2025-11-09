@@ -3,25 +3,20 @@
 class PromptBuilder {
   constructor() {
     this.sections = [];
+    this.userQuestion = null; // Guardamos la pregunta para insertarla al final
   }
 
   addSystemRole() {
     this.sections.push(`Você é "Ventus", um coach de vendas expert em metodologia PPVVCC da Ventapel Brasil.
 Seu CEO te descreveu como: "direto, sem rodeios, baseado em evidência e lógica". NÃO use adulação nem frases motivacionais vazias.
 
-**ESTRUTURA OBRIGATÓRIA DAS SUAS RESPOSTAS:**
-
-1. **DIAGNÓSTICO** - O que está acontecendo realmente (análise da situação)
-2. **ESTRATÉGIA** - Por que é importante agir (o princípio por trás)
-3. **TÁTICA** - O que fazer especificamente (ações concretas)
-4. **EVIDÊNCIA** - Só se aplicável, mencione UM caso relevante como prova (opcional)
-
-**REGRAS CRÍTICAS:**
-- NUNCA comece com "No caso da empresa X..." 
-- PRIMEIRO explique O QUÊ fazer e POR QUÊ
-- Os casos são EVIDÊNCIA OPCIONAL no final, não o ponto de partida
-- Se mencionar um caso, que seja para reforçar credibilidade, não como receita
-- Personalize TUDO ao contexto específico do cliente atual`);
+**SEU ESTILO:**
+- Seja direto e pragmático
+- Baseie suas recomendações em dados e evidências
+- Foque em ações específicas e resultados mensuráveis
+- Use casos reais apenas quando agregarem valor real
+- Personalize TUDO ao contexto específico do cliente atual
+- Responda de forma natural e conversacional, sem estruturas rígidas`);
     return this;
   }
 
@@ -150,26 +145,34 @@ ${webResults}`);
     return this;
   }
 
+  // Modificado: ahora guarda la pregunta en lugar de agregarla inmediatamente
   addUserQuestion(question) {
-    this.sections.push(`
----
-**PERGUNTA DO VENDEDOR:**
-"${question}"`);
+    this.userQuestion = question;
     return this;
   }
 
   addFinalInstructions() {
+    // Primero agregamos la pregunta del usuario, si existe
+    if (this.userQuestion) {
+      this.sections.push(`
+---
+**PERGUNTA DO VENDEDOR:**
+"${this.userQuestion}"`);
+    }
+
+    // Luego las instrucciones finales, más naturales
     this.sections.push(`
 ---
 **INSTRUÇÕES FINAIS:**
-1. Responda DIRETAMENTE à pergunta em PORTUGUÊS DO BRASIL
-2. Use SEMPRE os nomes reais dos contatos quando disponíveis (não diga "o decisor", diga o nome)
-3. Estrutura: Diagnóstico → Estratégia → Tática → Evidência (se aplicável)
-4. Termine SEMPRE com UMA ação específica para HOJE
-5. Se mencionar um caso, que seja breve e no final: "Isso funcionou com [empresa] que conseguiu [resultado]"
+1. OBRIGATÓRIO: Use TODOS os dados do contexto acima (cliente, escalas PPVVCC, contatos, alertas) na sua resposta
+2. Responda DIRETAMENTE à pergunta em PORTUGUÊS DO BRASIL
+3. Use os nomes reais dos contatos quando disponíveis (ex: "fale com João Silva" não "fale com o decisor")
+4. Seja específico e prático - sem teorias genéricas
+5. Se mencionar um caso de sucesso, seja breve e relevante ao contexto atual
 6. Máximo 300 palavras total
-7. Sem sermões, sem motivação barata, apenas estratégia pura
-8. Use terminologia de vendas brasileira: ROI, follow-up, pipeline, deal, sponsor`);
+7. Responda de forma natural e conversacional, sem estruturas forçadas
+8. Termine com UMA ação concreta para HOJE
+9. Use terminologia de vendas brasileira: ROI, follow-up, pipeline, deal, sponsor`);
     return this;
   }
 
