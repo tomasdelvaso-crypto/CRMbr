@@ -3,7 +3,7 @@
 class PromptBuilder {
   constructor() {
     this.sections = [];
-    this.userQuestion = null; // Guardamos la pregunta para insertarla al final
+    this.userQuestion = null;
   }
 
   addSystemRole() {
@@ -145,14 +145,51 @@ ${webResults}`);
     return this;
   }
 
-  // Modificado: ahora guarda la pregunta en lugar de agregarla inmediatamente
   addUserQuestion(question) {
     this.userQuestion = question;
     return this;
   }
 
+  // ============= NUEVO: ACTION PLAN REQUEST =============
+  addActionPlanRequest(numActions) {
+    this.sections.push(`
+---
+**TAREFA ESPECIAL: GERAR PLANO DE AÇÕES**
+
+Analise o contexto acima e gere exatamente ${numActions} ação(ões) concretas e personalizadas para avançar esta oportunidade.
+
+Responda SOMENTE com JSON válido, sem markdown, sem backticks, sem texto antes ou depois. Formato exato:
+
+{
+  "actions": [
+    {
+      "title": "Título curto da ação (max 60 chars)",
+      "description": "O que fazer especificamente, com nomes reais dos contatos e dados concretos",
+      "target_scale": "dor|poder|visao|valor|controle|compras",
+      "current_score": 0,
+      "target_score": 0,
+      "action_type": "call|email|meeting|demo|proposal|whatsapp|linkedin",
+      "priority": "critica|alta|media",
+      "draft_content": "Rascunho completo: se for email, escrever o email inteiro. Se for ligação, roteiro completo com perguntas SPIN. Se for meeting, pauta. PERSONALIZADO para este cliente.",
+      "tool_reference": "Nome do caso de êxito ou ferramenta a usar, ou null",
+      "expected_outcome": "Resultado esperado em 1 frase"
+    }
+  ],
+  "diagnosis": "1 frase com o diagnóstico principal desta oportunidade"
+}
+
+REGRAS:
+1. Cada ação DEVE mover uma escala específica
+2. Priorize escalas com score mais baixo vs o que a etapa exige
+3. Use NOMES REAIS dos contatos quando disponíveis
+4. O draft_content deve ser COMPLETO e USÁVEL — não genérico
+5. Se há caso de referência da mesma indústria, incorpore-o no draft
+6. Ordene por impacto: a ação 1 é a mais urgente
+7. NÃO repita a mesma escala em duas ações diferentes`);
+    return this;
+  }
+
   addFinalInstructions() {
-    // Primero agregamos la pregunta del usuario, si existe
     if (this.userQuestion) {
       this.sections.push(`
 ---
@@ -160,7 +197,6 @@ ${webResults}`);
 "${this.userQuestion}"`);
     }
 
-    // Luego las instrucciones finales, más naturales
     this.sections.push(`
 ---
 **INSTRUÇÕES FINAIS:**
@@ -180,18 +216,15 @@ ${webResults}`);
     return this.sections.join('\n');
   }
 
-  // Método para estimar tokens (importante para custos)
   estimateTokens() {
     const text = this.build();
-    return Math.ceil(text.length / 4); // Aproximação: 1 token ≈ 4 caracteres
+    return Math.ceil(text.length / 4);
   }
 
-  // Para debugging
   getSectionCount() {
     return this.sections.length;
   }
 
-  // Para ver cuánto mide cada sección
   getSectionSizes() {
     return this.sections.map((section, idx) => ({
       index: idx,
