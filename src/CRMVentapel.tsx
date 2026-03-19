@@ -2190,7 +2190,6 @@ const CRMVentapel: React.FC = () => {
                 </div>
               </div>
             </div>
-
             {/* Activity Panel - solo al editar */}
             {opportunity && (
               <div className="mt-6">
