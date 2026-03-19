@@ -928,6 +928,163 @@ function generateSmartFallback(opportunityData, userInput, analysis) {
 }
 
 // ============= HANDLER PRINCIPAL =============
+
+// ============= ACTION PLAN: DETERMINAR CANTIDAD DE ACCIONES =============
+function determineActionCount(opportunity, analysis) {
+  if (!opportunity || !analysis?.opportunity) return 3;
+  
+  const health = parseFloat(analysis.opportunity.healthScore);
+  const daysSince = analysis.opportunity.daysSince;
+  const stage = opportunity.stage || 1;
+  
+  // Deal caliente (health alto + etapa avanzada + contacto reciente) = 1 acción enfocada
+  if (health >= 7 && stage >= 4 && daysSince <= 7) return 1;
+  
+  // Deal tibio = 2 acciones
+  if (health >= 5 && daysSince <= 14) return 2;
+  
+  // Deal frío o complicado = 3 acciones
+  return 3;
+}
+
+// ============= ACTION PLAN: GENERAR PLAN VIA CLAUDE =============
+async function generateActionPlan(opportunityData, completeAnalysis, vendorName) {
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+  
+  const numActions = determineActionCount(opportunityData, completeAnalysis);
+  
+  const promptBuilder = new PromptBuilder()
+    .addSystemRole()
+    .addOpportunityContext(opportunityData)
+    .addScalesAnalysis(completeAnalysis)
+    .addContacts(opportunityData)
+    .addOperationalInfo(opportunityData)
+    .addScaleDescriptions(completeAnalysis)
+    .addAlerts(completeAnalysis)
+    .addRelevantCases(completeAnalysis?.relevantCases)
+    .addActionPlanRequest(numActions);
+
+  const prompt = promptBuilder.build();
+  
+  console.log(`🎯 Gerando Action Plan: ${numActions} ações para ${opportunityData?.client}`);
+  
+  if (!ANTHROPIC_API_KEY) {
+    console.log('⚠️ Claude API não configurada, gerando fallback');
+    return generateFallbackActionPlan(opportunityData, completeAnalysis, numActions);
+  }
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 2000,
+        temperature: 0.2,
+        messages: [
+          { role: "user", content: prompt }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => 'No error body');
+      console.log(`❌ Erro Action Plan Claude: ${response.status} - ${errorBody}`);
+      return generateFallbackActionPlan(opportunityData, completeAnalysis, numActions);
+    }
+
+    const data = await response.json();
+    const responseText = data.content[0].text;
+    
+    if (data.usage) {
+      const cost = ((data.usage.input_tokens / 1_000_000) * 3 + (data.usage.output_tokens / 1_000_000) * 15).toFixed(4);
+      console.log(`💰 Action Plan custo: $${cost}`);
+    }
+
+    // Parsear JSON de la respuesta
+    try {
+      const cleaned = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      
+      // Validar estructura
+      if (parsed.actions && Array.isArray(parsed.actions)) {
+        return {
+          success: true,
+          actions: parsed.actions.slice(0, numActions),
+          diagnosis: parsed.diagnosis || null,
+          numRequested: numActions,
+          source: 'claude'
+        };
+      }
+    } catch (parseErr) {
+      console.error('❌ Erro parseando JSON do Action Plan:', parseErr.message);
+      console.log('Resposta raw:', responseText.substring(0, 200));
+    }
+
+    return generateFallbackActionPlan(opportunityData, completeAnalysis, numActions);
+    
+  } catch (error) {
+    console.error('❌ Erro gerando Action Plan:', error.message);
+    return generateFallbackActionPlan(opportunityData, completeAnalysis, numActions);
+  }
+}
+
+// ============= ACTION PLAN: FALLBACK SIN CLAUDE =============
+function generateFallbackActionPlan(opportunity, analysis, numActions) {
+  if (!opportunity || !analysis?.opportunity) {
+    return { success: false, actions: [], diagnosis: 'Sem dados suficientes', source: 'fallback' };
+  }
+
+  const actions = [];
+  const scales = opportunity.scales || {};
+  const opp = analysis.opportunity;
+  const contactName = opportunity.sponsor || opportunity.power_sponsor || 'o contato';
+  const decisionMaker = opportunity.power_sponsor || 'o decisor';
+  
+  // Encontrar las escalas más bajas
+  const scaleEntries = [
+    { key: 'dor', score: opp.scaleBreakdown.dor, label: 'DOR' },
+    { key: 'poder', score: opp.scaleBreakdown.poder, label: 'PODER' },
+    { key: 'visao', score: opp.scaleBreakdown.visao, label: 'VISÃO' },
+    { key: 'valor', score: opp.scaleBreakdown.valor, label: 'VALOR' },
+    { key: 'controle', score: opp.scaleBreakdown.controle, label: 'CONTROLE' },
+    { key: 'compras', score: opp.scaleBreakdown.compras, label: 'COMPRAS' }
+  ].sort((a, b) => a.score - b.score);
+
+  for (let i = 0; i < Math.min(numActions, scaleEntries.length); i++) {
+    const scale = scaleEntries[i];
+    if (scale.score >= 8) continue;
+    
+    let action = {
+      title: `Elevar ${scale.label} de ${scale.score} para ${Math.min(scale.score + 2, 10)}`,
+      description: `Trabalhar a escala ${scale.label} que está em ${scale.score}/10`,
+      target_scale: scale.key,
+      current_score: scale.score,
+      target_score: Math.min(scale.score + 2, 10),
+      action_type: 'call',
+      priority: scale.score < 3 ? 'critica' : scale.score < 5 ? 'alta' : 'media',
+      draft_content: `Ligar para ${contactName} de ${opportunity.client} e trabalhar ${scale.label}.`,
+      tool_reference: null,
+      expected_outcome: `${scale.label} subir para ${Math.min(scale.score + 2, 10)}/10`
+    };
+    
+    actions.push(action);
+  }
+
+  return {
+    success: true,
+    actions,
+    diagnosis: `Escalas mais fracas: ${scaleEntries.slice(0, 2).map(s => `${s.label}=${s.score}`).join(', ')}`,
+    numRequested: numActions,
+    source: 'fallback'
+  };
+}
+
+// ============= HANDLER PRINCIPAL (ORIGINAL + ACTION PLAN) =============
 export default async function handler(req) {
  // Configurar CORS
  const headers = {
@@ -956,7 +1113,8 @@ export default async function handler(req) {
      opportunityData, 
      vendorName,
      pipelineData,
-     isNewOpportunity
+     isNewOpportunity,
+     requestType
    } = body;
 
    console.log('🧠 Backend recebeu:', { 
@@ -965,12 +1123,27 @@ export default async function handler(req) {
      vendor: vendorName,
      pipelineSize: pipelineData?.allOpportunities?.length || 0,
      hasContacts: !!(opportunityData?.power_sponsor || opportunityData?.sponsor),
-     hasProduct: !!opportunityData?.product
+     hasProduct: !!opportunityData?.product,
+     requestType: requestType || 'chat'
    });
 
    // PASSO 1: EXECUTAR MOTOR DE ANÁLISE
    console.log('📊 Executando motor de análise completo...');
    const completeAnalysis = buildCompleteAnalysis(opportunityData, pipelineData, vendorName);
+
+   // ===== ROTA: ACTION PLAN =====
+   if (requestType === 'action_plan') {
+     console.log('🎯 Rota: Action Plan');
+     const actionPlan = await generateActionPlan(opportunityData, completeAnalysis, vendorName);
+     return new Response(
+       JSON.stringify({
+         response: null,
+         analysis: completeAnalysis,
+         actionPlan: actionPlan
+       }),
+       { status: 200, headers }
+     );
+   }
    
    // Validação básica
    if (!opportunityData && !isNewOpportunity && !pipelineData?.allOpportunities?.length) {
