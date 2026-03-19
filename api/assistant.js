@@ -872,59 +872,40 @@ async function callClaudeAPI(opportunityData, userInput, ventapelContext, toolsA
 // ============= FALLBACK INTELIGENTE - ENRIQUECIDO =============
 function generateSmartFallback(opportunityData, userInput, analysis) {
  if (!opportunityData) {
-   return "❌ Nenhuma oportunidade selecionada. Selecione um cliente do CRM para começar a análise.";
+   return "Selecione um cliente do CRM para eu poder te ajudar.";
  }
 
- let response = `📊 **Análise de ${opportunityData.client}**\n\n`;
+ let parts = [];
  
- // Adicionar informações do produto se disponível
- if (opportunityData.product) {
-   response += `**Produto:** ${opportunityData.product}\n`;
- }
+ parts.push(`${opportunityData.client}`);
  
  if (analysis?.opportunity) {
-   response += `**Estado:** Saúde ${analysis.opportunity.healthScore}/10 | Probabilidade ${analysis.opportunity.probability}%\n`;
-   
-   // Adicionar informações dos contatos se disponível
-   if (analysis.opportunity.contacts) {
-     const contacts = analysis.opportunity.contacts;
-     if (contacts.power_sponsor || contacts.sponsor) {
-       response += `**Contatos-chave:** ${contacts.power_sponsor || contacts.sponsor}\n`;
-     }
+   parts.push(`tá com saúde ${analysis.opportunity.healthScore}/10 e probabilidade de ${analysis.opportunity.probability}%.`);
+   if (analysis.opportunity.daysSince > 7) {
+     parts.push(`Faz ${analysis.opportunity.daysSince} dias sem contato.`);
    }
-   response += '\n';
  }
  
  if (analysis?.alerts?.length > 0) {
-   response += `**⚠️ ALERTAS:**\n`;
-   analysis.alerts.slice(0, 3).forEach(alert => {
-     response += `• ${alert.message}\n`;
-   });
-   response += '\n';
+   parts.push(analysis.alerts[0].message);
  }
  
  if (analysis?.nextBestAction) {
-   response += `**🎯 PRÓXIMA AÇÃO:**\n`;
-   response += `${analysis.nextBestAction.title}\n`;
-   response += `${analysis.nextBestAction.action}\n\n`;
+   parts.push(`${analysis.nextBestAction.action}`);
    if (analysis.nextBestAction.script) {
-     response += `**Script sugerido:**\n`;
-     response += `"${analysis.nextBestAction.script}"\n`;
+     parts.push(`\nScript: "${analysis.nextBestAction.script}"`);
    }
  }
  
- // Se há próxima ação registrada no CRM
  if (opportunityData.next_action) {
-   response += `\n**📋 Ação planejada no CRM:** ${opportunityData.next_action}\n`;
+   parts.push(`Ação pendente no CRM: ${opportunityData.next_action}`);
  }
  
- // Casos no final se houver
  if (analysis?.relevantCases?.length > 0) {
-   response += `\n**📚 Referência:**\n`;
-   response += `${analysis.relevantCases[0].empresa} enfrentou algo similar e conseguiu ROI em ${analysis.relevantCases[0].resultados.roi_meses} meses.`;
+   parts.push(`${analysis.relevantCases[0].empresa} passou por algo parecido e teve ROI em ${analysis.relevantCases[0].resultados.roi_meses} meses.`);
  }
  
- return response;
+ return parts.join(' ');
 }
 
 // ============= HANDLER PRINCIPAL =============
