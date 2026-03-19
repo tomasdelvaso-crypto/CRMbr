@@ -1518,10 +1518,10 @@ const CRMVentapel: React.FC = () => {
                           await supabaseService.updateOpportunity(opportunity.id, {
                             ...opportunity,
                             vendor: currentUser,
-                            value: opportunity.value?.toString() || '0',
+                            value: opportunity.value || 0,
                             last_update: new Date().toISOString().split('T')[0]
                           });
-                          await loadOpportunities();
+                          window.location.reload();
                         } catch (err) {
                           console.error('Erro ao assumir:', err);
                         }
