@@ -2191,6 +2191,19 @@ const CRMVentapel: React.FC = () => {
               </div>
             </div>
 
+       </div>
+
+            {/* Activity Panel - solo al editar */}
+            {opportunity && (
+              <div className="mt-6">
+                <ActivityPanel 
+                  opportunity={opportunity}
+                  currentUser={currentUser}
+                  supabase={supabase}
+                />
+              </div>
+            )}
+
             <div className="flex justify-end space-x-4 mt-8 pt-6 border-t">
               <button
                 onClick={onClose}
