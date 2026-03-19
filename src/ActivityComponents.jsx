@@ -91,13 +91,19 @@ class ActivityService {
     const { data, error } = await this.supabase.from('activities').insert([a]).select().single();
     if (error) throw error; return data;
   }
-  async markDone(id, result, desc) {
-    const u = { next_action_done: true, result }; if (desc) u.description = desc;
+  async markDone(id, result, vendorNote) {
+    const u = { next_action_done: true, result };
+    if (vendorNote) {
+      const { data: orig } = await this.supabase.from('activities').select('description').eq('id', id).single();
+      u.description = (orig?.description || '') + '\n---\n✅ Vendedor (' + result + '): ' + vendorNote;
+    }
     const { error } = await this.supabase.from('activities').update(u).eq('id', id);
     if (error) throw error;
   }
   async markDiscarded(id, reason) {
-    const { error } = await this.supabase.from('activities').update({ next_action_done: true, result: 'descartado', description: reason }).eq('id', id);
+    const { data: orig } = await this.supabase.from('activities').select('description').eq('id', id).single();
+    const desc = (orig?.description || '') + '\n---\n❌ Descartado: ' + reason;
+    const { error } = await this.supabase.from('activities').update({ next_action_done: true, result: 'descartado', description: desc }).eq('id', id);
     if (error) throw error;
   }
   async expirePending(id) {
