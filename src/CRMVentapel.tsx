@@ -1652,14 +1652,15 @@ const CRMVentapel: React.FC = () => {
                 <span className="font-medium text-gray-600 mr-2">Contato Apoio:</span>
                 <span className="text-gray-800">{opportunity.support_contact}</span>
               </div>
-                <ActivityPanel 
+            )}
+          </div>
+        </div>
+
+        <ActivityPanel 
           opportunity={opportunity}
           currentUser={currentUser}
           supabase={supabase}
         />
-            )}
-          </div>
-        </div>
       </div>
     );
   };
