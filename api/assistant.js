@@ -834,7 +834,7 @@ async function callClaudeAPI(opportunityData, userInput, ventapelContext, toolsA
        "anthropic-version": "2023-06-01"
      },
      body: JSON.stringify({
-       model: "claude-3-haiku-20240307",
+       model: "claude-3-5-haiku-20241022",
        max_tokens: 1500,
        temperature: 0.3,
        messages: [
@@ -982,7 +982,7 @@ async function generateActionPlan(opportunityData, completeAnalysis, vendorName)
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
+        model: "claude-sonnet-4-20250514",
         max_tokens: 2000,
         temperature: 0.2,
         messages: [
