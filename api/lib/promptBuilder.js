@@ -150,6 +150,26 @@ ${webResults}`);
     return this;
   }
 
+  // ============= NUEVO: ACTIVITY HISTORY =============
+  addActivityHistory(activities) {
+    if (!activities || activities.length === 0) return this;
+    
+    const historyLines = activities.slice(0, 10).map(a => {
+      const date = new Date(a.created_at).toLocaleDateString('pt-BR');
+      const result = a.result ? ` → Resultado: ${a.result}` : ' (pendente)';
+      const source = a.source === 'ai_generated' ? '[IA]' : '[Manual]';
+      const desc = a.description ? a.description.substring(0, 100) : '';
+      return `- ${date} ${source} ${a.activity_type}: ${desc}${result}`;
+    }).join('\n');
+    
+    this.sections.push(`
+**HISTÓRICO DE ATIVIDADES RECENTES (últimas ${activities.length}):**
+${historyLines}
+
+IMPORTANTE: Baseie suas novas sugestões no que JÁ foi tentado. NÃO repita ações que foram descartadas ou que tiveram resultado negativo. Se uma ação teve resultado positivo, sugira o próximo passo lógico.`);
+    return this;
+  }
+
   // ============= NUEVO: ACTION PLAN REQUEST =============
   addActionPlanRequest(numActions) {
     this.sections.push(`
