@@ -2389,6 +2389,15 @@ const CRMVentapel: React.FC = () => {
               📊 Dashboard
             </button>
             <button
+              onClick={() => setActiveTab('opportunities')}
+              className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'opportunities'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700')}
+            >
+              <Target className="w-4 h-4 mr-2" />
+              🎯 {currentVendorInfo?.is_admin ? 'Todas Oportunidades' : 'Minhas Oportunidades'}
+            </button>
+            <button
               onClick={() => setActiveTab('activities')}
               className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'activities'
                   ? 'border-blue-500 text-blue-600'
@@ -2396,9 +2405,6 @@ const CRMVentapel: React.FC = () => {
             >
               <Clock className="w-4 h-4 mr-2" />
               📋 Gestão de Atividades
-            </button>
-              <Target className="w-4 h-4 mr-2" />
-              🎯 {currentVendorInfo?.is_admin ? 'Todas Oportunidades' : 'Minhas Oportunidades'}
             </button>
           </div>
         </div>
