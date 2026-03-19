@@ -1143,7 +1143,7 @@ const CRMVentapel: React.FC = () => {
   const userOpportunities = useMemo(() => {
     if (!currentUser) return opportunities;
     if (currentVendorInfo?.is_admin) return opportunities;
-    return opportunities.filter(opp => opp.vendor === currentUser);
+    return opportunities.filter(opp => opp.vendor === currentUser || !opp.vendor || !opp.vendor.trim());
   }, [opportunities, currentUser, currentVendorInfo]);
 
   const filteredOpportunities = useMemo(() => {
