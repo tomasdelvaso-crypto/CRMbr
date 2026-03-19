@@ -1505,7 +1505,34 @@ const CRMVentapel: React.FC = () => {
             </div>
             <div className="space-y-1">
               <p className="text-lg font-semibold text-blue-600">{opportunity.client}</p>
-              <p className="text-sm text-gray-600">👤 {opportunity.vendor}</p>
+                           {opportunity.vendor ? (
+                <p className="text-sm text-gray-600">👤 {opportunity.vendor}</p>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-orange-600 font-semibold">👤 Sem vendedor</p>
+                  {currentUser && (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await supabaseService.updateOpportunity(opportunity.id, {
+                            ...opportunity,
+                            vendor: currentUser,
+                            value: opportunity.value?.toString() || '0',
+                            last_update: new Date().toISOString().split('T')[0]
+                          });
+                          await loadOpportunities();
+                        } catch (err) {
+                          console.error('Erro ao assumir:', err);
+                        }
+                      }}
+                      className="px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      🙋 Assumir
+                    </button>
+                  )}
+                </div>
+              )}
               <p className="text-sm text-purple-600">📦 {opportunity.product}</p>
               {opportunity.industry && (
                 <p className="text-sm text-gray-600">🏭 {opportunity.industry}</p>
