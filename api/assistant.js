@@ -948,7 +948,7 @@ function determineActionCount(opportunity, analysis) {
 }
 
 // ============= ACTION PLAN: GENERAR PLAN VIA CLAUDE =============
-async function generateActionPlan(opportunityData, completeAnalysis, vendorName) {
+async function generateActionPlan(opportunityData, completeAnalysis, vendorName, activityHistory) {
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   
   const numActions = determineActionCount(opportunityData, completeAnalysis);
@@ -962,6 +962,7 @@ async function generateActionPlan(opportunityData, completeAnalysis, vendorName)
     .addScaleDescriptions(completeAnalysis)
     .addAlerts(completeAnalysis)
     .addRelevantCases(completeAnalysis?.relevantCases)
+    .addActivityHistory(activityHistory)
     .addActionPlanRequest(numActions);
 
   const prompt = promptBuilder.build();
@@ -1114,7 +1115,8 @@ export default async function handler(req) {
      vendorName,
      pipelineData,
      isNewOpportunity,
-     requestType
+     requestType,
+     activityHistory
    } = body;
 
    console.log('🧠 Backend recebeu:', { 
@@ -1134,7 +1136,7 @@ export default async function handler(req) {
    // ===== ROTA: ACTION PLAN =====
    if (requestType === 'action_plan') {
      console.log('🎯 Rota: Action Plan');
-     const actionPlan = await generateActionPlan(opportunityData, completeAnalysis, vendorName);
+     const actionPlan = await generateActionPlan(opportunityData, completeAnalysis, vendorName, activityHistory);
      return new Response(
        JSON.stringify({
          response: null,
