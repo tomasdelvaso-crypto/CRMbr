@@ -166,14 +166,20 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
   const markDone = async (id, result, note) => {
     if (!supabase) return;
-    const u = { next_action_done: true, result }; if (note) u.description = note;
+    const u = { next_action_done: true, result };
+    if (note) {
+      const { data: orig } = await supabase.from('activities').select('description').eq('id', id).single();
+      u.description = (orig?.description || '') + '\n---\n✅ Vendedor (' + result + '): ' + note;
+    }
     await supabase.from('activities').update(u).eq('id', id);
     await loadPendingFromDB();
   };
 
   const markDiscarded = async (id, reason) => {
     if (!supabase) return;
-    await supabase.from('activities').update({ next_action_done: true, result: 'descartado', description: reason }).eq('id', id);
+    const { data: orig } = await supabase.from('activities').select('description').eq('id', id).single();
+    const desc = (orig?.description || '') + '\n---\n❌ Descartado: ' + reason;
+    await supabase.from('activities').update({ next_action_done: true, result: 'descartado', description: desc }).eq('id', id);
     await loadPendingFromDB();
   };
 
