@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, createContext, useCon
 import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users, Brain, HelpCircle, FileQuestion } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import AIAssistant from './AIAssistant';
+import { ActivityPanel, ActivityDashboard } from './ActivityComponents';
 
 // --- CONFIGURAÇÃO DE SUPABASE ---
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -1651,6 +1652,11 @@ const CRMVentapel: React.FC = () => {
                 <span className="font-medium text-gray-600 mr-2">Contato Apoio:</span>
                 <span className="text-gray-800">{opportunity.support_contact}</span>
               </div>
+                <ActivityPanel 
+          opportunity={opportunity}
+          currentUser={currentUser}
+          supabase={supabase}
+        />
             )}
           </div>
         </div>
@@ -2382,11 +2388,14 @@ const CRMVentapel: React.FC = () => {
               📊 Dashboard
             </button>
             <button
-              onClick={() => setActiveTab('opportunities')}
-              className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'opportunities'
+              onClick={() => setActiveTab('activities')}
+              className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'activities'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700')}
             >
+              <Clock className="w-4 h-4 mr-2" />
+              📋 Gestão de Atividades
+            </button>
               <Target className="w-4 h-4 mr-2" />
               🎯 {currentVendorInfo?.is_admin ? 'Todas Oportunidades' : 'Minhas Oportunidades'}
             </button>
@@ -2397,6 +2406,14 @@ const CRMVentapel: React.FC = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'opportunities' && <OpportunityList />}
+          {activeTab === 'activities' && (
+          <ActivityDashboard 
+            supabase={supabase} 
+            currentUser={currentUser}
+            isAdmin={currentVendorInfo?.is_admin || false}
+          />
+        )}
+
       </main>
 
       {showNewOpportunity && (
