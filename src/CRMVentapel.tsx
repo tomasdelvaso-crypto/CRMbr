@@ -1505,7 +1505,7 @@ const CRMVentapel: React.FC = () => {
             </div>
             <div className="space-y-1">
               <p className="text-lg font-semibold text-blue-600">{opportunity.client}</p>
-                           {opportunity.vendor ? (
+                           {opportunity.vendor && opportunity.vendor.trim() ? (
                 <p className="text-sm text-gray-600">👤 {opportunity.vendor}</p>
               ) : (
                 <div className="flex items-center gap-2">
