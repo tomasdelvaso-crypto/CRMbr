@@ -415,78 +415,204 @@ export const ActivityDashboard = ({ supabase, currentUser, isAdmin }) => {
   const [allStale, setAllStale] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('pending');
-  const [vendorFilter, setVendorFilter] = useState('all');
+  const [vendorFilter, setVendorFilter] = useState(currentUser || 'all');
   const svc = useMemo(() => new ActivityService(supabase), [supabase]);
+
+  // Sync with header vendor selector
+  useEffect(() => {
+    if (currentUser) setVendorFilter(currentUser);
+  }, [currentUser]);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      try { const [v,p,s] = await Promise.all([svc.getVendorSummaries(), svc.getPendingActions(), svc.getStaleOpportunities(5)]); setVendorSummaries(v);setAllPending(p);setAllStale(s); }
-      catch(e){console.error(e);} finally{setLoading(false);}
+      try { 
+        const [v, p, s] = await Promise.all([
+          svc.getVendorSummaries(), 
+          svc.getPendingActions(), 
+          svc.getStaleOpportunities(5)
+        ]); 
+        setVendorSummaries(v);
+        setAllPending(p);
+        setAllStale(s); 
+      }
+      catch(e){ console.error(e); } 
+      finally{ setLoading(false); }
     })();
   }, [svc]);
 
+  // Filter everything by selected vendor
   const pending = vendorFilter === 'all' ? allPending : allPending.filter(a => a.vendor === vendorFilter);
-  const stale = vendorFilter === 'all' ? allStale : allStale.filter(o => o.vendor === vendorFilter);
+  const stale = vendorFilter === 'all' ? allStale : allStale.filter(o => {
+    if (!o.vendor || !o.vendor.trim()) return vendorFilter === 'all';
+    return o.vendor === vendorFilter;
+  });
   const vendors = vendorFilter === 'all' ? vendorSummaries : vendorSummaries.filter(v => v.vendor === vendorFilter);
 
-  const vendorNames = [...new Set(allPending.map(a => a.vendor).filter(Boolean).concat(allStale.map(o => o.vendor).filter(Boolean)).concat(vendorSummaries.map(v => v.vendor).filter(Boolean)))].sort();
+  // Build unique vendor list from all data sources
+  const vendorNames = [...new Set([
+    ...allPending.map(a => a.vendor),
+    ...allStale.map(o => o.vendor),
+    ...vendorSummaries.map(v => v.vendor)
+  ].filter(v => v && v.trim()))].sort();
 
   if (loading) return <div className="text-center py-16"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" /><p className="text-base text-gray-400">Carregando...</p></div>;
 
   return (
     <div className="space-y-6">
-      {/* Vendor filter */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-800">Gestão de Atividades</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-base text-gray-500">Filtrar vendedor:</span>
+      {/* Header with filter */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-xl font-bold text-gray-800">📋 Gestão de Atividades</h2>
+        <div className="flex items-center gap-3">
+          <span className="text-base text-gray-500 font-medium">Filtrar:</span>
           <select value={vendorFilter} onChange={e => setVendorFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-base focus:ring-2 focus:ring-blue-500">
+            className="px-4 py-2.5 border border-gray-300 rounded-lg text-base font-medium focus:ring-2 focus:ring-blue-500 min-w-[200px]">
             <option value="all">👥 Todos vendedores</option>
             {vendorNames.map(v => <option key={v} value={v}>👤 {v}</option>)}
           </select>
+          {vendorFilter !== 'all' && (
+            <button onClick={() => setVendorFilter('all')} 
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+              Limpar filtro
+            </button>
+          )}
         </div>
       </div>
 
+      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl shadow p-5 border-l-4 border-red-500"><p className="text-sm text-gray-500 font-semibold uppercase">Atrasadas</p><p className="text-4xl font-bold text-red-600 mt-1">{pending.filter(a=>a.urgency==='overdue').length}</p></div>
-        <div className="bg-white rounded-xl shadow p-5 border-l-4 border-orange-500"><p className="text-sm text-gray-500 font-semibold uppercase">Hoje</p><p className="text-4xl font-bold text-orange-600 mt-1">{pending.filter(a=>a.urgency==='today').length}</p></div>
-        <div className="bg-white rounded-xl shadow p-5 border-l-4 border-yellow-500"><p className="text-sm text-gray-500 font-semibold uppercase">Estagnadas</p><p className="text-4xl font-bold text-yellow-600 mt-1">{stale.length}</p></div>
-        <div className="bg-white rounded-xl shadow p-5 border-l-4 border-blue-500"><p className="text-sm text-gray-500 font-semibold uppercase">Pendentes</p><p className="text-4xl font-bold text-blue-600 mt-1">{pending.length}</p></div>
+        <div className="bg-white rounded-xl shadow p-5 border-l-4 border-red-500">
+          <p className="text-sm text-gray-500 font-semibold uppercase">Atrasadas</p>
+          <p className="text-4xl font-bold text-red-600 mt-1">{pending.filter(a => a.urgency === 'overdue').length}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow p-5 border-l-4 border-orange-500">
+          <p className="text-sm text-gray-500 font-semibold uppercase">Hoje</p>
+          <p className="text-4xl font-bold text-orange-600 mt-1">{pending.filter(a => a.urgency === 'today').length}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow p-5 border-l-4 border-yellow-500">
+          <p className="text-sm text-gray-500 font-semibold uppercase">Estagnadas</p>
+          <p className="text-4xl font-bold text-yellow-600 mt-1">{stale.length}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow p-5 border-l-4 border-blue-500">
+          <p className="text-sm text-gray-500 font-semibold uppercase">Pendentes</p>
+          <p className="text-4xl font-bold text-blue-600 mt-1">{pending.length}</p>
+        </div>
       </div>
+
+      {/* View tabs */}
       <div className="flex flex-wrap gap-2">
-        {[{id:'pending',label:'⏳ Pendentes',c:pending.length},{id:'vendors',label:'👥 Vendedores',c:vendors.length},{id:'stale',label:'⚠️ Estagnadas',c:stale.length}].map(t=>
-          <button key={t.id} onClick={()=>setView(t.id)} className={`px-4 py-2.5 rounded-lg font-medium text-sm ${view===t.id?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{t.label} ({t.c})</button>
+        {[
+          { id: 'pending', label: '⏳ Pendentes', c: pending.length },
+          { id: 'vendors', label: '👥 Vendedores', c: vendors.length },
+          { id: 'stale', label: '⚠️ Estagnadas', c: stale.length }
+        ].map(t =>
+          <button key={t.id} onClick={() => setView(t.id)} 
+            className={`px-4 py-2.5 rounded-lg font-medium text-base ${view === t.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            {t.label} ({t.c})
+          </button>
         )}
       </div>
 
-      {view==='pending' && <div className="bg-white rounded-xl shadow-lg overflow-hidden"><div className="divide-y">
-        {pending.length===0 ? <div className="p-10 text-center text-gray-400"><p className="text-4xl mb-2">🎉</p><p className="text-base">Nenhuma ação pendente!</p></div>
-        : pending.map(a => { const u = URGENCY_CONFIG[a.urgency]||URGENCY_CONFIG.scheduled; return (
-          <div key={a.activity_id} className="p-4 hover:bg-gray-50">
-            <div className="flex items-center gap-2 mb-1 flex-wrap"><span className={`text-xs px-2.5 py-1 rounded-full font-bold ${u.color}`}>{u.label}</span><span className="font-semibold text-base">{a.opportunity_name}</span><span className="text-sm text-gray-400">({a.client})</span></div>
-            <p className="text-base text-gray-700">{a.next_action}</p>
-            <p className="text-sm text-gray-400 mt-1">👤 {a.vendor} • Etapa {a.stage}{a.next_action_date&&` • 📅 ${new Date(a.next_action_date+'T00:00:00').toLocaleDateString('pt-BR')}`}</p>
-          </div>);})}</div></div>}
+      {/* Pending actions */}
+      {view === 'pending' && (
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="divide-y">
+            {pending.length === 0 ? (
+              <div className="p-10 text-center text-gray-400">
+                <p className="text-4xl mb-2">🎉</p>
+                <p className="text-base">{vendorFilter !== 'all' ? `Nenhuma ação pendente para ${vendorFilter}` : 'Nenhuma ação pendente!'}</p>
+              </div>
+            ) : pending.map(a => {
+              const u = URGENCY_CONFIG[a.urgency] || URGENCY_CONFIG.scheduled;
+              return (
+                <div key={a.activity_id} className="p-4 hover:bg-gray-50">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${u.color}`}>{u.label}</span>
+                    <span className="font-semibold text-base">{a.opportunity_name}</span>
+                    <span className="text-sm text-gray-400">({a.client})</span>
+                  </div>
+                  <p className="text-base text-gray-700">{a.next_action}</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    👤 {a.vendor} • Etapa {a.stage}
+                    {a.next_action_date && ` • 📅 ${new Date(a.next_action_date + 'T00:00:00').toLocaleDateString('pt-BR')}`}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-      {view==='vendors' && <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {vendors.map(v => <div key={v.vendor} className="bg-white rounded-xl shadow-lg p-5">
-          <div className="flex items-center justify-between mb-4"><h4 className="font-bold text-xl">{v.vendor}</h4>
-            {v.overdue_actions>0&&<span className="bg-red-500 text-white text-sm px-3 py-1 rounded-full font-bold">{v.overdue_actions} atrasada{v.overdue_actions>1?'s':''}</span>}</div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-blue-50 p-3 rounded-lg"><p className="text-sm text-blue-600 font-semibold">7 dias</p><p className="text-2xl font-bold text-blue-800">{v.activities_last_7d}</p></div>
-            <div className="bg-green-50 p-3 rounded-lg"><p className="text-sm text-green-600 font-semibold">30 dias</p><p className="text-2xl font-bold text-green-800">{v.activities_last_30d}</p></div>
-            <div className="bg-yellow-50 p-3 rounded-lg"><p className="text-sm text-yellow-600 font-semibold">Pendentes</p><p className="text-2xl font-bold text-yellow-800">{v.pending_actions}</p></div>
-            <div className="bg-gray-50 p-3 rounded-lg"><p className="text-sm text-gray-600 font-semibold">Última</p><p className="text-base font-bold text-gray-800">{v.last_activity_at?new Date(v.last_activity_at).toLocaleDateString('pt-BR'):'Nunca'}</p></div>
-          </div></div>)}</div>}
+      {/* Vendor summaries */}
+      {view === 'vendors' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {vendors.length === 0 ? (
+            <div className="col-span-2 p-10 text-center text-gray-400 bg-white rounded-xl shadow-lg">
+              <p className="text-base">Nenhum vendedor com atividades registradas.</p>
+            </div>
+          ) : vendors.map(v => (
+            <div key={v.vendor} className="bg-white rounded-xl shadow-lg p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-bold text-xl">{v.vendor}</h4>
+                {v.overdue_actions > 0 && (
+                  <span className="bg-red-500 text-white text-sm px-3 py-1 rounded-full font-bold">
+                    {v.overdue_actions} atrasada{v.overdue_actions > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-sm text-blue-600 font-semibold">7 dias</p>
+                  <p className="text-2xl font-bold text-blue-800">{v.activities_last_7d}</p>
+                </div>
+                <div className="bg-green-50 p-3 rounded-lg">
+                  <p className="text-sm text-green-600 font-semibold">30 dias</p>
+                  <p className="text-2xl font-bold text-green-800">{v.activities_last_30d}</p>
+                </div>
+                <div className="bg-yellow-50 p-3 rounded-lg">
+                  <p className="text-sm text-yellow-600 font-semibold">Pendentes</p>
+                  <p className="text-2xl font-bold text-yellow-800">{v.pending_actions}</p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-sm text-gray-600 font-semibold">Última</p>
+                  <p className="text-base font-bold text-gray-800">
+                    {v.last_activity_at ? new Date(v.last_activity_at).toLocaleDateString('pt-BR') : 'Nunca'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-      {view==='stale' && <div className="bg-white rounded-xl shadow-lg overflow-hidden"><div className="divide-y">
-        {stale.length===0 ? <div className="p-10 text-center text-gray-400"><p className="text-4xl mb-2">✅</p><p className="text-base">Nenhuma estagnada!</p></div>
-        : stale.map(o => <div key={o.id} className="p-4 hover:bg-gray-50"><div className="flex items-center justify-between">
-          <div><p className="font-semibold text-base">{o.name}</p><p className="text-sm text-gray-500">{o.client} • 👤 {o.vendor||'Sem vendedor'} • Etapa {o.stage}</p></div>
-          <div className="text-right"><p className={`text-xl font-bold ${o.days_since_last_activity>14?'text-red-600':o.days_since_last_activity>7?'text-orange-600':'text-yellow-600'}`}>{Math.round(o.days_since_last_activity)} dias</p><p className="text-sm text-gray-400">sem atividade</p></div>
-        </div></div>)}</div></div>}
+      {/* Stale opportunities */}
+      {view === 'stale' && (
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="divide-y">
+            {stale.length === 0 ? (
+              <div className="p-10 text-center text-gray-400">
+                <p className="text-4xl mb-2">✅</p>
+                <p className="text-base">{vendorFilter !== 'all' ? `Nenhuma estagnada para ${vendorFilter}` : 'Nenhuma estagnada!'}</p>
+              </div>
+            ) : stale.map(o => (
+              <div key={o.id} className="p-4 hover:bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-base">{o.name}</p>
+                    <p className="text-sm text-gray-500">{o.client} • 👤 {o.vendor || 'Sem vendedor'} • Etapa {o.stage}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-xl font-bold ${o.days_since_last_activity > 14 ? 'text-red-600' : o.days_since_last_activity > 7 ? 'text-orange-600' : 'text-yellow-600'}`}>
+                      {Math.round(o.days_since_last_activity)} dias
+                    </p>
+                    <p className="text-sm text-gray-400">sem atividade</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
