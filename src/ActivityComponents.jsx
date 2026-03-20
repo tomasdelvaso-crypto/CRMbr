@@ -410,25 +410,45 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
 };
 
 export const ActivityDashboard = ({ supabase, currentUser, isAdmin }) => {
-  const [vendors, setVendors] = useState([]);
-  const [pending, setPending] = useState([]);
-  const [stale, setStale] = useState([]);
+  const [vendorSummaries, setVendorSummaries] = useState([]);
+  const [allPending, setAllPending] = useState([]);
+  const [allStale, setAllStale] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('pending');
+  const [vendorFilter, setVendorFilter] = useState('all');
   const svc = useMemo(() => new ActivityService(supabase), [supabase]);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      try { const [v,p,s] = await Promise.all([svc.getVendorSummaries(), svc.getPendingActions(isAdmin?undefined:currentUser||undefined), svc.getStaleOpportunities(5)]); setVendors(v);setPending(p);setStale(s); }
+      try { const [v,p,s] = await Promise.all([svc.getVendorSummaries(), svc.getPendingActions(), svc.getStaleOpportunities(5)]); setVendorSummaries(v);setAllPending(p);setAllStale(s); }
       catch(e){console.error(e);} finally{setLoading(false);}
     })();
-  }, [svc, currentUser, isAdmin]);
+  }, [svc]);
+
+  const pending = vendorFilter === 'all' ? allPending : allPending.filter(a => a.vendor === vendorFilter);
+  const stale = vendorFilter === 'all' ? allStale : allStale.filter(o => o.vendor === vendorFilter);
+  const vendors = vendorFilter === 'all' ? vendorSummaries : vendorSummaries.filter(v => v.vendor === vendorFilter);
+
+  const vendorNames = [...new Set(allPending.map(a => a.vendor).filter(Boolean).concat(allStale.map(o => o.vendor).filter(Boolean)).concat(vendorSummaries.map(v => v.vendor).filter(Boolean)))].sort();
 
   if (loading) return <div className="text-center py-16"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" /><p className="text-base text-gray-400">Carregando...</p></div>;
 
   return (
     <div className="space-y-6">
+      {/* Vendor filter */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-gray-800">Gestão de Atividades</h2>
+        <div className="flex items-center gap-2">
+          <span className="text-base text-gray-500">Filtrar vendedor:</span>
+          <select value={vendorFilter} onChange={e => setVendorFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-base focus:ring-2 focus:ring-blue-500">
+            <option value="all">👥 Todos vendedores</option>
+            {vendorNames.map(v => <option key={v} value={v}>👤 {v}</option>)}
+          </select>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl shadow p-5 border-l-4 border-red-500"><p className="text-sm text-gray-500 font-semibold uppercase">Atrasadas</p><p className="text-4xl font-bold text-red-600 mt-1">{pending.filter(a=>a.urgency==='overdue').length}</p></div>
         <div className="bg-white rounded-xl shadow p-5 border-l-4 border-orange-500"><p className="text-sm text-gray-500 font-semibold uppercase">Hoje</p><p className="text-4xl font-bold text-orange-600 mt-1">{pending.filter(a=>a.urgency==='today').length}</p></div>
