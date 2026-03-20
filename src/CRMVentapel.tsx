@@ -716,10 +716,10 @@ const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQues
       >
         <div className="flex items-center space-x-2">
           <FileQuestion className="w-4 h-4 text-yellow-700" />
-          <span className="text-sm font-medium text-yellow-800">
+          <span className="text-base font-medium text-yellow-800">
             Perguntas SPIN Sugeridas
           </span>
-          <span className="text-xs bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">
+          <span className="text-sm bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full">
             {getUsedCount()}/{getTotalCount()} usadas
           </span>
         </div>
@@ -730,7 +730,7 @@ const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQues
         <div className="mt-3 space-y-3">
           {Object.entries(questions).map(([tipo, perguntas]) => (
             <div key={tipo} className="bg-white rounded-lg p-3">
-              <h5 className="text-xs font-bold text-yellow-700 uppercase mb-2 flex items-center">
+              <h5 className="text-base font-bold text-yellow-700 uppercase mb-2 flex items-center">
                 {tipo === 'situacao' ? '🔍 SITUAÇÃO' :
                  tipo === 'problema' ? '⚠️ PROBLEMA' :
                  tipo === 'implicacao' ? '💥 IMPLICAÇÃO' :
@@ -745,7 +745,7 @@ const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQues
                       onChange={() => toggleQuestion(pergunta)}
                       className="mt-0.5 mr-2 text-yellow-600 focus:ring-yellow-500"
                     />
-                    <span className={`text-xs ${usedQuestions.has(pergunta) ? 'line-through text-gray-500' : 'text-gray-700'}`}>
+                    <span className={`text-base ${usedQuestions.has(pergunta) ? 'line-through text-gray-500' : 'text-gray-700'}`}>
                       {pergunta}
                     </span>
                   </label>
@@ -754,7 +754,7 @@ const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQues
             </div>
           ))}
           <div className="mt-2 p-2 bg-blue-50 rounded-lg">
-            <p className="text-xs text-blue-700">
+            <p className="text-base text-blue-700">
               💡 <strong>Dica:</strong> Marque as perguntas enquanto fala com o cliente. 
               As respostas chave adicione nas observações da escala.
             </p>
@@ -1227,9 +1227,9 @@ const CRMVentapel: React.FC = () => {
           <div>
             <h2 className="text-2xl font-bold mb-2">🎯 CRM Ventapel Brasil</h2>
             <p className="text-blue-100">Sistema de Vendas Consultivas - Metodologia PPVVCC</p>
-            <p className="text-blue-100 text-sm">🔗 Conectado ao Supabase</p>
+            <p className="text-blue-100 text-base">🔗 Conectado ao Supabase</p>
             {currentUser && (
-              <p className="text-yellow-300 text-sm mt-1">
+              <p className="text-yellow-300 text-base mt-1">
                 👤 {currentUser} {currentVendorInfo?.role && `(${currentVendorInfo.role})`}
               </p>
             )}
@@ -1251,11 +1251,11 @@ const CRMVentapel: React.FC = () => {
               <DollarSign className="w-8 h-8 text-green-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-green-700">Pipeline Total</p>
+              <p className="text-base font-medium text-green-700">Pipeline Total</p>
               <p className="text-2xl font-bold text-green-800">
                 R$ {metrics.totalValue.toLocaleString('pt-BR')}
               </p>
-              <p className="text-sm text-green-600">
+              <p className="text-base text-green-600">
                 Ponderado: R$ {metrics.weightedValue.toLocaleString('pt-BR')}
               </p>
             </div>
@@ -1268,7 +1268,7 @@ const CRMVentapel: React.FC = () => {
               <Target className="w-8 h-8 text-blue-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-blue-700">Oportunidades</p>
+              <p className="text-base font-medium text-blue-700">Oportunidades</p>
               <p className="text-2xl font-bold text-blue-800">{metrics.totalOpportunities}</p>
             </div>
           </div>
@@ -1280,7 +1280,7 @@ const CRMVentapel: React.FC = () => {
               <BarChart3 className="w-8 h-8 text-purple-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-purple-700">Score PPVVCC</p>
+              <p className="text-base font-medium text-purple-700">Score PPVVCC</p>
               <p className="text-2xl font-bold text-purple-800">{metrics.avgScore.toFixed(1)}/10</p>
             </div>
           </div>
@@ -1292,7 +1292,7 @@ const CRMVentapel: React.FC = () => {
               <TrendingUp className="w-8 h-8 text-orange-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-orange-700">Prob. Média</p>
+              <p className="text-base font-medium text-orange-700">Prob. Média</p>
               <p className="text-2xl font-bold text-orange-800">{metrics.avgProbability.toFixed(0)}%</p>
             </div>
           </div>
@@ -1303,7 +1303,7 @@ const CRMVentapel: React.FC = () => {
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-semibold text-gray-800">📊 Funil de Vendas</h3>
           <div className="flex items-center space-x-4">
-            <label className="text-sm font-medium text-gray-700">Filtrar por vendedor:</label>
+            <label className="text-base font-medium text-gray-700">Filtrar por vendedor:</label>
             <select
               value={dashboardVendorFilter}
               onChange={(e) => setDashboardVendorFilter(e.target.value)}
@@ -1327,23 +1327,23 @@ const CRMVentapel: React.FC = () => {
                 className="flex items-center cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
                 onClick={() => setSelectedStageForList(selectedStageForList === stage.id ? null : stage.id)}
               >
-                <div className="w-32 text-sm font-medium text-gray-700">{stage.name}</div>
+                <div className="w-32 text-base font-medium text-gray-700">{stage.name}</div>
                 <div className="flex-1 mx-6">
                   <div className="bg-gray-200 rounded-full h-8 relative">
                     <div 
                       className={stage.color + ' h-8 rounded-full transition-all duration-500'}
                       style={{ width: Math.max((stage.count / Math.max(...metrics.stageDistribution.map(s => s.count), 1)) * 100, 5) + '%' }}
                     ></div>
-                    <div className="absolute inset-0 flex items-center justify-center text-sm font-medium text-white">
+                    <div className="absolute inset-0 flex items-center justify-center text-base font-medium text-white">
                       {stage.count > 0 && stage.count + ' oportunidades'}
                     </div>
                   </div>
                 </div>
-                <div className="w-20 text-sm text-gray-600 text-center">{stage.count}</div>
-                <div className="w-40 text-sm font-medium text-right text-gray-800">
+                <div className="w-20 text-base text-gray-600 text-center">{stage.count}</div>
+                <div className="w-40 text-base font-medium text-right text-gray-800">
                   R$ {stage.value.toLocaleString('pt-BR')}
                 </div>
-                <div className="w-40 text-sm text-right text-gray-600">
+                <div className="w-40 text-base text-right text-gray-600">
                   Pond: R$ {stage.weightedValue.toLocaleString('pt-BR')}
                 </div>
                 <ChevronDown className={'w-5 h-5 ml-4 text-gray-400 transition-transform ' + (selectedStageForList === stage.id ? 'rotate-180' : '')} />
@@ -1351,7 +1351,7 @@ const CRMVentapel: React.FC = () => {
               
               {selectedStageForList === stage.id && stage.opportunities.length > 0 && (
                 <div className="mt-4 ml-8 mr-8 p-4 bg-gray-50 rounded-lg">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-base">
                     <thead>
                       <tr className="text-left border-b border-gray-200">
                         <th className="pb-2 font-medium text-gray-700">Oportunidade</th>
@@ -1373,7 +1373,7 @@ const CRMVentapel: React.FC = () => {
                           <td className="py-2 text-right">R$ {opp.value.toLocaleString('pt-BR')}</td>
                           <td className="py-2 text-right">{opp.probability}%</td>
                           <td className="py-2 text-right">
-                            <span className="text-xs text-purple-600 font-medium">
+                            <span className="text-base text-purple-600 font-medium">
                               {calculateSPINProgress(opp)}%
                             </span>
                           </td>
@@ -1424,7 +1424,7 @@ const CRMVentapel: React.FC = () => {
               <div className="text-xl font-bold text-gray-900">
                 R$ {metrics.totalValue.toLocaleString('pt-BR')}
               </div>
-              <div className="text-sm text-gray-600">
+              <div className="text-base text-gray-600">
                 Ponderado: R$ {metrics.weightedValue.toLocaleString('pt-BR')}
               </div>
             </div>
@@ -1462,18 +1462,18 @@ const CRMVentapel: React.FC = () => {
               <h3 className="text-xl font-bold text-gray-900">{opportunity.name}</h3>
               <OpportunityHealthScore opportunity={opportunity} />
               {/* Indicador SPIN */}
-              <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center">
+              <span className="px-2 py-1 bg-purple-100 text-purple-700 text-sm rounded-full flex items-center">
                 <FileQuestion className="w-3 h-3 mr-1" />
                 SPIN: {calculateSPINProgress(opportunity)}%
               </span>
               {isInactive30Days && (
-                <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full flex items-center">
+                <span className="px-2 py-1 bg-red-100 text-red-700 text-sm rounded-full flex items-center">
                   <Clock className="w-3 h-3 mr-1" />
                   +30 dias sem movimento
                 </span>
               )} 
               {!isInactive30Days && isInactive7Days && (
-                <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full flex items-center">
+                <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-sm rounded-full flex items-center">
                   <Clock className="w-3 h-3 mr-1" />
                   +7 dias sem movimento
                 </span>
@@ -1506,10 +1506,10 @@ const CRMVentapel: React.FC = () => {
             <div className="space-y-1">
               <p className="text-lg font-semibold text-blue-600">{opportunity.client}</p>
                            {opportunity.vendor && opportunity.vendor.trim() ? (
-                <p className="text-sm text-gray-600">👤 {opportunity.vendor}</p>
+                <p className="text-base text-gray-600">👤 {opportunity.vendor}</p>
               ) : (
                 <div className="flex items-center gap-2">
-                  <p className="text-sm text-orange-600 font-semibold">👤 Sem vendedor</p>
+                  <p className="text-base text-orange-600 font-semibold">👤 Sem vendedor</p>
                   {currentUser && (
                     <button
                       onClick={async (e) => {
@@ -1526,27 +1526,27 @@ const CRMVentapel: React.FC = () => {
                           console.error('Erro ao assumir:', err);
                         }
                       }}
-                      className="px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors"
+                      className="px-3 py-1 bg-blue-600 text-white text-base font-bold rounded-lg hover:bg-blue-700 transition-colors"
                     >
                       🙋 Assumir
                     </button>
                   )}
                 </div>
               )}
-              <p className="text-sm text-purple-600">📦 {opportunity.product}</p>
+              <p className="text-base text-purple-600">📦 {opportunity.product}</p>
               {opportunity.industry && (
-                <p className="text-sm text-gray-600">🏭 {opportunity.industry}</p>
+                <p className="text-base text-gray-600">🏭 {opportunity.industry}</p>
               )}
               {opportunity.expected_close && (
-                <p className="text-sm text-gray-600">📅 Fechamento: {new Date(opportunity.expected_close).toLocaleDateString('pt-BR')}</p>
+                <p className="text-base text-gray-600">📅 Fechamento: {new Date(opportunity.expected_close).toLocaleDateString('pt-BR')}</p>
               )}
             </div>
             {opportunity.next_action && (
               <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-800">📅 <strong>Próxima ação:</strong> {opportunity.next_action}</p>
+                <p className="text-base text-blue-800">📅 <strong>Próxima ação:</strong> {opportunity.next_action}</p>
               </div>
             )}
-            <div className="mt-2 text-xs text-gray-500">
+            <div className="mt-2 text-base text-gray-500">
               Última atualização: {new Date(opportunity.last_update).toLocaleDateString('pt-BR')}
             </div>
           </div>
@@ -1557,7 +1557,7 @@ const CRMVentapel: React.FC = () => {
             <span className={'inline-block px-4 py-2 rounded-full text-sm font-bold text-white ' + (stage?.color || '') + ' mb-2'}>
               {stage?.name} ({opportunity.probability || 0}%)
             </span>
-            <p className="text-sm text-gray-600 font-medium">
+            <p className="text-base text-gray-600 font-medium">
               Ponderado: R$ {((opportunity.value || 0) * (opportunity.probability || 0) / 100).toLocaleString('pt-BR')}
             </p>
           </div>
@@ -1570,7 +1570,7 @@ const CRMVentapel: React.FC = () => {
               {prevStage && (
                 <button
                   onClick={() => handleMoveStage(opportunity, prevStage.id)}
-                  className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                  className="px-3 py-1 text-base bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
                 >
                   ← {prevStage.name}
                 </button>
@@ -1578,7 +1578,7 @@ const CRMVentapel: React.FC = () => {
               {nextStage && (
                 <button
                   onClick={() => handleMoveStage(opportunity, nextStage.id)}
-                  className={'px-3 py-1 text-xs rounded-md transition-colors flex items-center ' + (canAdvance 
+                  className={'px-3 py-1 text-base rounded-md transition-colors flex items-center ' + (canAdvance 
                       ? 'bg-green-500 text-white hover:bg-green-600' 
                       : 'bg-red-100 text-red-600 cursor-not-allowed')}
                 >
@@ -1590,7 +1590,7 @@ const CRMVentapel: React.FC = () => {
           </div>
           
           {nextStage && (
-            <div className="text-xs text-gray-600">
+            <div className="text-base text-gray-600">
               <p className="font-medium mb-1">Requisitos para {nextStage.name}:</p>
               <ul className="space-y-1">
                 {nextStage.requirements?.map((req, idx) => (
@@ -1610,7 +1610,7 @@ const CRMVentapel: React.FC = () => {
             <div className="flex items-center space-x-2">
               <span className="text-lg font-bold text-gray-900">{avgScore.toFixed(1)}/10</span>
               {selectedOpportunity?.id === opportunity.id && (
-                <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center">
+                <span className="px-2 py-1 bg-purple-100 text-purple-700 text-sm rounded-full flex items-center">
                   <Brain className="w-3 h-3 mr-1" />
                   Em análise
                 </span>
@@ -1639,12 +1639,12 @@ const CRMVentapel: React.FC = () => {
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center">
                         <Icon className={'w-4 h-4 mr-2 ' + scale.color} />
-                        <span className="text-xs font-bold">{scale.name}</span>
+                        <span className="text-base font-bold">{scale.name}</span>
                       </div>
                       <span className="text-lg font-bold text-gray-800">{scoreValue}</span>
                     </div>
                     {scaleData.description && (
-                      <p className="text-xs text-gray-600 mt-1">{scaleData.description}</p>
+                      <p className="text-base text-gray-600 mt-1">{scaleData.description}</p>
                     )}
                   </div>
                 );
@@ -1655,7 +1655,7 @@ const CRMVentapel: React.FC = () => {
 
         <div className="border-t pt-4">
           <h4 className="font-semibold text-gray-700 mb-3">👥 Contatos Principais</h4>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 text-base">
             {opportunity.power_sponsor && (
               <div className="flex items-center">
                 <span className="font-medium text-gray-600 mr-2">Power Sponsor:</span>
@@ -1908,7 +1908,7 @@ const CRMVentapel: React.FC = () => {
                   <h3 className="text-lg font-semibold mb-4 text-blue-800">📋 Informações Básicas</h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Nome da Oportunidade *</label>
+                      <label className="block text-base font-medium mb-2 text-gray-700">Nome da Oportunidade *</label>
                       <input
                         type="text"
                         value={formData.name}
@@ -1919,7 +1919,7 @@ const CRMVentapel: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Cliente *</label>
+                      <label className="block text-base font-medium mb-2 text-gray-700">Cliente *</label>
                       <input
                         type="text"
                         value={formData.client}
@@ -1931,7 +1931,7 @@ const CRMVentapel: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Vendedor *</label>
+                        <label className="block text-base font-medium mb-2 text-gray-700">Vendedor *</label>
                         <select
                           value={formData.vendor}
                           onChange={(e) => setFormData({...formData, vendor: e.target.value})}
@@ -1946,7 +1946,7 @@ const CRMVentapel: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Valor (R$) *</label>
+                        <label className="block text-base font-medium mb-2 text-gray-700">Valor (R$) *</label>
                         <input
                           type="number"
                           value={formData.value}
@@ -1959,7 +1959,7 @@ const CRMVentapel: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Etapa *</label>
+                        <label className="block text-base font-medium mb-2 text-gray-700">Etapa *</label>
                         <select
                           value={formData.stage}
                           onChange={(e) => setFormData({...formData, stage: parseInt(e.target.value)})}
@@ -1974,7 +1974,7 @@ const CRMVentapel: React.FC = () => {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Prioridade</label>
+                        <label className="block text-base font-medium mb-2 text-gray-700">Prioridade</label>
                         <select
                           value={formData.priority}
                           onChange={(e) => setFormData({...formData, priority: e.target.value})}
@@ -1989,7 +1989,7 @@ const CRMVentapel: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Produto</label>
+                        <label className="block text-base font-medium mb-2 text-gray-700">Produto</label>
                         <input
                           type="text"
                           value={formData.product}
@@ -2000,7 +2000,7 @@ const CRMVentapel: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Indústria</label>
+                        <label className="block text-base font-medium mb-2 text-gray-700">Indústria</label>
                         <input
                           type="text"
                           value={formData.industry}
@@ -2013,7 +2013,7 @@ const CRMVentapel: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Fechamento Previsto</label>
+                        <label className="block text-base font-medium mb-2 text-gray-700">Fechamento Previsto</label>
                         <input
                           type="date"
                           value={formData.expected_close}
@@ -2023,7 +2023,7 @@ const CRMVentapel: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Próxima Ação</label>
+                        <label className="block text-base font-medium mb-2 text-gray-700">Próxima Ação</label>
                         <input
                           type="text"
                           value={formData.next_action}
@@ -2041,7 +2041,7 @@ const CRMVentapel: React.FC = () => {
                   <h3 className="text-lg font-semibold mb-4 text-green-800">👥 Contatos Principais</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Power Sponsor</label>
+                      <label className="block text-base font-medium mb-2 text-gray-700">Power Sponsor</label>
                       <input
                         type="text"
                         value={formData.power_sponsor}
@@ -2052,7 +2052,7 @@ const CRMVentapel: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Sponsor</label>
+                      <label className="block text-base font-medium mb-2 text-gray-700">Sponsor</label>
                       <input
                         type="text"
                         value={formData.sponsor}
@@ -2063,7 +2063,7 @@ const CRMVentapel: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Principal Influenciador</label>
+                      <label className="block text-base font-medium mb-2 text-gray-700">Principal Influenciador</label>
                       <input
                         type="text"
                         value={formData.influencer}
@@ -2074,7 +2074,7 @@ const CRMVentapel: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Contato de Apoio</label>
+                      <label className="block text-base font-medium mb-2 text-gray-700">Contato de Apoio</label>
                       <input
                         type="text"
                         value={formData.support_contact}
@@ -2107,8 +2107,8 @@ const CRMVentapel: React.FC = () => {
                             <div className="flex items-center">
                               <Icon className={'w-5 h-5 mr-3 ' + scale.color} />
                               <div>
-                                <span className="font-bold text-sm">{scale.name}</span>
-                                <p className="text-xs text-gray-600">{scale.description}</p>
+                                <span className="font-bold text-base">{scale.name}</span>
+                                <p className="text-base text-gray-600">{scale.description}</p>
                               </div>
                             </div>
                             <div className="flex items-center space-x-2">
@@ -2122,14 +2122,14 @@ const CRMVentapel: React.FC = () => {
                               <div className="space-y-3">
                                 <div>
                                   <div className="flex justify-between items-center mb-2">
-                                    <label className="block text-sm font-medium">Score (0-10)</label>
+                                    <label className="block text-base font-medium">Score (0-10)</label>
                                     <button
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setShowScaleSelector(isSelectorOpen ? null : scale.id);
                                       }}
-                                      className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-lg hover:bg-purple-200 transition-colors flex items-center"
+                                      className="text-base bg-purple-100 text-purple-700 px-3 py-1 rounded-lg hover:bg-purple-200 transition-colors flex items-center"
                                     >
                                       Ver opções de escala
                                       {isSelectorOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
@@ -2150,7 +2150,7 @@ const CRMVentapel: React.FC = () => {
                                         >
                                           <div className="flex items-start">
                                             <span className="font-bold text-purple-700 mr-2 min-w-[20px]">{def.level}</span>
-                                            <span className="text-xs text-gray-700">{def.text}</span>
+                                            <span className="text-base text-gray-700">{def.text}</span>
                                           </div>
                                         </button>
                                       ))}
@@ -2166,14 +2166,14 @@ const CRMVentapel: React.FC = () => {
                                     className="w-full"
                                     disabled={submitting}
                                   />
-                                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                  <div className="flex justify-between text-base text-gray-500 mt-1">
                                     <span>0</span>
                                     <span className="font-bold">{scaleData.score}</span>
                                     <span>10</span>
                                   </div>
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium mb-2">Observações</label>
+                                  <label className="block text-base font-medium mb-2">Observações</label>
                                   <textarea
                                     value={scaleData.description}
                                     onChange={(e) => updateScale(scale.id, 'description', e.target.value)}
@@ -2197,8 +2197,8 @@ const CRMVentapel: React.FC = () => {
                                 />
 
                                 <div className="bg-white p-3 rounded-lg">
-                                  <p className="text-xs font-medium text-gray-700 mb-2">Perguntas-chave gerais:</p>
-                                  <ul className="text-xs text-gray-600 space-y-1">
+                                  <p className="text-base font-medium text-gray-700 mb-2">Perguntas-chave gerais:</p>
+                                  <ul className="text-base text-gray-600 space-y-1">
                                     {scale.questions?.map((question, idx) => (
                                       <li key={idx} className="flex items-start">
                                         <span className="text-purple-500 mr-2">•</span>
@@ -2315,7 +2315,7 @@ const CRMVentapel: React.FC = () => {
           <div className="p-6">
             <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
               <h4 className="font-semibold text-blue-800 mb-2">📋 {showStageChecklist.opportunity.name}</h4>
-              <p className="text-sm text-blue-700">{showStageChecklist.opportunity.client}</p>
+              <p className="text-base text-blue-700">{showStageChecklist.opportunity.client}</p>
             </div>
 
             <div className="space-y-3">
@@ -2341,7 +2341,7 @@ const CRMVentapel: React.FC = () => {
             </div>
 
             <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
-              <p className="text-sm text-amber-800">
+              <p className="text-base text-amber-800">
                 <AlertCircle className="inline-block w-4 h-4 mr-1" />
                 <strong>Atenção:</strong> Confirme que todos os requisitos foram cumpridos antes de avançar.
               </p>
@@ -2374,80 +2374,82 @@ const CRMVentapel: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-50">
-      <header className="bg-white shadow-lg border-b-2 border-blue-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <div className="p-3 bg-gradient-to-r from-blue-600 to-green-600 rounded-xl">
-                <Factory className="w-8 h-8 text-white" />
+      <div className="sticky top-0 z-40">
+        <header className="bg-white shadow-sm border-b border-blue-200">
+          <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center py-3">
+              <div className="flex items-center">
+                <div className="p-2 bg-gradient-to-r from-blue-600 to-green-600 rounded-lg">
+                  <Factory className="w-6 h-6 text-white" />
+                </div>
+                <div className="ml-3">
+                  <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                    🇧🇷 CRM Ventapel Brasil
+                  </h1>
+                  <p className="text-base text-gray-600">Metodologia PPVVCC - Gestão Completa de Oportunidades</p>
+                </div>
               </div>
-              <div className="ml-4">
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                  🇧🇷 CRM Ventapel Brasil
-                </h1>
-                <p className="text-sm text-gray-600">Metodologia PPVVCC - Gestão Completa de Oportunidades</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <select
-                value={currentUser || ''}
-                onChange={(e) => setCurrentUser(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Selecionar vendedor...</option>
-                {vendors.map(vendor => (
-                  <option key={vendor.name} value={vendor.name}>
-                    {vendor.name} {vendor.role && `(${vendor.role})`}
-                  </option>
-                ))}
-              </select>
-              <div className="text-right">
-                <p className="text-sm font-medium text-blue-600">🌎 ventapel.com.br</p>
-                <div className="flex items-center text-xs text-green-600">
-                  <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
-                  {currentUser ? `${currentUser} online` : 'Online'}
+              <div className="flex items-center space-x-4">
+                <select
+                  value={currentUser || ''}
+                  onChange={(e) => setCurrentUser(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
+                >
+                  <option value="">Selecionar vendedor...</option>
+                  {vendors.map(vendor => (
+                    <option key={vendor.name} value={vendor.name}>
+                      {vendor.name} {vendor.role && `(${vendor.role})`}
+                    </option>
+                  ))}
+                </select>
+                <div className="text-right">
+                  <p className="text-base font-medium text-blue-600">🌎 ventapel.com.br</p>
+                  <div className="flex items-center text-base text-green-600">
+                    <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
+                    {currentUser ? `${currentUser} online` : 'Online'}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <nav className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'dashboard'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700')}
-            >
-              <BarChart3 className="w-4 h-4 mr-2" />
-              📊 Dashboard
-            </button>
-            <button
-              onClick={() => setActiveTab('opportunities')}
-              className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'opportunities'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700')}
-            >
-              <Target className="w-4 h-4 mr-2" />
-              🎯 {currentVendorInfo?.is_admin ? 'Todas Oportunidades' : 'Minhas Oportunidades'}
-            </button>
-            <button
-              onClick={() => setActiveTab('activities')}
-              className={'py-4 px-2 border-b-2 font-bold text-sm flex items-center ' + (activeTab === 'activities'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700')}
-            >
-              <Clock className="w-4 h-4 mr-2" />
-              📋 Gestão de Atividades
-            </button>
+        <nav className="bg-white shadow-sm border-b border-gray-200">
+          <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex space-x-6">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={'py-3 px-2 border-b-2 font-bold text-base flex items-center ' + (activeTab === 'dashboard'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700')}
+              >
+                <BarChart3 className="w-5 h-5 mr-2" />
+                📊 Dashboard
+              </button>
+              <button
+                onClick={() => setActiveTab('opportunities')}
+                className={'py-3 px-2 border-b-2 font-bold text-base flex items-center ' + (activeTab === 'opportunities'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700')}
+              >
+                <Target className="w-5 h-5 mr-2" />
+                🎯 {currentVendorInfo?.is_admin ? 'Todas Oportunidades' : 'Minhas Oportunidades'}
+              </button>
+              <button
+                onClick={() => setActiveTab('activities')}
+                className={'py-3 px-2 border-b-2 font-bold text-base flex items-center ' + (activeTab === 'activities'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700')}
+              >
+                <Clock className="w-5 h-5 mr-2" />
+                📋 Gestão de Atividades
+              </button>
+            </div>
           </div>
-        </div>
-      </nav>
+        </nav>
+      </div>
       
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'opportunities' && <OpportunityList />}
           {activeTab === 'activities' && (
