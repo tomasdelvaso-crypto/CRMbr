@@ -1227,9 +1227,9 @@ const CRMVentapel: React.FC = () => {
           <div>
             <h2 className="text-2xl font-bold mb-2">🎯 CRM Ventapel Brasil</h2>
             <p className="text-blue-100">Sistema de Vendas Consultivas - Metodologia PPVVCC</p>
-            <p className="text-blue-100 text-sm">🔗 Conectado ao Supabase</p>
+            <p className="text-blue-100 text-base">🔗 Conectado ao Supabase</p>
             {currentUser && (
-              <p className="text-yellow-300 text-sm mt-1">
+              <p className="text-yellow-300 text-base mt-1">
                 👤 {currentUser} {currentVendorInfo?.role && `(${currentVendorInfo.role})`}
               </p>
             )}
@@ -1251,11 +1251,11 @@ const CRMVentapel: React.FC = () => {
               <DollarSign className="w-8 h-8 text-green-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-green-700">Pipeline Total</p>
+              <p className="text-base font-medium text-green-700">Pipeline Total</p>
               <p className="text-2xl font-bold text-green-800">
                 R$ {metrics.totalValue.toLocaleString('pt-BR')}
               </p>
-              <p className="text-sm text-green-600">
+              <p className="text-base text-green-600">
                 Ponderado: R$ {metrics.weightedValue.toLocaleString('pt-BR')}
               </p>
             </div>
@@ -1268,7 +1268,7 @@ const CRMVentapel: React.FC = () => {
               <Target className="w-8 h-8 text-blue-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-blue-700">Oportunidades</p>
+              <p className="text-base font-medium text-blue-700">Oportunidades</p>
               <p className="text-2xl font-bold text-blue-800">{metrics.totalOpportunities}</p>
             </div>
           </div>
@@ -1280,7 +1280,7 @@ const CRMVentapel: React.FC = () => {
               <BarChart3 className="w-8 h-8 text-purple-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-purple-700">Score PPVVCC</p>
+              <p className="text-base font-medium text-purple-700">Score PPVVCC</p>
               <p className="text-2xl font-bold text-purple-800">{metrics.avgScore.toFixed(1)}/10</p>
             </div>
           </div>
@@ -1292,7 +1292,7 @@ const CRMVentapel: React.FC = () => {
               <TrendingUp className="w-8 h-8 text-orange-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-orange-700">Prob. Média</p>
+              <p className="text-base font-medium text-orange-700">Prob. Média</p>
               <p className="text-2xl font-bold text-orange-800">{metrics.avgProbability.toFixed(0)}%</p>
             </div>
           </div>
@@ -1303,11 +1303,11 @@ const CRMVentapel: React.FC = () => {
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-semibold text-gray-800">📊 Funil de Vendas</h3>
           <div className="flex items-center space-x-4">
-            <label className="text-sm font-medium text-gray-700">Filtrar por vendedor:</label>
+            <label className="text-base font-medium text-gray-700">Filtrar por vendedor:</label>
             <select
               value={dashboardVendorFilter}
               onChange={(e) => setDashboardVendorFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
               disabled={!currentVendorInfo?.is_admin && Boolean(currentUser)}
             >
               <option value="all">👥 Todos vendedores</option>
@@ -1327,23 +1327,23 @@ const CRMVentapel: React.FC = () => {
                 className="flex items-center cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
                 onClick={() => setSelectedStageForList(selectedStageForList === stage.id ? null : stage.id)}
               >
-                <div className="w-32 text-sm font-medium text-gray-700">{stage.name}</div>
+                <div className="w-40 text-base font-medium text-gray-700">{stage.name}</div>
                 <div className="flex-1 mx-6">
                   <div className="bg-gray-200 rounded-full h-8 relative">
                     <div 
                       className={stage.color + ' h-8 rounded-full transition-all duration-500'}
                       style={{ width: Math.max((stage.count / Math.max(...metrics.stageDistribution.map(s => s.count), 1)) * 100, 5) + '%' }}
                     ></div>
-                    <div className="absolute inset-0 flex items-center justify-center text-sm font-medium text-white">
+                    <div className="absolute inset-0 flex items-center justify-center text-base font-medium text-white">
                       {stage.count > 0 && stage.count + ' oportunidades'}
                     </div>
                   </div>
                 </div>
-                <div className="w-20 text-sm text-gray-600 text-center">{stage.count}</div>
-                <div className="w-40 text-sm font-medium text-right text-gray-800">
+                <div className="w-20 text-base text-gray-600 text-center">{stage.count}</div>
+                <div className="w-48 text-base font-medium text-right text-gray-800">
                   R$ {stage.value.toLocaleString('pt-BR')}
                 </div>
-                <div className="w-40 text-sm text-right text-gray-600">
+                <div className="w-48 text-base text-right text-gray-600">
                   Pond: R$ {stage.weightedValue.toLocaleString('pt-BR')}
                 </div>
                 <ChevronDown className={'w-5 h-5 ml-4 text-gray-400 transition-transform ' + (selectedStageForList === stage.id ? 'rotate-180' : '')} />
@@ -1351,7 +1351,7 @@ const CRMVentapel: React.FC = () => {
               
               {selectedStageForList === stage.id && stage.opportunities.length > 0 && (
                 <div className="mt-4 ml-8 mr-8 p-4 bg-gray-50 rounded-lg">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-base">
                     <thead>
                       <tr className="text-left border-b border-gray-200">
                         <th className="pb-2 font-medium text-gray-700">Oportunidade</th>
@@ -2377,7 +2377,7 @@ const CRMVentapel: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-50">
       <div className="sticky top-0 z-40 bg-white">
       <header className="bg-white shadow-sm border-b border-blue-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto px-6 lg:px-10">
           <div className="flex justify-between items-center py-3">
             <div className="flex items-center">
               <div className="p-3 bg-gradient-to-r from-blue-600 to-green-600 rounded-xl">
@@ -2394,7 +2394,7 @@ const CRMVentapel: React.FC = () => {
               <select
                 value={currentUser || ''}
                 onChange={(e) => setCurrentUser(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
               >
                 <option value="">Selecionar vendedor...</option>
                 {vendors.map(vendor => (
@@ -2416,7 +2416,7 @@ const CRMVentapel: React.FC = () => {
       </header>
 
       <nav className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto px-6 lg:px-10">
           <div className="flex space-x-8">
             <button
               onClick={() => setActiveTab('dashboard')}
@@ -2450,7 +2450,7 @@ const CRMVentapel: React.FC = () => {
       </nav>
       </div>
       
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="mx-auto px-6 lg:px-10 py-6 pr-16">
         {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'opportunities' && <OpportunityList />}
           {activeTab === 'activities' && (
