@@ -1693,7 +1693,7 @@ const CRMVentapel: React.FC = () => {
     );
   };
 
-  const OpportunityList = () => (
+  const opportunityListContent = (
     <div className="space-y-6">
       {error && <ErrorAlert error={error} onClose={() => setError(null)} />}
 
@@ -2452,7 +2452,7 @@ const CRMVentapel: React.FC = () => {
       
       <main className="mx-auto px-6 lg:px-10 py-6 pr-16">
         {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'opportunities' && <OpportunityList />}
+        {activeTab === 'opportunities' && opportunityListContent}
           {activeTab === 'activities' && (
           <ActivityDashboard 
             supabase={supabase} 
