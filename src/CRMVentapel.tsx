@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
-import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users, Brain, HelpCircle, FileQuestion } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
+import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users, Brain, HelpCircle, FileQuestion, LogOut, Lock, Mail } from 'lucide-react';
+import { createClient, Session } from '@supabase/supabase-js';
 import AIAssistant from './AIAssistant';
 import { ActivityPanel, ActivityDashboard } from './ActivityComponents';
 
@@ -79,6 +79,8 @@ interface VendorInfo {
   email?: string;
   role?: string;
   is_admin?: boolean;
+  auth_user_id?: string;
+  auth_id?: string;
 }
 
 // --- UTILIDADES ---
@@ -124,46 +126,18 @@ class SupabaseService {
   }
 
   async fetchVendors(): Promise<VendorInfo[]> {
-    try {
-      const { data: vendorsData, error: vendorsError } = await supabase
-        .from('vendors')
-        .select('*')
-        .eq('is_active', true);
+    const { data: vendorsData, error: vendorsError } = await supabase
+      .from('vendors')
+      .select('*')
+      .eq('is_active', true);
 
-      if (vendorsData && vendorsData.length > 0) {
-        return vendorsData;
-      }
+    if (vendorsError) throw vendorsError;
 
-      const { data: oppsData, error: oppsError } = await supabase
-        .from('opportunities')
-        .select('vendor');
-
-      if (oppsError) throw oppsError;
-
-      const uniqueVendors = [...new Set(oppsData?.map(o => o.vendor).filter(Boolean) || [])];
-      
-      return uniqueVendors.map(name => ({
-        name,
-        role: this.getVendorRole(name),
-        is_admin: name === 'Tomás'
-      }));
-    } catch (error) {
-      console.error('Error fetching vendors:', error);
-      return ['Tomás', 'Jordi', 'Matheus', 'Carlos', 'Paulo'].map(name => ({
-        name,
-        role: this.getVendorRole(name),
-        is_admin: name === 'Tomás'
-      }));
+    if (!vendorsData || vendorsData.length === 0) {
+      throw new Error('Nenhum vendedor ativo encontrado na tabela vendors');
     }
-  }
 
-  private getVendorRole(name: string): string {
-    const roles: Record<string, string> = {
-      'Tomás': 'CEO/Head of Sales',
-      'Jordi': 'Sales Manager',
-      'Matheus': 'Account Executive'
-    };
-    return roles[name] || 'Vendedor';
+    return vendorsData;
   }
 
   private normalizeScales(scales: any): Scales {
@@ -802,6 +776,7 @@ interface OpportunitiesContextType {
   updateOpportunity: (id: number, data: OpportunityFormData) => Promise<boolean>;
   deleteOpportunity: (id: number) => Promise<void>;
   moveStage: (opportunity: Opportunity, newStage: number) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const OpportunitiesContext = createContext<OpportunitiesContextType | null>(null);
@@ -815,7 +790,7 @@ const useOpportunitiesContext = () => {
 };
 
 // --- PROVIDER COMPONENT ---
-const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Session }> = ({ children, session }) => {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [vendors, setVendors] = useState<VendorInfo[]>([]);
   const [currentUser, setCurrentUser] = useState<string | null>(null);
@@ -827,19 +802,22 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const vendorData = await supabaseService.fetchVendors();
       setVendors(vendorData);
       
-      if (!currentUser) {
-        const savedUser = localStorage.getItem('ventapel_user');
-        if (savedUser && vendorData.some(v => v.name === savedUser)) {
-          setCurrentUser(savedUser);
-        } else if (vendorData.length > 0) {
-          setCurrentUser(vendorData[0].name);
-        }
+      // Resolve currentUser from authenticated session
+      const authUserId = session.user.id;
+      const matchedVendor = vendorData.find(v => 
+        v.auth_user_id === authUserId || (v as any).auth_id === authUserId
+      );
+      if (matchedVendor) {
+        setCurrentUser(matchedVendor.name);
+      } else {
+        console.error('No vendor found for auth user:', authUserId);
+        setError('Usuário autenticado não vinculado a um vendedor');
       }
     } catch (err) {
       console.error('Erro ao carregar vendedores:', err);
       setError('Erro ao carregar vendedores');
     }
-  }, [currentUser]);
+  }, [session.user.id]);
 
   const loadOpportunities = useCallback(async () => {
     try {
@@ -1017,6 +995,12 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [currentUser]);
 
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    localStorage.removeItem('ventapel_user');
+  }, []);
+
   const value = useMemo(() => ({
     opportunities,
     loading,
@@ -1030,8 +1014,9 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     createOpportunity,
     updateOpportunity,
     deleteOpportunity,
-    moveStage
-  }), [opportunities, loading, error, vendors, currentUser, loadOpportunities, loadVendors, createOpportunity, updateOpportunity, deleteOpportunity, moveStage]);
+    moveStage,
+    logout
+  }), [opportunities, loading, error, vendors, currentUser, loadOpportunities, loadVendors, createOpportunity, updateOpportunity, deleteOpportunity, moveStage, logout]);
 
   return (
     <OpportunitiesContext.Provider value={value}>
@@ -1131,7 +1116,8 @@ const CRMVentapel: React.FC = () => {
     createOpportunity, 
     updateOpportunity, 
     deleteOpportunity, 
-    moveStage 
+    moveStage,
+    logout 
   } = useOpportunitiesContext();
   
   const filters = useFilters();
@@ -2391,18 +2377,24 @@ const CRMVentapel: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <select
-                value={currentUser || ''}
-                onChange={(e) => setCurrentUser(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
-              >
-                <option value="">Selecionar vendedor...</option>
-                {vendors.map(vendor => (
-                  <option key={vendor.name} value={vendor.name}>
-                    {vendor.name} {vendor.role && `(${vendor.role})`}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <User className="w-4 h-4 text-blue-600 mr-2" />
+                  <span className="text-sm font-medium text-blue-800">
+                    {currentUser} {currentVendorInfo?.role && `(${currentVendorInfo.role})`}
+                  </span>
+                  {currentVendorInfo?.is_admin && (
+                    <span className="ml-2 px-1.5 py-0.5 text-xs bg-blue-600 text-white rounded">Admin</span>
+                  )}
+                </div>
+                <button
+                  onClick={logout}
+                  className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Sair"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
               <div className="text-right">
                 <p className="text-sm font-medium text-blue-600">🌎 ventapel.com.br</p>
                 <div className="flex items-center text-xs text-green-600">
@@ -2498,10 +2490,144 @@ const CRMVentapel: React.FC = () => {
   );
 };
 
-// --- APP WRAPPER CON PROVIDER ---
-const App: React.FC = () => {
+// --- LOGIN SCREEN ---
+const LoginScreen: React.FC<{ onLogin: (session: Session) => void }> = ({ onLogin }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (authError) throw authError;
+      if (data.session) {
+        onLogin(data.session);
+      }
+    } catch (err: any) {
+      setError(err.message === 'Invalid login credentials' 
+        ? 'Email ou senha incorretos' 
+        : err.message || 'Erro ao fazer login');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <OpportunitiesProvider>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center px-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="inline-flex p-4 bg-gradient-to-r from-blue-600 to-green-600 rounded-2xl mb-4">
+            <Factory className="w-10 h-10 text-white" />
+          </div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+            🇧🇷 CRM Ventapel Brasil
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">Metodologia PPVVCC</p>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
+          <h2 className="text-xl font-semibold text-gray-800 mb-6 text-center">Entrar</h2>
+          
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center text-red-700 text-sm">
+              <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="seu@ventapel.com"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                  autoComplete="email"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                  autoComplete="current-password"
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loading || !email || !password}
+              className="w-full py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-base"
+            >
+              {loading ? 'Entrando...' : 'Entrar'}
+            </button>
+          </form>
+        </div>
+
+        <p className="text-center text-xs text-gray-400 mt-6">🌎 ventapel.com.br</p>
+      </div>
+    </div>
+  );
+};
+
+// --- APP WRAPPER CON AUTH ---
+const App: React.FC = () => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Check existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (!session) setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-flex p-4 bg-gradient-to-r from-blue-600 to-green-600 rounded-2xl mb-4 animate-pulse">
+            <Factory className="w-10 h-10 text-white" />
+          </div>
+          <p className="text-gray-500">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginScreen onLogin={setSession} />;
+  }
+
+  return (
+    <OpportunitiesProvider session={session}>
       <CRMVentapel />
     </OpportunitiesProvider>
   );
