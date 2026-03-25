@@ -158,7 +158,7 @@ ${webResults}`);
     if (!activities || activities.length === 0) return this;
     
     const historyLines = activities.slice(0, 10).map(a => {
-      const date = new Date(a.created_at).toLocaleDateString('pt-BR');
+      const date = new Date(a.activity_date || a.created_at).toLocaleDateString('pt-BR');
       const result = a.result ? ` → Resultado: ${a.result}` : ' (pendente)';
       const source = a.source === 'ai_generated' ? '[IA]' : '[Manual]';
       const desc = a.description ? a.description.substring(0, 100) : '';
