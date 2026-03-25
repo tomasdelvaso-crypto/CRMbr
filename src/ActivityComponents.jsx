@@ -241,6 +241,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
   const [formNext, setFormNext] = useState('');
   const [formDate, setFormDate] = useState('');
   const [formCode, setFormCode] = useState('');
+  const [formActivityDate, setFormActivityDate] = useState(new Date().toISOString().split('T')[0]);
   const [saving, setSaving] = useState(false);
 
   const svc = useMemo(() => new ActivityService(supabase), [supabase]);
@@ -338,7 +339,9 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
       {showForm && (
         <div className="p-4 bg-blue-50 border-b">
           <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div><label className="text-sm font-semibold text-gray-600">Data da atividade</label>
+                <input type="date" value={formActivityDate} onChange={e => setFormActivityDate(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1" /></div>
               <div><label className="text-sm font-semibold text-gray-600">Tipo</label>
                 <select value={formType} onChange={e => setFormType(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1">
                   {Object.entries(ACTIVITY_TYPE_CONFIG).filter(([k]) => !['ai_suggestion','stage_change'].includes(k)).map(([k,c]) => <option key={k} value={k}>{c.icon} {c.label}</option>)}
@@ -363,7 +366,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
                 <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1" /></div>
             </div>
             <div className="flex gap-2">
-              <button onClick={async () => { if (!formDesc.trim()) return; setSaving(true); try { await svc.create({ opportunity_id: opportunity.id, vendor: currentUser||'', activity_type: formType, description: formDesc.trim(), result: formResult, stage_at_time: opportunity.stage, methodology_code: formCode||null, ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null, next_action: formNext.trim()||null, next_action_date: formDate||null, next_action_done: false, source: 'manual' }); setFormDesc('');setFormResult('pendente');setFormNext('');setFormDate('');setFormCode('');setShowForm(false); await loadAll(); } catch(e){alert('Erro');} finally{setSaving(false);} }} disabled={saving||!formDesc.trim()}
+              <button onClick={async () => { if (!formDesc.trim()) return; setSaving(true); try { await svc.create({ opportunity_id: opportunity.id, vendor: currentUser||'', activity_type: formType, description: formDesc.trim(), result: formResult, stage_at_time: opportunity.stage, methodology_code: formCode||null, ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null, next_action: formNext.trim()||null, next_action_date: formDate||null, next_action_done: false, source: 'manual', activity_date: formActivityDate||null }); setFormDesc('');setFormResult('pendente');setFormNext('');setFormDate('');setFormCode('');setFormActivityDate(new Date().toISOString().split('T')[0]);setShowForm(false); await loadAll(); } catch(e){alert('Erro');} finally{setSaving(false);} }} disabled={saving||!formDesc.trim()}
                 className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold disabled:bg-gray-300 flex items-center justify-center">
                 {saving ? '⏳' : <><Save className="w-4 h-4 mr-1" /> Registrar</>}</button>
               <button onClick={() => setShowForm(false)} className="px-4 py-2.5 text-gray-500 border rounded-lg text-sm">Cancelar</button>
@@ -395,7 +398,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
                     {r && <span className={`text-sm ${r.color}`}>{r.icon}</span>}
                     {disc && <span className="text-xs bg-red-100 text-red-600 px-1.5 rounded">Descartado</span>}
                     {exp && <span className="text-xs bg-gray-100 text-gray-500 px-1.5 rounded">Expirado</span>}
-                    <span className="text-xs text-gray-400 ml-auto">{new Date(a.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</span>
+                    <span className="text-xs text-gray-400 ml-auto">{new Date(a.activity_date || a.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}{!a.activity_date ? ' '+new Date(a.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
                   </div>
                   <p className="text-sm text-gray-800 mt-1">{a.description}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{a.source==='ai_generated'?'🤖 Ventus':'👤 '+a.vendor}{a.stage_at_time?' • Etapa '+a.stage_at_time:''}</p>
