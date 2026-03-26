@@ -179,7 +179,9 @@ IMPORTANTE: Baseie suas novas sugestões no que JÁ foi tentado. NÃO repita aç
 ---
 **TAREFA ESPECIAL: GERAR PLANO DE AÇÕES**
 
-Analise o contexto acima e gere exatamente ${numActions} ação(ões) concretas e personalizadas para avançar esta oportunidade.
+Analise o contexto acima e gere ${numActions === 1 ? '1 ação concreta' : 'até 2 ações concretas'} para avançar esta oportunidade.
+
+${numActions === 2 ? 'IMPORTANTE: Só gere 2 ações se forem realmente complementares (movem escalas diferentes) ou representam dois caminhos alternativos. Se uma única ação bem feita resolve, gere apenas 1. Qualidade > quantidade.' : 'Gere UMA ação focada e de alto impacto. A melhor coisa que o vendedor pode fazer AGORA.'}
 
 Responda SOMENTE com JSON válido, sem markdown, sem backticks, sem texto antes ou depois. Formato exato:
 
@@ -203,12 +205,13 @@ Responda SOMENTE com JSON válido, sem markdown, sem backticks, sem texto antes 
 
 REGRAS:
 1. Cada ação DEVE mover uma escala específica
-2. Priorize escalas com score mais baixo vs o que a etapa exige
+2. Priorize a escala com score mais baixo vs o que a etapa exige
 3. Use NOMES REAIS dos contatos quando disponíveis
 4. O draft_content deve ser COMPLETO e USÁVEL — não genérico
 5. Se há caso de referência da mesma indústria, incorpore-o no draft
-6. Ordene por impacto: a ação 1 é a mais urgente
-7. NÃO repita a mesma escala em duas ações diferentes`);
+6. NUNCA gere ações repetidas ou que já foram tentadas (veja histórico)
+7. NÃO repita a mesma escala em duas ações diferentes
+8. Prefira 1 ação excelente do que 2 mediocres`);
     return this;
   }
 
