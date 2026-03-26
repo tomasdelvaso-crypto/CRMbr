@@ -12,6 +12,7 @@ const CASOS_EXITO_REAIS = {
  'honda': {
    empresa: 'Honda Argentina',
    setor: 'Automotivo',
+   produto_linha: ['better_pack', 'better_pack_venom'],
    problema: 'Velocidade limitada, 1% perdas, problemas ergonômicos',
    solucao: 'BP555 + Fita Gorilla 300m',
    resultados: {
@@ -33,6 +34,7 @@ const CASOS_EXITO_REAIS = {
  'loreal': {
    empresa: "L'Oréal Brasil",
    setor: 'Cosmética',
+   produto_linha: ['better_pack_venom'],
    problema: '+10% perdas por roubo, gargalos de produção',
    solucao: 'RSA + Fita Gorilla 700m',
    resultados: {
@@ -56,6 +58,7 @@ const CASOS_EXITO_REAIS = {
  'nike': {
    empresa: 'Nike Brasil',
    setor: 'Calçado/Têxtil',
+   produto_linha: ['better_pack_venom'],
    problema: '10% perdas em transporte',
    solucao: 'BP755 + Fita Gorilla 300m',
    resultados: {
@@ -78,6 +81,7 @@ const CASOS_EXITO_REAIS = {
  'mercadolibre': {
    empresa: 'MercadoLibre',
    setor: 'E-commerce',
+   produto_linha: ['better_pack_venom'],
    problema: 'Alto retrabalho, perdas em fulfillment',
    solucao: 'BP555e + Fita VENOM',
    resultados: {
@@ -96,6 +100,7 @@ const CASOS_EXITO_REAIS = {
 'correio_argentino': {
   empresa: 'Correo Argentino',
   setor: 'Logística/Postal',
+  produto_linha: ['better_pack_venom'],
   problema: 'Roubos de celulares em trânsito, departamento de segurança questionava a fita gomada por possível violação sem evidência',
   solucao: 'BP555e + Fita VENOM + protocolo de fechamento padronizado + processo de verificação imediata',
   resultados: {
@@ -114,6 +119,76 @@ const CASOS_EXITO_REAIS = {
     departamento_envolvido: 'Segurança e prevenção de roubos'
   },
   aprendizado_chave: 'A fita gomada SEMPRE deixa evidência de violação. O êxito depende de: 1) Padronizar o método de fechamento, 2) Treinar o receptor para detectar anomalias, 3) Protocolo de reporte imediato'
+},
+
+'ecomfill_ecommerce': {
+  empresa: 'Referência: E-commerce Moda BR',
+  setor: 'E-commerce/Moda',
+  produto_linha: ['ecomfill_resmas'],
+  problema: 'Over-packaging com caixas de cartão para produtos não frágeis (roupas, acessórios), alto custo de frete por peso volumétrico, devoluções complicadas',
+  solucao: 'E-combag Paper com sistema Vai e Vem + E-combag Pro para itens frágeis',
+  resultados: {
+    reducao_material: '-60% custo de material vs caixa+preenchimento',
+    frete: '-35% custo de frete por peso volumétrico reduzido',
+    velocidade_packing: '+50% velocidade de empacotamento',
+    devolucoes: 'Sistema Vai e Vem facilita logística inversa',
+    roi_meses: 3,
+    investimento: 80000
+  },
+  tags: ['e-commerce', 'moda', 'têxtil', 'logística-inversa', 'sustentável', 'sobres', 'SIOC', 'frete'],
+  metricas_detalhe: {
+    regiao: 'Brasil',
+    tipo_operacao: 'Fulfillment center moda/acessórios',
+    volume: 'Médio-alto volume diário',
+    beneficio_principal: 'Eliminação de caixas para 70% dos envios'
+  },
+  aprendizado_chave: 'Para moda e acessórios, a caixa de cartão é over-packaging. O E-combag Paper elimina caixa, relleno e cinta de um golpe. O sistema Vai e Vem resolve a logística inversa que é pesadelo do e-commerce de moda.'
+},
+
+'ecomfill_cosmeticos': {
+  empresa: 'Referência: Indústria Cosmética BR',
+  setor: 'Cosmética/DTC',
+  produto_linha: ['ecomfill_resmas'],
+  problema: 'Plástico bolha para proteger frascos gera imagem negativa da marca, unboxing experience pobre, custo alto de preenchimento',
+  solucao: 'E-compaper Wrap (honeycomb) + E-comfill V-PAD TH para void-fill',
+  resultados: {
+    eliminacao_plastico: '100% eliminação de plástico bolha',
+    unboxing: 'Melhoria significativa na experiência de unboxing',
+    sustentabilidade: '100% papel reciclável',
+    velocidade: '+40% velocidade de preenchimento',
+    roi_meses: 4,
+    investimento: 120000
+  },
+  tags: ['cosmética', 'DTC', 'sustentável', 'unboxing', 'papel', 'premium', 'anti-plástico'],
+  metricas_detalhe: {
+    regiao: 'Brasil',
+    tipo_operacao: 'Envio direto ao consumidor (DTC)',
+    beneficio_principal: 'Papel honeycomb dá visual premium e é 100% reciclável'
+  },
+  aprendizado_chave: 'Marcas premium de cosmética estão sob pressão para eliminar plástico. O E-compaper Wrap (honeycomb) dá proteção real + visual premium no unboxing. É o oposto do plástico bolha — o cliente percebe como sustentável e sofisticado.'
+},
+
+'ecomfill_fulfillment': {
+  empresa: 'Referência: Centro de Fulfillment BR',
+  setor: 'Logística/3PL',
+  produto_linha: ['ecomfill_resmas', 'better_pack_venom'],
+  problema: 'Air pillows ocupam muito espaço de armazém, velocidade de preenchimento lenta, ESG exigindo redução de plástico',
+  solucao: 'E-comfill V-FILLT PRO (126.5 m/min) + E-compaper Fill + BP555e para fechamento',
+  resultados: {
+    espaco_armazem: '-80% espaço de armazenamento vs air pillows',
+    velocidade: '126.5 m/min de preenchimento (anti-atolamento)',
+    eliminacao_plastico: '100% eliminação de air pillows',
+    roi_meses: 6,
+    investimento: 250000
+  },
+  tags: ['logística', '3PL', 'fulfillment', 'air-pillows', 'sustentável', 'alto-volume', 'armazém', 'ESG'],
+  metricas_detalhe: {
+    regiao: 'Brasil',
+    tipo_operacao: 'Centro de fulfillment multi-cliente',
+    volume: 'Alto volume (1000+ pacotes/dia)',
+    beneficio_principal: 'Rolos de papel flat ocupam fração do espaço de air pillows pre-inflados'
+  },
+  aprendizado_chave: 'O V-FILLT PRO é a arma para alto volume. 126.5 m/min com anti-atolamento resolve o gargalo de preenchimento. O argumento killer é espaço: rolos de papel flat vs montanhas de air pillows. E compliance ESG cada vez mais exigido por clientes grandes.'
 }
 };
 
@@ -190,16 +265,19 @@ function findRelevantCases(opportunity) {
  
  const relevantCases = [];
  const oppTags = [];
+ const oppProductLines = opportunity.product_lines || [];
  
- // Gerar tags da oportunidade atual - ENRIQUECIDA com novos campos
+ // Gerar tags da oportunidade atual
  if (opportunity.industry) {
    oppTags.push(opportunity.industry.toLowerCase());
  }
  if (opportunity.product) {
-   // Adicionar tags baseadas no produto
    if (opportunity.product.toLowerCase().includes('bp')) oppTags.push('máquina');
    if (opportunity.product.toLowerCase().includes('fita')) oppTags.push('fita');
    if (opportunity.product.toLowerCase().includes('venom')) oppTags.push('anti-roubo');
+   if (opportunity.product.toLowerCase().includes('ecomfill')) oppTags.push('sustentável');
+   if (opportunity.product.toLowerCase().includes('sobre')) oppTags.push('sobres');
+   if (opportunity.product.toLowerCase().includes('resma')) oppTags.push('papel');
  }
  if (opportunity.value > 500000) {
    oppTags.push('enterprise', 'alto-volume');
@@ -210,13 +288,26 @@ function findRelevantCases(opportunity) {
  if (opportunity.scales?.dor?.description?.includes('ergon')) {
    oppTags.push('ergonomia');
  }
+ if (opportunity.scales?.dor?.description?.includes('plástico') || opportunity.scales?.dor?.description?.includes('sustentab')) {
+   oppTags.push('sustentável', 'anti-plástico');
+ }
  
  // Buscar casos com tags coincidentes
  Object.entries(CASOS_EXITO_REAIS).forEach(([key, caso]) => {
    let score = 0;
    
+   // PRIORIDADE 1: Coincidência por linha de produto (peso alto)
+   if (caso.produto_linha && oppProductLines.length > 0) {
+     const lineMatch = caso.produto_linha.some(pl => oppProductLines.includes(pl));
+     if (lineMatch) {
+       score += 5; // Boost forte para mesma linha de produto
+     } else {
+       score -= 3; // Penalidade para linha diferente
+     }
+   }
+   
    // Coincidência por setor
-   if (caso.setor.toLowerCase().includes(opportunity.industry?.toLowerCase() || '')) {
+   if (opportunity.industry && caso.setor.toLowerCase().includes(opportunity.industry.toLowerCase())) {
      score += 3;
    }
    
@@ -233,7 +324,7 @@ function findRelevantCases(opportunity) {
    if (opportunity.scales?.dor?.description && caso.problema) {
      const problemWords = opportunity.scales.dor.description.toLowerCase().split(' ');
      const casoWords = caso.problema.toLowerCase().split(' ');
-     const matches = problemWords.filter(word => casoWords.includes(word));
+     const matches = problemWords.filter(word => word.length > 3 && casoWords.includes(word));
      score += matches.length * 0.5;
    }
    
@@ -242,10 +333,10 @@ function findRelevantCases(opportunity) {
    }
  });
  
- // Ordenar por relevância e retornar top 3
+ // Ordenar por relevância e retornar top 2
  return relevantCases
    .sort((a, b) => b.score - a.score)
-   .slice(0, 3);
+   .slice(0, 2);
 }
 
 // ============= MOTOR DE ANÁLISE DO PIPELINE =============
