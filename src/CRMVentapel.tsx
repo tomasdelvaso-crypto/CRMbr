@@ -45,6 +45,7 @@ interface Opportunity {
   support_contact?: string;
   scales: Scales;
   industry?: string;
+  product_lines?: string[];
 }
 
 interface OpportunityFormData {
@@ -63,6 +64,7 @@ interface OpportunityFormData {
   support_contact?: string;
   scales: Scales;
   industry?: string;
+  product_lines?: string[];
 }
 
 interface StageRequirement {
@@ -100,6 +102,13 @@ const getScaleScore = (scale: Scale | number | undefined | null): number => {
     return typeof scale.score === 'number' ? scale.score : 0;
   }
   return 0;
+};
+
+// --- PRODUCT LINES CONFIG ---
+const PRODUCT_LINES: Record<string, { label: string; icon: string; color: string; bg: string }> = {
+  better_pack: { label: 'Máquinas Better Pack', icon: '🔧', color: 'text-blue-700', bg: 'bg-blue-100' },
+  better_pack_venom: { label: 'Better Pack + Venom', icon: '📦', color: 'text-green-700', bg: 'bg-green-100' },
+  ecomfill_resmas: { label: 'E-comfill + Resmas', icon: '🛍️', color: 'text-orange-700', bg: 'bg-orange-100' },
 };
 
 // --- API SERVICE ---
@@ -866,10 +875,9 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
         sponsor: formData.sponsor?.trim() || null,
         influencer: formData.influencer?.trim() || null,
         support_contact: formData.support_contact?.trim() || null,
-        industry: formData.industry?.trim() || null
+        industry: formData.industry?.trim() || null,
+        product_lines: formData.product_lines || []
       };
-
-      console.log('📝 Tentando criar oportunidade:', newOpportunity);
       await supabaseService.insertOpportunity(newOpportunity);
       await loadOpportunities();
       return true;
@@ -908,10 +916,10 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
         sponsor: formData.sponsor?.trim() || null,
         influencer: formData.influencer?.trim() || null,
         support_contact: formData.support_contact?.trim() || null,
-        industry: formData.industry?.trim() || null
+        industry: formData.industry?.trim() || null,
+        product_lines: formData.product_lines || []
       };
 
-      console.log('📝 Atualizando oportunidade:', updatedData);
       await supabaseService.updateOpportunity(id, updatedData);
       await loadOpportunities();
       return true;
@@ -1031,6 +1039,7 @@ const useFilters = () => {
   const [filterStage, setFilterStage] = useState('all');
   const [filterVendor, setFilterVendor] = useState('all');
   const [filterInactivity, setFilterInactivity] = useState('all');
+  const [filterProductLine, setFilterProductLine] = useState('all');
 
   return {
     searchTerm,
@@ -1040,7 +1049,9 @@ const useFilters = () => {
     filterVendor,
     setFilterVendor,
     filterInactivity,
-    setFilterInactivity
+    setFilterInactivity,
+    filterProductLine,
+    setFilterProductLine
   };
 };
 
@@ -1146,10 +1157,13 @@ const CRMVentapel: React.FC = () => {
       } else if (filters.filterInactivity === '30days') {
         matchesInactivity = checkInactivity(opp.last_update, 30);
       }
+
+      const matchesProductLine = filters.filterProductLine === 'all' || 
+        (opp.product_lines && opp.product_lines.includes(filters.filterProductLine));
       
-      return matchesSearch && matchesStage && matchesVendor && matchesInactivity;
+      return matchesSearch && matchesStage && matchesVendor && matchesInactivity && matchesProductLine;
     });
-  }, [userOpportunities, filters.searchTerm, filters.filterStage, filters.filterVendor, filters.filterInactivity]);
+  }, [userOpportunities, filters.searchTerm, filters.filterStage, filters.filterVendor, filters.filterInactivity, filters.filterProductLine]);
 
   const dashboardOpportunities = useMemo(() => {
     const baseOpps = currentVendorInfo?.is_admin ? opportunities : userOpportunities;
@@ -1519,6 +1533,18 @@ const CRMVentapel: React.FC = () => {
                   )}
                 </div>
               )}
+              {opportunity.product_lines && opportunity.product_lines.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {opportunity.product_lines.map(pl => {
+                    const config = PRODUCT_LINES[pl];
+                    return config ? (
+                      <span key={pl} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.color}`}>
+                        {config.icon} {config.label}
+                      </span>
+                    ) : null;
+                  })}
+                </div>
+              )}
               <p className="text-base text-purple-600">📦 {opportunity.product}</p>
               {opportunity.industry && (
                 <p className="text-base text-gray-600">🏭 {opportunity.industry}</p>
@@ -1739,6 +1765,18 @@ const CRMVentapel: React.FC = () => {
             </select>
           </div>
           <div>
+            <select
+              value={filters.filterProductLine}
+              onChange={(e) => filters.setFilterProductLine(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">📦 Todas as linhas</option>
+              {Object.entries(PRODUCT_LINES).map(([key, pl]) => (
+                <option key={key} value={key}>{pl.icon} {pl.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <button
               onClick={() => setShowNewOpportunity(true)}
               className="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg hover:from-blue-700 hover:to-green-700 font-bold transition-colors"
@@ -1796,7 +1834,8 @@ const CRMVentapel: React.FC = () => {
       influencer: opportunity?.influencer || '',
       support_contact: opportunity?.support_contact || '',
       scales: opportunity?.scales || emptyScales(),
-      industry: opportunity?.industry || ''
+      industry: opportunity?.industry || '',
+      product_lines: opportunity?.product_lines || []
     });
 
     const [activeScale, setActiveScale] = useState<string | null>(null);
@@ -1972,6 +2011,29 @@ const CRMVentapel: React.FC = () => {
                           <option value="média">Média</option>
                           <option value="alta">Alta</option>
                         </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Linhas de Produto</label>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(PRODUCT_LINES).map(([key, pl]) => {
+                          const selected = (formData.product_lines || []).includes(key);
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => {
+                                const current = formData.product_lines || [];
+                                const updated = selected ? current.filter(k => k !== key) : [...current, key];
+                                setFormData({...formData, product_lines: updated});
+                              }}
+                              disabled={submitting}
+                              className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all ${selected ? `${pl.bg} ${pl.color} border-current ring-2 ring-current ring-opacity-30` : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'}`}
+                            >
+                              {pl.icon} {pl.label}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
