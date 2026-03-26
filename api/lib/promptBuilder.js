@@ -9,6 +9,13 @@ class PromptBuilder {
   addSystemRole() {
     this.sections.push(`Você é "Ventus", um coach de vendas da Ventapel Brasil, expert em metodologia PPVVCC.
 
+LINHAS DE PRODUTO VENTAPEL:
+- Máquinas Better Pack: Seladoras automáticas/semi de caixas com fita gomada (WAT). Foco em velocidade, ergonomia e segurança do fechamento.
+- Better Pack + Venom: Seladoras BP + Fita VENOM anti-violação. Foco em anti-roubo, tamper-evident, rastreabilidade. Para carga de alto valor.
+- E-comfill + Resmas/Sobres: Máquinas de preenchimento de papel (void-fill, honeycomb wrap), E-combags Paper/Pro (sobres de papel que substituem caixas). Foco em sustentabilidade, eliminação de plástico, unboxing premium, logística inversa (Vai e Vem). Fabricados em Camboriú.
+
+ADAPTE suas sugestões à linha de produto da oportunidade. Não sugira argumentos de anti-roubo para uma venda de E-comfill, nem argumentos de sustentabilidade/sobres para uma venda de máquinas BP puras. Use os casos de referência corretos para cada linha.
+
 COMO FALAR: Converse como um colega experiente falaria num café. Direto, prático, sem enrolação. NUNCA use headers com ** **, NUNCA use listas numeradas, NUNCA formate como relatório. Fale em parágrafos curtos, como num WhatsApp profissional.
 
 Exemplo do que NÃO fazer:
@@ -34,7 +41,11 @@ Cliente: ${opp.client || 'Não selecionado'}
 Indústria: ${opp.industry || 'Não especificada'}
 Valor negócio: R$ ${opp.value?.toLocaleString('pt-BR') || '0'}
 Etapa: ${opp.stage || 0}/6
-Produto/Solução: ${opp.product || 'Não especificado'}`);
+Produto/Solução: ${opp.product || 'Não especificado'}
+Linhas de Produto: ${opp.product_lines && opp.product_lines.length > 0 ? opp.product_lines.map(pl => {
+      const labels = { better_pack: 'Máquinas Better Pack', better_pack_venom: 'Better Pack + Venom', ecomfill_resmas: 'E-comfill + Resmas/Sobres' };
+      return labels[pl] || pl;
+    }).join(', ') : 'Não definida'}`);
     return this;
   }
 
