@@ -912,20 +912,24 @@ function generateSmartFallback(opportunityData, userInput, analysis) {
 
 // ============= ACTION PLAN: DETERMINAR CANTIDAD DE ACCIONES =============
 function determineActionCount(opportunity, analysis) {
-  if (!opportunity || !analysis?.opportunity) return 3;
+  if (!opportunity || !analysis?.opportunity) return 1;
   
   const health = parseFloat(analysis.opportunity.healthScore);
   const daysSince = analysis.opportunity.daysSince;
   const stage = opportunity.stage || 1;
   
-  // Deal caliente (health alto + etapa avanzada + contacto reciente) = 1 acción enfocada
-  if (health >= 7 && stage >= 4 && daysSince <= 7) return 1;
+  // La mayoría de los casos: 1 acción enfocada y concreta
+  // Solo 2 cuando hay escalas muy bajas en múltiples dimensiones que requieren caminos paralelos
+  const scales = analysis.opportunity.scaleBreakdown || {};
+  const lowScales = Object.values(scales).filter(s => s < 3).length;
   
-  // Deal tibio = 2 acciones
-  if (health >= 5 && daysSince <= 14) return 2;
+  // 2 acciones solo si: deal frío con múltiples escalas bajas Y sin contacto reciente
+  if (lowScales >= 3 && daysSince >= 14) return 2;
   
-  // Deal frío o complicado = 3 acciones
-  return 3;
+  // 2 acciones si estamos en etapas tempranas con mucho por descubrir
+  if (stage <= 2 && health < 4) return 2;
+  
+  return 1;
 }
 
 // ============= ACTION PLAN: GENERAR PLAN VIA CLAUDE =============
