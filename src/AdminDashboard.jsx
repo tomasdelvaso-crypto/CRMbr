@@ -53,9 +53,9 @@ const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts }) => {
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const suggestions = [
-    '👁️ Quem precisa da minha atenção urgente?',
-    '📊 Como está o desempenho geral da equipe?',
-    '🛑 Quais oportunidades estão estagnadas há mais tempo?',
+    '📋 Quais oportunidades estão mal preenchidas?',
+    '🔴 Onde estão os pontos fracos do pipeline?',
+    '💪 Quais são os pontos fortes que devo explorar?',
     '💡 O que devo cobrar em cada vendedor essa semana?',
   ];
 
@@ -64,17 +64,77 @@ const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts }) => {
     setMessages(p => [...p, { role: 'user', content: text, ts: new Date().toISOString() }]);
     setInput(''); setIsLoading(true);
     try {
-      const statsPayload = Object.values(vendorStats).map(v => ({
-        name: v.name,
-        totalOpps: v.opportunities.length,
-        totalValue: v.totalValue,
-        stagnated: v.stagnated.length,
-        recentActivity7d: v.recentActivity,
-        byStage: v.byStage,
-        avgDaysSinceActivity: v.opportunities.length
-          ? Math.round(v.opportunities.reduce((s, o) => s + o.daysSinceActivity, 0) / v.opportunities.length)
-          : 0,
-      }));
+      // Helper: analyze opportunity completeness
+      const analyzeOpp = (opp) => {
+        const scales = opp.scales || {};
+        const scaleNames = ['dor','poder','visao','valor','controle','compras'];
+        const scaleScores = {};
+        let scaleTotal = 0; let scaleCount = 0;
+        const weakScales = []; const strongScales = [];
+        scaleNames.forEach(s => {
+          const score = scales[s]?.score || 0;
+          scaleScores[s] = score;
+          scaleTotal += score; scaleCount++;
+          if (score <= 3) weakScales.push(s.toUpperCase());
+          if (score >= 7) strongScales.push(s.toUpperCase());
+        });
+
+        const missing = [];
+        if (!opp.power_sponsor?.trim()) missing.push('power_sponsor');
+        if (!opp.sponsor?.trim()) missing.push('sponsor');
+        if (!opp.influencer?.trim()) missing.push('influenciador');
+        if (!opp.next_action?.trim()) missing.push('proxima_acao');
+        if (!opp.expected_close) missing.push('data_fechamento');
+        if (!opp.product?.trim()) missing.push('produto');
+        if (!opp.industry?.trim()) missing.push('industria');
+        if ((!opp.product_lines || opp.product_lines.length === 0)) missing.push('linhas_produto');
+
+        const completeness = Math.round(((8 - missing.length) / 8) * 100);
+
+        return {
+          client: opp.client,
+          name: opp.name,
+          stage: opp.stage,
+          value: opp.value,
+          daysSinceActivity: opp.daysSinceActivity,
+          scaleAvg: scaleCount > 0 ? Math.round(scaleTotal / scaleCount * 10) / 10 : 0,
+          weakScales,
+          strongScales,
+          missing,
+          completeness,
+          hasContacts: !!(opp.power_sponsor?.trim() || opp.sponsor?.trim()),
+          hasNextAction: !!opp.next_action?.trim(),
+        };
+      };
+
+      const statsPayload = Object.values(vendorStats).map(v => {
+        const opps = v.opportunities.map(analyzeOpp);
+        const avgCompleteness = opps.length
+          ? Math.round(opps.reduce((s, o) => s + o.completeness, 0) / opps.length)
+          : 0;
+        const avgScales = opps.length
+          ? Math.round(opps.reduce((s, o) => s + o.scaleAvg, 0) / opps.length * 10) / 10
+          : 0;
+        const withoutNextAction = opps.filter(o => !o.hasNextAction).length;
+        const withoutContacts = opps.filter(o => !o.hasContacts).length;
+
+        return {
+          name: v.name,
+          totalOpps: v.opportunities.length,
+          totalValue: v.totalValue,
+          stagnated: v.stagnated.length,
+          recentActivity7d: v.recentActivity,
+          byStage: v.byStage,
+          avgDaysSinceActivity: v.opportunities.length
+            ? Math.round(v.opportunities.reduce((s, o) => s + o.daysSinceActivity, 0) / v.opportunities.length)
+            : 0,
+          avgCompleteness,
+          avgScales,
+          withoutNextAction,
+          withoutContacts,
+          opportunities: opps,
+        };
+      });
 
       const res = await fetch('/api/admin-assistant', {
         method: 'POST',

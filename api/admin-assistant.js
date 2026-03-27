@@ -14,29 +14,109 @@ const json = (data, status = 200) =>
 
 // ── Prompt do Ventus Manager ─────────────────────────────────────────────────
 function buildAdminPrompt(adminName, vendorStats, stagnationAlerts, userInput) {
+
+  // ── 1. Resumo por vendedor ──
   const teamSummary = vendorStats.map(v =>
-    `• ${v.name}: ${v.totalOpps} opp · Pipeline ${fmtBRL(v.totalValue)} · ${v.stagnated} estagnadas · ${v.recentActivity7d} atividades últimos 7d · saúde média estimada ${v.avgDaysSinceActivity}d sem contato`
+    `• ${v.name}: ${v.totalOpps} opp · Pipeline ${fmtBRL(v.totalValue)} · Preenchimento médio ${v.avgCompleteness || '?'}% · Escalas médias ${v.avgScales || '?'}/10 · ${v.stagnated} estagnadas · ${v.recentActivity7d || 0} atividades 7d · ${v.withoutNextAction || 0} sem próxima ação · ${v.withoutContacts || 0} sem contatos`
   ).join('\n');
 
+  // ── 2. Detalhamento por oportunidade ──
+  const oppDetails = [];
+  vendorStats.forEach(v => {
+    (v.opportunities || []).forEach(o => {
+      const flags = [];
+      if (o.completeness < 50) flags.push('CADASTRO INCOMPLETO');
+      if (o.missing?.length > 3) flags.push(`falta: ${o.missing.join(', ')}`);
+      if (o.weakScales?.length > 0) flags.push(`escalas fracas: ${o.weakScales.join(', ')}`);
+      if (o.strongScales?.length > 0) flags.push(`escalas fortes: ${o.strongScales.join(', ')}`);
+      if (!o.hasNextAction) flags.push('SEM PRÓXIMA AÇÃO');
+      if (!o.hasContacts) flags.push('SEM CONTATOS');
+      if (o.daysSinceActivity >= 14) flags.push(`${o.daysSinceActivity}d sem atividade`);
+
+      oppDetails.push(
+        `[${v.name}] ${o.client} — "${o.name}" — Etapa ${o.stage} — ${fmtBRL(o.value)} — Preenchimento ${o.completeness}% — Escalas avg ${o.scaleAvg}/10${flags.length ? ' ⚠ ' + flags.join(' | ') : ' ✓ OK'}`
+      );
+    });
+  });
+
+  // ── 3. Alertas de estagnação ──
   const alertsSummary = stagnationAlerts.length > 0
     ? stagnationAlerts.slice(0, 15).map(a =>
-        `• [${a.vendor}] ${a.client} — "${a.oppName}" — Etapa ${a.stage} — ${fmtBRL(a.value)} — ${a.days} dias sem atividade`
+        `• [${a.vendor}] ${a.client} — Etapa ${a.stage} — ${fmtBRL(a.value)} — ${a.days} dias sem atividade`
       ).join('\n')
     : 'Nenhum alerta ativo.';
 
+  // ── 4. Análise automática de pontos fracos / fortes ──
+  const allOpps = vendorStats.flatMap(v => (v.opportunities || []).map(o => ({ ...o, vendor: v.name })));
+
+  const weakPoints = [];
+  const strongPoints = [];
+
+  // Oportunidades sem contatos-chave
+  const noContacts = allOpps.filter(o => !o.hasContacts);
+  if (noContacts.length > 0) weakPoints.push(`${noContacts.length} oportunidade(s) sem nenhum contato registrado (Power Sponsor / Sponsor)`);
+
+  // Escalas fracas globais
+  const scaleCounter = {};
+  allOpps.forEach(o => (o.weakScales || []).forEach(s => { scaleCounter[s] = (scaleCounter[s] || 0) + 1; }));
+  Object.entries(scaleCounter).sort((a,b) => b[1]-a[1]).forEach(([scale, count]) => {
+    weakPoints.push(`Escala ${scale} é fraca (≤3) em ${count} oportunidade(s) — fraqueza recorrente do time`);
+  });
+
+  // Sem próxima ação
+  const noAction = allOpps.filter(o => !o.hasNextAction);
+  if (noAction.length > 0) weakPoints.push(`${noAction.length} oportunidade(s) sem próxima ação definida — negócios sem direção`);
+
+  // Cadastros incompletos
+  const incomplete = allOpps.filter(o => o.completeness < 50);
+  if (incomplete.length > 0) weakPoints.push(`${incomplete.length} oportunidade(s) com menos de 50% de preenchimento`);
+
+  // Pontos fortes
+  const strongScaleCounter = {};
+  allOpps.forEach(o => (o.strongScales || []).forEach(s => { strongScaleCounter[s] = (strongScaleCounter[s] || 0) + 1; }));
+  Object.entries(strongScaleCounter).sort((a,b) => b[1]-a[1]).forEach(([scale, count]) => {
+    strongPoints.push(`Escala ${scale} é forte (≥7) em ${count} oportunidade(s) — ponto forte do time`);
+  });
+
+  const highValue = allOpps.filter(o => (o.value || 0) >= 100000 && o.scaleAvg >= 5);
+  if (highValue.length > 0) strongPoints.push(`${highValue.length} oportunidade(s) de alto valor (≥R$100k) com escalas boas — prioridade para fechar`);
+
+  const wellFilled = allOpps.filter(o => o.completeness >= 80);
+  if (wellFilled.length > 0) strongPoints.push(`${wellFilled.length} oportunidade(s) com cadastro ≥80% completo — boa disciplina`);
+
   return `Você é o "Ventus Manager", versão gerencial do Ventus — coach de vendas da Ventapel Brasil, especialista em metodologia PPVVCC.
 
-Você está conversando com ${adminName}, que é administrador do CRM. Sua missão é ajudá-lo a:
-- Identificar quais vendedores precisam de coaching ou acompanhamento
-- Detectar oportunidades em risco no pipeline
-- Sugerir ações concretas de gestão (reunião 1:1, redistribuição de contas, priorização)
-- Analisar padrões de comportamento da equipe
+Você está conversando com ${adminName}, administrador do CRM. Sua missão é ajudá-lo a:
+1. QUALIDADE DOS DADOS — Identificar oportunidades mal preenchidas (sem contatos, sem produto, sem próxima ação, escalas zeradas). Explicar POR QUE isso é um problema e O QUE cobrar do vendedor.
+2. PONTOS FRACOS — Detectar fraquezas no pipeline: escalas baixas recorrentes (ex: DOR baixa = vendedor não sabe criar urgência), falta de contatos-chave, negócios sem direção.
+3. PONTOS FORTES — Identificar o que funciona bem: escalas altas, boa disciplina de preenchimento, oportunidades com momentum. Sugerir como EXPLORAR essas vantagens.
+4. COACHING — Sugerir ações concretas: reuniões 1:1 com vendedores específicos, redistribuição de contas, treinamento em escalas fracas.
 
-COMO FALAR: Como um gerente de vendas experiente conversaria com outro. Direto, concreto, sem rodeios. Sem headers em negrito, sem listas numeradas longas. Parágrafos curtos, acionáveis. Use nomes reais de vendedores e clientes quando disponíveis.
+SIGNIFICADO DAS ESCALAS PPVVCC:
+- DOR: O cliente reconhece o problema? Baixa = vendedor não está criando urgência.
+- PODER: Falando com o decisor? Baixa = vendedor preso em nível operacional.
+- VISÃO: Cliente vê a solução? Baixa = precisa melhorar a apresentação do produto.
+- VALOR: ROI quantificado? Baixa = falta business case.
+- CONTROLE: Processo mapeado? Baixa = vendedor não sabe os próximos passos internos do cliente.
+- COMPRAS: Processo de compra fluindo? Baixa = bloqueios internos no cliente.
 
-━━━ DADOS DA EQUIPE ━━━
+COMO FALAR: Como um diretor comercial conversaria com um gerente. Direto, concreto, sem rodeios. Parágrafos curtos e acionáveis. Use nomes reais. Sem markdown headers, sem listas numeradas longas.
 
-${teamSummary || 'Sem dados de equipe disponíveis.'}
+━━━ RESUMO POR VENDEDOR ━━━
+
+${teamSummary || 'Sem dados.'}
+
+━━━ DETALHE POR OPORTUNIDADE ━━━
+
+${oppDetails.slice(0, 30).join('\n') || 'Sem dados.'}
+
+━━━ PONTOS FRACOS DETECTADOS ━━━
+
+${weakPoints.length > 0 ? weakPoints.map(p => `🔴 ${p}`).join('\n') : '✅ Nenhum ponto fraco crítico.'}
+
+━━━ PONTOS FORTES DETECTADOS ━━━
+
+${strongPoints.length > 0 ? strongPoints.map(p => `💪 ${p}`).join('\n') : '— Sem destaques.'}
 
 ━━━ ALERTAS DE ESTAGNAÇÃO ━━━
 
@@ -46,7 +126,7 @@ ${alertsSummary}
 
 ${userInput}
 
-Responda de forma prática e acionável. Se houver padrões preocupantes, aponte-os. Se um vendedor específico precisar de atenção, diga claramente e sugira o que fazer.`;
+Responda de forma prática e acionável. Cite nomes de vendedores e clientes. Se há padrões (ex: DOR sempre baixa num vendedor), aponte e sugira coaching específico.`;
 }
 
 function fmtBRL(v) {
@@ -112,8 +192,8 @@ export default async function handler(req) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1200,
-        temperature: 0.4,
+        max_tokens: 1800,
+        temperature: 0.35,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
