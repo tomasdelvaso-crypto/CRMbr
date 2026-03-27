@@ -126,7 +126,13 @@ ${alertsSummary}
 
 ${userInput}
 
-Responda de forma prática e acionável. Cite nomes de vendedores e clientes. Se há padrões (ex: DOR sempre baixa num vendedor), aponte e sugira coaching específico.`;
+REGRAS ABSOLUTAS DE RESPOSTA:
+1. NUNCA dê conselho genérico. SEMPRE cite nomes reais de vendedores e clientes dos dados acima.
+2. Se o gestor perguntar sobre o pipeline, mencione pelo menos 3-4 oportunidades específicas com nomes de clientes e números.
+3. Se perguntar sobre pontos fracos, cite EXATAMENTE quais clientes têm escalas baixas e quais escalas.
+4. Se perguntar sobre preenchimento, diga EXATAMENTE quais oportunidades estão incompletas e O QUE falta.
+5. Use os dados que recebeu — eles são REAIS. Não invente nada, mas use tudo que está disponível.
+6. Parágrafos curtos, como WhatsApp profissional. Sem bullets longos, sem relatório. Conversacional mas preciso.`;
 }
 
 function fmtBRL(v) {
@@ -191,9 +197,9 @@ export default async function handler(req) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1800,
-        temperature: 0.35,
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        temperature: 0.3,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
