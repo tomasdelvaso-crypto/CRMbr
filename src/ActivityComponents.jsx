@@ -418,13 +418,13 @@ export const ActivityDashboard = ({ supabase, currentUser, isAdmin }) => {
   const [allStale, setAllStale] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('pending');
-  const [vendorFilter, setVendorFilter] = useState(currentUser || 'all');
+  const [vendorFilter, setVendorFilter] = useState(isAdmin ? 'all' : (currentUser || 'all'));
   const svc = useMemo(() => new ActivityService(supabase), [supabase]);
 
-  // Sync with header vendor selector
+  // Sync with header vendor selector (only for non-admins)
   useEffect(() => {
-    if (currentUser) setVendorFilter(currentUser);
-  }, [currentUser]);
+    if (currentUser && !isAdmin) setVendorFilter(currentUser);
+  }, [currentUser, isAdmin]);
 
   useEffect(() => {
     (async () => {
