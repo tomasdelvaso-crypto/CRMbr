@@ -72,7 +72,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       {/* Toggle tab — always visible on right edge */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed top-1/2 -translate-y-1/2 z-50 flex items-center gap-2 py-4 px-2 rounded-l-xl shadow-lg transition-all duration-300 ${
+        className={`fixed top-1/2 -translate-y-1/2 z-[60] flex items-center gap-2 py-4 px-2 rounded-l-xl shadow-lg transition-all duration-300 ${
           isOpen ? 'right-[420px]' : 'right-0'
         } bg-gradient-to-b from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700`}
         title={isOpen ? 'Fechar Ventus' : 'Abrir Ventus'}
@@ -90,7 +90,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       </button>
 
       {/* Sidebar panel */}
-      <div className={`fixed top-0 right-0 h-full w-[420px] z-40 bg-white shadow-2xl border-l border-gray-200 flex flex-col transition-transform duration-300 ${
+      <div className={`fixed top-0 right-0 h-full w-[420px] z-[60] bg-white shadow-2xl border-l border-gray-200 flex flex-col transition-transform duration-300 ${
         isOpen ? 'translate-x-0' : 'translate-x-full'
       }`}>
         
