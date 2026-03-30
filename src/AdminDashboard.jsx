@@ -404,6 +404,7 @@ const AdminDashboard = ({ supabase, opportunities, vendors, currentUser }) => {
   const [expandedVendor, setExpandedVendor] = useState(null);
   const [stagnationDays, setStagnationDays] = useState(14);
   const [alertFilter, setAlertFilter] = useState('all'); // 'all' | 'critical' | 'warning'
+  const [vendorFilter, setVendorFilter] = useState('all');
 
   const buildStats = useCallback(async () => {
     if (!supabase || !opportunities.length) { setLoading(false); return; }
@@ -470,18 +471,26 @@ const AdminDashboard = ({ supabase, opportunities, vendors, currentUser }) => {
 
   useEffect(() => { buildStats(); }, [buildStats]);
 
-  // Summary numbers
-  const totalOpps = opportunities.length;
-  const totalValue = opportunities.reduce((s, o) => s + (o.value || 0), 0);
-  const criticalCount = stagnationAlerts.filter(a => severityOf(a.daysSinceActivity) === 'critical').length;
-  const warningCount = stagnationAlerts.filter(a => severityOf(a.daysSinceActivity) === 'warning').length;
+  // Summary numbers (filtered)
+  const filteredOpps = vendorFilter === 'all'
+    ? opportunities
+    : opportunities.filter(o => (o.vendor?.trim() || '') === vendorFilter);
+  const totalOpps = filteredOpps.length;
+  const totalValue = filteredOpps.reduce((s, o) => s + (o.value || 0), 0);
+  const criticalCount = vendorFilteredAlerts.filter(a => severityOf(a.daysSinceActivity) === 'critical').length;
+  const warningCount = vendorFilteredAlerts.filter(a => severityOf(a.daysSinceActivity) === 'warning').length;
+
+  const vendorFilteredAlerts = vendorFilter === 'all'
+    ? stagnationAlerts
+    : stagnationAlerts.filter(a => a.vendor === vendorFilter);
 
   const filteredAlerts = alertFilter === 'all'
-    ? stagnationAlerts
-    : stagnationAlerts.filter(a => severityOf(a.daysSinceActivity) === alertFilter);
+    ? vendorFilteredAlerts
+    : vendorFilteredAlerts.filter(a => severityOf(a.daysSinceActivity) === alertFilter);
 
   const vendorList = Object.values(vendorStats)
     .filter(v => v.name !== 'Sin asignar')
+    .filter(v => vendorFilter === 'all' || v.name === vendorFilter)
     .sort((a, b) => b.totalValue - a.totalValue);
 
   if (loading) {
@@ -504,18 +513,41 @@ const AdminDashboard = ({ supabase, opportunities, vendors, currentUser }) => {
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Visão exclusiva para administradores · {new Date().toLocaleDateString('pt-BR')}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-500">Alerta após</label>
-          <select
-            value={stagnationDays}
-            onChange={e => setStagnationDays(Number(e.target.value))}
-            className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          >
-            <option value={7}>7 dias</option>
-            <option value={14}>14 dias</option>
-            <option value={21}>21 dias</option>
-            <option value={30}>30 dias</option>
-          </select>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-500">Vendedor</label>
+            <select
+              value={vendorFilter}
+              onChange={e => setVendorFilter(e.target.value)}
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 min-w-[160px]"
+            >
+              <option value="all">👥 Todos</option>
+              {Object.values(vendorStats)
+                .filter(v => v.name !== 'Sin asignar')
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map(v => <option key={v.name} value={v.name}>👤 {v.name}</option>)
+              }
+            </select>
+            {vendorFilter !== 'all' && (
+              <button onClick={() => setVendorFilter('all')}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium whitespace-nowrap">
+                Limpar
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-500">Alerta após</label>
+            <select
+              value={stagnationDays}
+              onChange={e => setStagnationDays(Number(e.target.value))}
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              <option value={7}>7 dias</option>
+              <option value={14}>14 dias</option>
+              <option value={21}>21 dias</option>
+              <option value={30}>30 dias</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -559,7 +591,7 @@ const AdminDashboard = ({ supabase, opportunities, vendors, currentUser }) => {
             <p className="text-sm text-gray-500 font-medium">Estagnadas</p>
           </div>
           <div className="flex items-baseline gap-2">
-            <p className="text-3xl font-bold text-gray-800">{stagnationAlerts.length}</p>
+            <p className="text-3xl font-bold text-gray-800">{vendorFilteredAlerts.length}</p>
             {criticalCount > 0 && (
               <span className="text-sm font-semibold text-red-600">{criticalCount} críticas</span>
             )}
