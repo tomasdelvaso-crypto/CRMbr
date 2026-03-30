@@ -1277,6 +1277,11 @@ export default async function handler(req) {
      );
    }
 
+   // If no opportunity selected, prefix the user input with a warning
+   const effectiveInput = !opportunityData && userInput
+     ? `[CONTEXTO: O vendedor NÃO selecionou nenhuma oportunidade no CRM. Responda usando APENAS dados gerais do pipeline fornecidos. NÃO invente nomes de clientes, contatos ou oportunidades. Sugira que selecione uma oportunidade para análise personalizada.]\n\n${userInput}`
+     : userInput;
+
    // PASSO 3: DEFINIR FERRAMENTAS DISPONÍVEIS - ENRIQUECIDAS
    const availableTools = [
      { 
@@ -1335,7 +1340,7 @@ export default async function handler(req) {
    
    const claudeResponse = await callClaudeAPI(
      opportunityData,
-     userInput,
+     effectiveInput,
      { casos: CASOS_EXITO_REAIS },
      availableTools,
      webSearchResults,
