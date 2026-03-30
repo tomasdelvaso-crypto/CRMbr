@@ -471,15 +471,7 @@ const AdminDashboard = ({ supabase, opportunities, vendors, currentUser }) => {
 
   useEffect(() => { buildStats(); }, [buildStats]);
 
-  // Summary numbers (filtered)
-  const filteredOpps = vendorFilter === 'all'
-    ? opportunities
-    : opportunities.filter(o => (o.vendor?.trim() || '') === vendorFilter);
-  const totalOpps = filteredOpps.length;
-  const totalValue = filteredOpps.reduce((s, o) => s + (o.value || 0), 0);
-  const criticalCount = vendorFilteredAlerts.filter(a => severityOf(a.daysSinceActivity) === 'critical').length;
-  const warningCount = vendorFilteredAlerts.filter(a => severityOf(a.daysSinceActivity) === 'warning').length;
-
+  // Filter by vendor first
   const vendorFilteredAlerts = vendorFilter === 'all'
     ? stagnationAlerts
     : stagnationAlerts.filter(a => a.vendor === vendorFilter);
@@ -487,6 +479,14 @@ const AdminDashboard = ({ supabase, opportunities, vendors, currentUser }) => {
   const filteredAlerts = alertFilter === 'all'
     ? vendorFilteredAlerts
     : vendorFilteredAlerts.filter(a => severityOf(a.daysSinceActivity) === alertFilter);
+
+  // Summary numbers (filtered)
+  const filteredOpps = vendorFilter === 'all'
+    ? opportunities
+    : opportunities.filter(o => (o.vendor?.trim() || '') === vendorFilter);
+  const totalOpps = filteredOpps.length;
+  const totalValue = filteredOpps.reduce((s, o) => s + (o.value || 0), 0);
+  const criticalCount = vendorFilteredAlerts.filter(a => severityOf(a.daysSinceActivity) === 'critical').length;
 
   const vendorList = Object.values(vendorStats)
     .filter(v => v.name !== 'Sin asignar')
