@@ -2567,6 +2567,7 @@ const CRMVentapel: React.FC = () => {
         }}
         currentUser={currentUser}
         supabase={supabase}
+        isAdmin={!!currentVendorInfo?.is_admin}
       />
     </div>
   );

@@ -1185,14 +1185,15 @@ export default async function handler(req) {
 
  try {
    const body = await req.json();
-   const { 
-     userInput, 
-     opportunityData, 
+   const {
+     userInput,
+     opportunityData,
      vendorName,
      pipelineData,
      isNewOpportunity,
      requestType,
-     activityHistory
+     activityHistory,
+     isAdmin
    } = body;
 
    console.log('🧠 Backend recebeu:', { 
@@ -1277,10 +1278,50 @@ export default async function handler(req) {
      );
    }
 
-   // If no opportunity selected, prefix the user input with a warning
-   const effectiveInput = !opportunityData && userInput
-     ? `[CONTEXTO: O vendedor NÃO selecionou nenhuma oportunidade no CRM. Responda usando APENAS dados gerais do pipeline fornecidos. NÃO invente nomes de clientes, contatos ou oportunidades. Sugira que selecione uma oportunidade para análise personalizada.]\n\n${userInput}`
-     : userInput;
+   // If no opportunity selected, adjust context based on role
+   let effectiveInput = userInput;
+   if (!opportunityData && userInput) {
+     if (isAdmin && pipelineData?.allOpportunities?.length) {
+       // Admin: build rich pipeline context for analysis
+       const opps = pipelineData.allOpportunities;
+       const byVendor = {};
+       opps.forEach(o => {
+         const v = o.vendor?.trim() || 'Sem vendedor';
+         if (!byVendor[v]) byVendor[v] = [];
+         byVendor[v].push(o);
+       });
+
+       let pipelineSummary = `[MODO ADMIN — ANÁLISE DE PIPELINE COMPLETO]\nVocê está conversando com ${vendorName}, administrador do CRM.\n`;
+       pipelineSummary += `Total: ${opps.length} oportunidades, R$ ${opps.reduce((s,o) => s + (o.value||0), 0).toLocaleString('pt-BR')}\n\n`;
+
+       Object.entries(byVendor).forEach(([vendor, vendorOpps]) => {
+         pipelineSummary += `━━ ${vendor} (${vendorOpps.length} opps, R$ ${vendorOpps.reduce((s,o) => s + (o.value||0), 0).toLocaleString('pt-BR')}) ━━\n`;
+         vendorOpps.sort((a,b) => (b.value||0) - (a.value||0)).slice(0, 8).forEach(o => {
+           const scales = o.scales || {};
+           const scaleNames = ['dor','poder','visao','valor','controle','compras'];
+           const avg = scaleNames.reduce((s,n) => s + (scales[n]?.score||0), 0) / 6;
+           const weak = scaleNames.filter(n => (scales[n]?.score||0) <= 3).map(n => n.toUpperCase());
+           const strong = scaleNames.filter(n => (scales[n]?.score||0) >= 7).map(n => n.toUpperCase());
+           const missing = [];
+           if (!o.power_sponsor?.trim()) missing.push('power_sponsor');
+           if (!o.next_action?.trim()) missing.push('próxima_ação');
+           if (!o.expected_close) missing.push('data_fechamento');
+
+           pipelineSummary += `  • ${o.client} — "${o.name}" — Etapa ${o.stage} — R$ ${(o.value||0).toLocaleString('pt-BR')} — PPVVCC avg ${avg.toFixed(1)}`;
+           if (weak.length) pipelineSummary += ` — Fracos: ${weak.join(',')}`;
+           if (strong.length) pipelineSummary += ` — Fortes: ${strong.join(',')}`;
+           if (missing.length) pipelineSummary += ` — Falta: ${missing.join(',')}`;
+           pipelineSummary += `\n`;
+         });
+         pipelineSummary += '\n';
+       });
+
+       pipelineSummary += `Responda com análise concreta usando APENAS os dados acima. Cite nomes reais de clientes e vendedores. Identifique riscos, prioridades e próximos passos. NÃO invente dados.\n\n`;
+       effectiveInput = pipelineSummary + userInput;
+     } else {
+       effectiveInput = `[CONTEXTO: O vendedor NÃO selecionou nenhuma oportunidade no CRM. Responda usando APENAS dados gerais do pipeline fornecidos. NÃO invente nomes de clientes, contatos ou oportunidades. Sugira que selecione uma oportunidade para análise personalizada.]\n\n${userInput}`;
+     }
+   }
 
    // PASSO 3: DEFINIR FERRAMENTAS DISPONÍVEIS - ENRIQUECIDAS
    const availableTools = [

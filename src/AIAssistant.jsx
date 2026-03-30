@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Target, Brain, Send, Loader2, Bot, Sparkles, Activity, Clock, Zap, AlertTriangle, AlertCircle, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react';
 
-const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, supabase }) => {
+const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, supabase, isAdmin }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -44,7 +44,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         } catch (e) { console.error(e); }
       }
       const r = await fetch('/api/assistant', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userInput: text, opportunityData: currentOpportunity, vendorName: currentUser, pipelineData, activityHistory }) });
+        body: JSON.stringify({ userInput: text, opportunityData: currentOpportunity, vendorName: currentUser, pipelineData, activityHistory, isAdmin }) });
       if (!r.ok) throw new Error('Server error');
       const d = await r.json();
       setMessages(prev => [...prev, { role: 'assistant', content: d.response || 'Erro', timestamp: new Date().toISOString() }]);
@@ -138,6 +138,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                   <p className="text-base text-gray-600">
                     Analisando <strong>{currentOpportunity.client}</strong>. Me pergunta qualquer coisa sobre a oportunidade, peça emails, roteiros de ligação, estratégias...
                   </p>
+                ) : isAdmin ? (
+                  <p className="text-base text-gray-600">
+                    Nenhuma oportunidade selecionada. Como admin, posso analisar o <strong>pipeline completo</strong>, sugerir próximos passos e identificar riscos.
+                  </p>
                 ) : (
                   <p className="text-base text-yellow-700">⚠️ Selecione uma oportunidade para análise personalizada.</p>
                 )}
@@ -146,6 +150,22 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-gray-500 px-1">Sugestões:</p>
                   {getContextualSuggestions().map((s, i) => (
+                    <button key={i} onClick={() => processMessage(s)}
+                      className="w-full text-left text-base bg-white hover:bg-purple-50 p-3 rounded-xl border border-gray-200 transition-colors">
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!currentOpportunity && isAdmin && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-500 px-1">Sugestões:</p>
+                  {[
+                    '📊 Como está o pipeline? Quais são as prioridades?',
+                    '🔴 Quais oportunidades estão em risco?',
+                    '💰 Quais são os maiores deals e como acelerar?',
+                    '📋 Resumo geral: pontos fortes e fracos do time',
+                  ].map((s, i) => (
                     <button key={i} onClick={() => processMessage(s)}
                       className="w-full text-left text-base bg-white hover:bg-purple-50 p-3 rounded-xl border border-gray-200 transition-colors">
                       {s}
