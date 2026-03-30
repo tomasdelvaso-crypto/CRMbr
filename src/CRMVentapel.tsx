@@ -47,6 +47,8 @@ interface Opportunity {
   scales: Scales;
   industry?: string;
   product_lines?: string[];
+  outcome?: 'won' | 'lost' | 'abandoned' | null;
+  outcome_notes?: string;
 }
 
 interface OpportunityFormData {
@@ -66,6 +68,8 @@ interface OpportunityFormData {
   scales: Scales;
   industry?: string;
   product_lines?: string[];
+  outcome?: 'won' | 'lost' | 'abandoned' | null;
+  outcome_notes?: string;
 }
 
 interface StageRequirement {
@@ -877,7 +881,9 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
         influencer: formData.influencer?.trim() || null,
         support_contact: formData.support_contact?.trim() || null,
         industry: formData.industry?.trim() || null,
-        product_lines: formData.product_lines || []
+        product_lines: formData.product_lines || [],
+        outcome: formData.outcome || null,
+        outcome_notes: formData.outcome_notes?.trim() || null,
       };
       await supabaseService.insertOpportunity(newOpportunity);
       await loadOpportunities();
@@ -918,7 +924,9 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
         influencer: formData.influencer?.trim() || null,
         support_contact: formData.support_contact?.trim() || null,
         industry: formData.industry?.trim() || null,
-        product_lines: formData.product_lines || []
+        product_lines: formData.product_lines || [],
+        outcome: formData.outcome || null,
+        outcome_notes: formData.outcome_notes?.trim() || null,
       };
 
       await supabaseService.updateOpportunity(id, updatedData);
@@ -1479,6 +1487,15 @@ const CRMVentapel: React.FC = () => {
                   +7 dias sem movimento
                 </span>
               )}
+              {opportunity.outcome === 'won' && (
+                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold">✅ Ganhou</span>
+              )}
+              {opportunity.outcome === 'lost' && (
+                <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-semibold">❌ Perdeu</span>
+              )}
+              {opportunity.outcome === 'abandoned' && (
+                <span className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded-full font-semibold">⏸️ Abandonada</span>
+              )}
               <button
                 onClick={() => {
                   setEditingOpportunity(opportunity);
@@ -1836,7 +1853,9 @@ const CRMVentapel: React.FC = () => {
       support_contact: opportunity?.support_contact || '',
       scales: opportunity?.scales || emptyScales(),
       industry: opportunity?.industry || '',
-      product_lines: opportunity?.product_lines || []
+      product_lines: opportunity?.product_lines || [],
+      outcome: opportunity?.outcome || null,
+      outcome_notes: opportunity?.outcome_notes || '',
     });
 
     const [activeScale, setActiveScale] = useState<string | null>(null);
@@ -2267,6 +2286,52 @@ const CRMVentapel: React.FC = () => {
                 </div>
               </div>
             </div>
+            {/* Resultado Final */}
+            {opportunity && (
+              <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 mt-6">
+                <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                  🏁 Resultado Final
+                </h3>
+                <div className="flex gap-3 mb-4">
+                  {([
+                    { value: null, label: 'Em andamento', color: 'bg-blue-100 text-blue-700 border-blue-300', activeColor: 'bg-blue-500 text-white border-blue-600' },
+                    { value: 'won', label: '✅ Ganhou', color: 'bg-green-50 text-green-700 border-green-300', activeColor: 'bg-green-500 text-white border-green-600' },
+                    { value: 'lost', label: '❌ Perdeu', color: 'bg-red-50 text-red-700 border-red-300', activeColor: 'bg-red-500 text-white border-red-600' },
+                    { value: 'abandoned', label: '⏸️ Abandonada', color: 'bg-gray-100 text-gray-600 border-gray-300', activeColor: 'bg-gray-500 text-white border-gray-600' },
+                  ] as const).map(opt => (
+                    <button
+                      key={String(opt.value)}
+                      type="button"
+                      onClick={() => setFormData({...formData, outcome: opt.value as any})}
+                      className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
+                        formData.outcome === opt.value ? opt.activeColor : opt.color
+                      } hover:shadow-sm`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {formData.outcome && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-2">
+                      📝 Lições aprendidas / Observações para o futuro
+                    </label>
+                    <textarea
+                      value={formData.outcome_notes || ''}
+                      onChange={e => setFormData({...formData, outcome_notes: e.target.value})}
+                      placeholder={
+                        formData.outcome === 'won' ? 'O que funcionou bem? Que argumentos convenceram? O que replicar...' :
+                        formData.outcome === 'lost' ? 'Por que perdemos? O que faltou? O que o concorrente ofereceu...' :
+                        'Por que foi abandonada? Vale retomar no futuro?'
+                      }
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                      rows={3}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Activity Panel - solo al editar */}
             {opportunity && (
               <div className="mt-6">
