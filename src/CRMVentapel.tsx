@@ -1503,24 +1503,24 @@ const CRMVentapel: React.FC = () => {
                   setEditingOpportunity(opportunity);
                   setSelectedOpportunity(opportunity);
                 }}
-                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                className="p-2.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                 title="Editar oportunidade"
               >
-                <Edit3 className="w-4 h-4" />
+                <Edit3 className="w-5 h-5" />
               </button>
               <button
                 onClick={() => openAssistantWithOpportunity(opportunity)}
-                className="p-2 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"
+                className="p-2.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"
                 title="Analisar com Coach IA"
               >
-                <Brain className="w-4 h-4" />
+                <Brain className="w-5 h-5" />
               </button>
               <button
                 onClick={() => deleteOpportunity(opportunity.id)}
-                className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                className="p-2.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                 title="Excluir oportunidade"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-5 h-5" />
               </button>
             </div>
             <div className="space-y-1">
