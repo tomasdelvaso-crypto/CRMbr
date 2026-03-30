@@ -114,6 +114,7 @@ const PRODUCT_LINES: Record<string, { label: string; icon: string; color: string
   better_pack: { label: 'Máquinas Better Pack', icon: '🔧', color: 'text-blue-700', bg: 'bg-blue-100' },
   better_pack_venom: { label: 'Better Pack + Venom', icon: '📦', color: 'text-green-700', bg: 'bg-green-100' },
   ecomfill_resmas: { label: 'E-comfill + Resmas', icon: '🛍️', color: 'text-orange-700', bg: 'bg-orange-100' },
+  ecombag: { label: 'E-Combag', icon: '📨', color: 'text-purple-700', bg: 'bg-purple-100' },
 };
 
 // --- API SERVICE ---
