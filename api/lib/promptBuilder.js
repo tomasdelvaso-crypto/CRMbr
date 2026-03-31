@@ -169,20 +169,42 @@ ${webResults}`);
   // ============= NUEVO: ACTIVITY HISTORY =============
   addActivityHistory(activities) {
     if (!activities || activities.length === 0) return this;
-    
-    const historyLines = activities.slice(0, 10).map(a => {
-      const date = new Date(a.activity_date || a.created_at).toLocaleDateString('pt-BR');
-      const result = a.result ? ` → Resultado: ${a.result}` : ' (pendente)';
-      const source = a.source === 'ai_generated' ? '[IA]' : '[Manual]';
-      const desc = a.description ? a.description.substring(0, 300) : '';
-      return `- ${date} ${source} ${a.activity_type}: ${desc}${result}`;
-    }).join('\n');
-    
-    this.sections.push(`
-**HISTÓRICO DE ATIVIDADES RECENTES (últimas ${activities.length}):**
-${historyLines}
 
-IMPORTANTE: Baseie suas novas sugestões no que JÁ foi tentado. NÃO repita ações que foram descartadas ou que tiveram resultado negativo. Se uma ação teve resultado positivo, sugira o próximo passo lógico.`);
+    // Filter out "expirado" noise — they carry no useful info
+    const meaningful = activities.filter(a => a.result !== 'expirado');
+    if (meaningful.length === 0) return this;
+
+    // Separate by outcome for clarity
+    const done = meaningful.filter(a => a.next_action_done && a.result);
+    const pending = meaningful.filter(a => !a.next_action_done);
+
+    let block = '\n━━━ HISTÓRICO DE ATIVIDADES (LEIA COM ATENÇÃO) ━━━\n';
+
+    if (done.length > 0) {
+      block += '\n🔴 AÇÕES JÁ REALIZADAS OU DESCARTADAS (NÃO REPETIR):\n';
+      done.slice(0, 15).forEach(a => {
+        const date = new Date(a.activity_date || a.created_at).toLocaleDateString('pt-BR');
+        const icon = a.result === 'positivo' ? '✅' : a.result === 'negativo' ? '❌' : a.result === 'descartado' ? '🚫' : '➖';
+        block += `${icon} [${date}] ${a.description || ''}\n   → Resultado: ${a.result}\n\n`;
+      });
+    }
+
+    if (pending.length > 0) {
+      block += '\n⏳ AÇÕES PENDENTES (NÃO DUPLICAR):\n';
+      pending.slice(0, 5).forEach(a => {
+        block += `- ${a.description || ''}\n`;
+      });
+    }
+
+    block += `
+━━━ REGRAS ABSOLUTAS SOBRE O HISTÓRICO ━━━
+1. NUNCA sugira uma ação que já aparece acima, mesmo com palavras diferentes. Se "ligar para X" foi feito, NÃO sugira "contatar X" ou "falar com X".
+2. Se uma ação foi DESCARTADA (🚫) com motivo, NUNCA a repita — o vendedor já explicou por que não funciona.
+3. Se uma ação teve resultado NEGATIVO (❌), NÃO insista na mesma abordagem.
+4. Se uma ação teve resultado POSITIVO (✅), sugira o PRÓXIMO passo lógico a partir do que foi conquistado.
+5. Leia os comentários do vendedor — eles contêm informação crucial sobre o que funciona e o que não funciona neste cliente.`;
+
+    this.sections.push(block);
     return this;
   }
 
@@ -193,6 +215,8 @@ IMPORTANTE: Baseie suas novas sugestões no que JÁ foi tentado. NÃO repita aç
 **TAREFA ESPECIAL: GERAR PLANO DE AÇÕES**
 
 Analise o contexto acima e gere ${numActions === 1 ? '1 ação concreta' : 'até 2 ações concretas'} para avançar esta oportunidade.
+
+ATENÇÃO: Revise o HISTÓRICO DE ATIVIDADES acima ANTES de sugerir qualquer coisa. Suas ações devem ser DIFERENTES de tudo que já foi feito ou descartado. Se o vendedor descartou uma ação com um motivo, NÃO a sugira de novo.
 
 ${numActions === 2 ? 'IMPORTANTE: Só gere 2 ações se forem realmente complementares (movem escalas diferentes) ou representam dois caminhos alternativos. Se uma única ação bem feita resolve, gere apenas 1. Qualidade > quantidade.' : 'Gere UMA ação focada e de alto impacto. A melhor coisa que o vendedor pode fazer AGORA.'}
 

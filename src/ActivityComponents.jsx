@@ -261,13 +261,13 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
   const generate = async () => {
     setGenerating(true);
     try {
-      await svc.expirePending(opportunity.id);
-      // Load full activity history so AI knows what was done, results and vendor notes
+      // Load activity history BEFORE expiring — so we capture all context
       let activityHistory = [];
       try {
         const allActs = await svc.getByOpportunity(opportunity.id);
         activityHistory = allActs || [];
       } catch (e) { console.error('Error loading history for AI:', e); }
+      await svc.expirePending(opportunity.id);
       const res = await fetch('/api/assistant', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestType: 'action_plan', opportunityData: opportunity, vendorName: currentUser, activityHistory }) });
       if (res.ok) {
