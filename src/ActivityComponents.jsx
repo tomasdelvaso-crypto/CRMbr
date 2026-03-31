@@ -92,18 +92,20 @@ class ActivityService {
     if (error) throw error; return data;
   }
   async markDone(id, result, vendorNote) {
-    const u = { next_action_done: true, result };
+    const now = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const u = { next_action_done: true, result, activity_date: now };
     if (vendorNote) {
       const { data: orig } = await this.supabase.from('activities').select('description').eq('id', id).single();
-      u.description = (orig?.description || '') + '\n---\n✅ Vendedor (' + result + '): ' + vendorNote;
+      u.description = (orig?.description || '') + '\n---\n✅ Vendedor (' + result + ', ' + now + '): ' + vendorNote;
     }
     const { error } = await this.supabase.from('activities').update(u).eq('id', id);
     if (error) throw error;
   }
   async markDiscarded(id, reason) {
+    const now = new Date().toISOString().split('T')[0];
     const { data: orig } = await this.supabase.from('activities').select('description').eq('id', id).single();
-    const desc = (orig?.description || '') + '\n---\n❌ Descartado: ' + reason;
-    const { error } = await this.supabase.from('activities').update({ next_action_done: true, result: 'descartado', description: desc }).eq('id', id);
+    const desc = (orig?.description || '') + '\n---\n❌ Descartado (' + now + '): ' + reason;
+    const { error } = await this.supabase.from('activities').update({ next_action_done: true, result: 'descartado', description: desc, activity_date: now }).eq('id', id);
     if (error) throw error;
   }
   async expirePending(id) {
