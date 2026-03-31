@@ -262,8 +262,14 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
     setGenerating(true);
     try {
       await svc.expirePending(opportunity.id);
+      // Load full activity history so AI knows what was done, results and vendor notes
+      let activityHistory = [];
+      try {
+        const allActs = await svc.getByOpportunity(opportunity.id);
+        activityHistory = allActs || [];
+      } catch (e) { console.error('Error loading history for AI:', e); }
       const res = await fetch('/api/assistant', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestType: 'action_plan', opportunityData: opportunity, vendorName: currentUser }) });
+        body: JSON.stringify({ requestType: 'action_plan', opportunityData: opportunity, vendorName: currentUser, activityHistory }) });
       if (res.ok) {
         const d = await res.json();
         if (d.actionPlan?.actions?.length > 0) await svc.saveSuggestions(opportunity.id, d.actionPlan.actions, currentUser, opportunity.stage);

@@ -174,7 +174,7 @@ ${webResults}`);
       const date = new Date(a.activity_date || a.created_at).toLocaleDateString('pt-BR');
       const result = a.result ? ` → Resultado: ${a.result}` : ' (pendente)';
       const source = a.source === 'ai_generated' ? '[IA]' : '[Manual]';
-      const desc = a.description ? a.description.substring(0, 100) : '';
+      const desc = a.description ? a.description.substring(0, 300) : '';
       return `- ${date} ${source} ${a.activity_type}: ${desc}${result}`;
     }).join('\n');
     
