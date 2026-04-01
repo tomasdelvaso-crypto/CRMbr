@@ -1236,7 +1236,7 @@ const CRMVentapel: React.FC = () => {
       <div className="bg-gradient-to-r from-blue-600 to-green-600 text-white p-6 rounded-xl shadow-lg">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold mb-2">🎯 CRM Ventapel Brasil</h2>
+            <h2 className="text-2xl font-bold mb-2">🎯 CRM VENTAPEL - Pepito</h2>
             <p className="text-blue-100">Sistema de Vendas Consultivas - Metodologia PPVVCC</p>
             <p className="text-blue-100 text-base">🔗 Conectado ao Supabase</p>
             {currentUser && (
@@ -2501,7 +2501,7 @@ const CRMVentapel: React.FC = () => {
               </div>
               <div className="ml-4">
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                  🇧🇷 CRM Ventapel Brasil
+                  CRM VENTAPEL - Pepito
                 </h1>
                 <p className="text-sm text-gray-600">Metodologia PPVVCC - Gestão Completa de Oportunidades</p>
               </div>
@@ -2677,7 +2677,7 @@ const LoginScreen: React.FC<{ onLogin: (session: Session) => void }> = ({ onLogi
             <Factory className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-            🇧🇷 CRM Ventapel Brasil
+            CRM VENTAPEL - Pepito
           </h1>
           <p className="text-sm text-gray-500 mt-1">Metodologia PPVVCC</p>
         </div>
