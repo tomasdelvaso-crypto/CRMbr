@@ -4,6 +4,7 @@ import { createClient, Session } from '@supabase/supabase-js';
 import AIAssistant from './AIAssistant';
 import { ActivityPanel, ActivityDashboard } from './ActivityComponents';
 import AdminDashboard from './AdminDashboard';
+import { CadenciaDashboard } from './CadenciaComponents';
 
 // --- CONFIGURAÇÃO DE SUPABASE ---
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -2567,6 +2568,14 @@ const CRMVentapel: React.FC = () => {
               <Clock className="w-4 h-4 mr-2" />
               📋 Gestão de Atividades
             </button>
+            <button
+              onClick={() => setActiveTab('cadencia')}
+              className={'py-3 px-3 border-b-2 font-bold text-base flex items-center ' + (activeTab === 'cadencia'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700')}
+            >
+              📞 Cadência
+            </button>
             {currentVendorInfo?.is_admin && (
               <button
                 onClick={() => setActiveTab('admin')}
@@ -2591,6 +2600,14 @@ const CRMVentapel: React.FC = () => {
             supabase={supabase}
             currentUser={currentUser}
             isAdmin={currentVendorInfo?.is_admin || false}
+          />
+        )}
+        {activeTab === 'cadencia' && (
+          <CadenciaDashboard
+            supabase={supabase}
+            currentUser={currentUser}
+            isAdmin={currentVendorInfo?.is_admin || false}
+            vendors={vendors}
           />
         )}
         {activeTab === 'admin' && currentVendorInfo?.is_admin && (
