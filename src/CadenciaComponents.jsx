@@ -709,11 +709,15 @@ export const CadenciaDashboard = ({ supabase, currentUser, isAdmin, vendors }) =
   });
   const convertedCount = leads.filter(l => l.status === 'converted').length;
 
-  // Group by stage for kanban
+  // Group by stage for kanban, sorted by company name so same-company leads are together
   const byStage = { '1a': [], '1b': [], '1c': [], '1d': [] };
   if (view === 'active') {
     filtered.forEach(l => {
       if (l.status === 'active' && byStage[l.stage]) byStage[l.stage].push(l);
+    });
+    // Sort each column by company name (case-insensitive)
+    Object.keys(byStage).forEach(k => {
+      byStage[k].sort((a, b) => (a.company_name || '').localeCompare(b.company_name || '', 'pt-BR', { sensitivity: 'base' }));
     });
   }
 
