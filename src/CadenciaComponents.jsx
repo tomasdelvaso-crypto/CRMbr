@@ -185,8 +185,15 @@ class TouchpointService {
     return data || [];
   }
 
-  async register(leadId, data, currentLead) {
-    const seqNum = (currentLead.touchpoints_count || 0) + 1;
+  async register(leadId, data) {
+    // Get REAL count from DB to avoid stale state
+    const { data: existing, error: countErr } = await this.supabase
+      .from('touchpoints').select('id').eq('lead_id', leadId);
+    if (countErr) throw countErr;
+    const seqNum = (existing?.length || 0) + 1;
+
+    if (seqNum > 7) throw new Error('Máximo de 7 touchpoints atingido');
+
     const tp = {
       lead_id: leadId,
       sequence_number: seqNum,
@@ -198,12 +205,23 @@ class TouchpointService {
     const { error: tpErr } = await this.supabase.from('touchpoints').insert([tp]);
     if (tpErr) throw tpErr;
 
-    // Update lead counts and next date
+    // Get fresh lead data
+    const { data: freshLead } = await this.supabase.from('leads').select('*').eq('id', leadId).single();
+
+    // Stage progression:
+    // meeting_scheduled → 1d
+    // interested/not_now response → 1c (engagement)
+    // has contact + at least 1 touchpoint → 1b
+    let newStage = freshLead?.stage || '1a';
+    if (data.result === 'meeting_scheduled') {
+      newStage = '1d';
+    } else if (['interested', 'not_now'].includes(data.result)) {
+      newStage = '1c';
+    } else if (newStage === '1a' && freshLead?.contact_name) {
+      newStage = '1b';
+    }
+
     const nextDate = seqNum < 7 ? calcNextTouchpointDate(seqNum, today()) : null;
-    let newStage = currentLead.stage;
-    if (data.result === 'meeting_scheduled') newStage = '1d';
-    else if (seqNum >= 3 && newStage === '1b') newStage = '1c';
-    else if (seqNum >= 1 && newStage === '1a' && currentLead.contact_name) newStage = '1b';
 
     const { error: updErr } = await this.supabase.from('leads').update({
       touchpoints_count: seqNum,
@@ -321,17 +339,21 @@ const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert }) => {
     if (!channel || !result) return;
     setSaving(true);
     try {
-      const res = await tpSvc.register(lead.id, { channel, result, notes }, lead);
-      if (result === 'meeting_scheduled') {
-        onConvert(lead);
-      }
+      await tpSvc.register(lead.id, { channel, result, notes });
       setResult('');
       setNotes('');
       await loadTouchpoints();
-      onUpdate();
+      onUpdate(); // refresh parent lead list
+
+      // Conversion: after updating everything, ask to convert
+      if (result === 'meeting_scheduled') {
+        // Fetch fresh lead for conversion
+        const { data: freshLead } = await tpSvc.supabase.from('leads').select('*').eq('id', lead.id).single();
+        if (freshLead) onConvert(freshLead);
+      }
     } catch (e) {
       console.error(e);
-      alert('Erro ao registrar touchpoint');
+      alert('Erro ao registrar touchpoint: ' + (e.message || e));
     }
     finally { setSaving(false); }
   };
