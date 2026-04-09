@@ -238,24 +238,29 @@ class TouchpointService {
 // ── LeadCard ─────────────────────────────────────────────────────────────────
 
 const LeadCard = ({ lead, onClick }) => {
-  const daysOverdue = lead.next_touchpoint_date
-    ? daysBetween(new Date(lead.next_touchpoint_date), new Date())
-    : 0;
-  const isOverdue = daysOverdue > 0 && lead.status === 'active';
   const daysSinceLast = lead.last_touchpoint_date
     ? daysBetween(new Date(lead.last_touchpoint_date), new Date())
     : daysBetween(new Date(lead.created_at), new Date());
+
+  // Urgency: 3+ days = yellow, 5+ days = red
+  const urgency = lead.status === 'active'
+    ? (daysSinceLast >= 5 ? 'red' : daysSinceLast >= 3 ? 'yellow' : 'green')
+    : 'none';
 
   const nextTP = CADENCE_SCHEDULE[lead.touchpoints_count] || null;
   const nextChannel = nextTP ? CHANNEL_CONFIG[nextTP.channel] : null;
   const NextIcon = nextChannel?.icon || Clock;
 
+  const borderClass = urgency === 'red'
+    ? 'border-l-4 border-red-500 bg-red-50/50'
+    : urgency === 'yellow'
+    ? 'border-l-4 border-yellow-400 bg-yellow-50/50'
+    : 'border-gray-200 hover:border-blue-300';
+
   return (
     <div
       onClick={() => onClick(lead)}
-      className={`bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:shadow-md transition-all ${
-        isOverdue ? 'border-l-4 border-red-400 border-t border-r border-b border-gray-200' : 'border-gray-200 hover:border-blue-300'
-      }`}
+      className={`bg-white rounded-xl p-4 shadow-sm border cursor-pointer hover:shadow-md transition-all ${borderClass}`}
     >
       <div className="flex items-start justify-between mb-2">
         <div className="min-w-0 flex-1">
@@ -264,9 +269,14 @@ const LeadCard = ({ lead, onClick }) => {
             <p className="text-xs text-gray-500 truncate">{lead.contact_name}{lead.contact_title ? ` · ${lead.contact_title}` : ''}</p>
           )}
         </div>
-        {isOverdue && (
-          <span className="flex-shrink-0 text-xs font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full ml-2">
-            {daysOverdue}d atrasado
+        {urgency === 'red' && (
+          <span className="flex-shrink-0 text-xs font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full ml-2 animate-pulse">
+            🔴 {daysSinceLast}d
+          </span>
+        )}
+        {urgency === 'yellow' && (
+          <span className="flex-shrink-0 text-xs font-bold bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full ml-2">
+            🟡 {daysSinceLast}d
           </span>
         )}
       </div>
@@ -291,7 +301,7 @@ const LeadCard = ({ lead, onClick }) => {
               <NextIcon className="w-3 h-3" />
             </span>
           )}
-          <span className={`text-xs font-medium ${daysSinceLast > 5 ? 'text-red-500' : 'text-gray-400'}`}>
+          <span className={`text-xs font-medium ${urgency === 'red' ? 'text-red-600' : urgency === 'yellow' ? 'text-yellow-600' : 'text-gray-400'}`}>
             {daysSinceLast}d
           </span>
         </div>
@@ -699,7 +709,12 @@ export const CadenciaDashboard = ({ supabase, currentUser, isAdmin, vendors }) =
 
   // KPIs
   const activeLeads = filtered.filter(l => l.status === 'active');
-  const overdueLeads = activeLeads.filter(l => l.next_touchpoint_date && new Date(l.next_touchpoint_date) < new Date());
+  const overdueLeads = activeLeads.filter(l => {
+    const d = l.last_touchpoint_date
+      ? daysBetween(new Date(l.last_touchpoint_date), new Date())
+      : daysBetween(new Date(l.created_at), new Date());
+    return d >= 5;
+  });
   const dueThisWeek = activeLeads.filter(l => {
     if (!l.next_touchpoint_date) return false;
     const d = new Date(l.next_touchpoint_date);
