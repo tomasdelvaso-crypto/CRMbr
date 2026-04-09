@@ -3,7 +3,7 @@ import {
   Loader2, Plus, Search, Phone, Mail, MessageCircle, Linkedin,
   ChevronRight, X, CheckCircle, XCircle, Clock, AlertTriangle,
   Archive, RotateCcw, Target, Users, TrendingUp, Calendar,
-  Building2, User, ExternalLink, ArrowRight
+  Building2, User, ExternalLink, ArrowRight, Brain
 } from 'lucide-react';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -325,6 +325,8 @@ const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert }) => {
   const [result, setResult] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [ventusAdvice, setVentusAdvice] = useState(null);
+  const [ventusLoading, setVentusLoading] = useState(false);
 
   const tpSvc = useMemo(() => new TouchpointService(supabase), [supabase]);
 
@@ -366,6 +368,53 @@ const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert }) => {
       alert('Erro ao registrar touchpoint: ' + (e.message || e));
     }
     finally { setSaving(false); }
+  };
+
+  const askVentus = async () => {
+    setVentusLoading(true);
+    setVentusAdvice(null);
+    try {
+      const nextTP = CADENCE_SCHEDULE[lead.touchpoints_count];
+      const ch = nextTP ? CHANNEL_CONFIG[nextTP.channel] : null;
+      const tpHistory = touchpoints.map(tp => {
+        const r = RESULT_CONFIG[tp.result];
+        return `TP${tp.sequence_number} (${CHANNEL_CONFIG[tp.channel]?.label || tp.channel}): ${r?.label || tp.result}${tp.notes ? ' — ' + tp.notes : ''}`;
+      }).join('\n');
+
+      const prompt = `Você é o Ventus, coach de vendas da Ventapel Brasil. Gere uma sugestão curta e prática para o próximo touchpoint de prospecção.
+
+LEAD:
+- Empresa: ${lead.company_name}
+- Contato: ${lead.contact_name || 'Não identificado'}${lead.contact_title ? ' (' + lead.contact_title + ')' : ''}
+- Email: ${lead.contact_email || 'N/A'}
+- Telefone: ${lead.contact_phone || 'N/A'}
+- LinkedIn: ${lead.contact_linkedin || 'N/A'}
+- Etapa atual: ${STAGE_CONFIG[lead.stage]?.label || lead.stage}
+- Touchpoints feitos: ${lead.touchpoints_count}/7
+
+${tpHistory ? 'HISTÓRICO:\n' + tpHistory : 'Nenhum touchpoint registrado ainda.'}
+
+PRÓXIMO TOUCHPOINT: TP${(lead.touchpoints_count || 0) + 1} via ${ch?.label || (nextTP?.channel || 'canal a definir')}
+${nextTP ? 'Sugestão da cadência: ' + nextTP.label : ''}
+
+Gere:
+1. Uma mensagem/roteiro pronto para enviar (adaptado ao canal: ${ch?.label || 'definir'})
+2. Uma dica rápida sobre o que focar neste contato
+
+Seja direto, sem introduções. Fale como um colega. Máximo 150 palavras.`;
+
+      const resp = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userInput: prompt, vendorName: lead.vendor })
+      });
+      const data = await resp.json();
+      setVentusAdvice(data.response || 'Sem resposta do Ventus.');
+    } catch (e) {
+      console.error(e);
+      setVentusAdvice('❌ Erro ao consultar o Ventus. Tente novamente.');
+    }
+    finally { setVentusLoading(false); }
   };
 
   const canRegister = lead.status === 'active' && lead.touchpoints_count < 7;
@@ -448,6 +497,40 @@ const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert }) => {
           </div>
         )}
       </div>
+
+      {/* Ventus advice */}
+      {canRegister && (
+        <div className="p-3 border-t bg-purple-50 flex-shrink-0">
+          {!ventusAdvice && !ventusLoading && (
+            <button onClick={askVentus}
+              className="w-full py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold text-sm hover:shadow-lg transition-all flex items-center justify-center gap-2">
+              <Brain className="w-4 h-4" />
+              Pedir sugestão ao Ventus
+            </button>
+          )}
+          {ventusLoading && (
+            <div className="flex items-center justify-center gap-2 py-2">
+              <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
+              <span className="text-sm text-purple-600">Ventus analisando...</span>
+            </div>
+          )}
+          {ventusAdvice && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-purple-700 flex items-center gap-1"><Brain className="w-3 h-3" /> Ventus</span>
+                <button onClick={() => setVentusAdvice(null)} className="text-xs text-purple-400 hover:text-purple-600">Fechar</button>
+              </div>
+              <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed bg-white p-3 rounded-lg border border-purple-200 max-h-40 overflow-y-auto">
+                {ventusAdvice}
+              </div>
+              <button onClick={askVentus}
+                className="text-xs text-purple-500 hover:text-purple-700 font-medium">
+                ↻ Gerar outra sugestão
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Register form */}
       {canRegister && (
