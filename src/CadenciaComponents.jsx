@@ -381,45 +381,23 @@ const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert }) => {
         return `TP${tp.sequence_number} (${CHANNEL_CONFIG[tp.channel]?.label || tp.channel}): ${r?.label || tp.result}${tp.notes ? ' — ' + tp.notes : ''}`;
       }).join('\n');
 
-      // Enrich with Serper: search for company news/context
-      let serperContext = '';
-      try {
-        const searches = await Promise.all([
-          fetch('/api/google-search', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: `"${lead.company_name}" expansão OR novo OR investimento OR logística` }) }).then(r => r.json()),
-          fetch('/api/google-search', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: `"${lead.company_name}" problemas entrega OR reclamação OR atraso site:reclameaqui.com.br` }) }).then(r => r.json()),
-        ]);
-        const allResults = [...(searches[0]?.results || []), ...(searches[1]?.results || [])];
-        if (allResults.length > 0) {
-          serperContext = '\n\nINTELIGÊNCIA DE MERCADO (dados reais do Google):\n' +
-            allResults.slice(0, 6).map(r => `• ${r.title}: ${r.snippet}`).join('\n');
-        }
-      } catch (e) { console.warn('Serper enrichment failed, continuing without:', e); }
-
-      const prompt = `Você é o Ventus, coach de vendas da Ventapel Brasil. Gere uma sugestão curta e prática para o próximo touchpoint de prospecção.
+      const prompt = `Gere uma sugestão prática para o próximo touchpoint de prospecção.
 
 LEAD:
 - Empresa: ${lead.company_name}
-- Domínio: ${lead.company_domain || 'N/A'}
 - Contato: ${lead.contact_name || 'Não identificado'}${lead.contact_title ? ' (' + lead.contact_title + ')' : ''}
 - Email: ${lead.contact_email || 'N/A'}
 - Telefone: ${lead.contact_phone || 'N/A'}
 - LinkedIn: ${lead.contact_linkedin || 'N/A'}
-- Etapa atual: ${STAGE_CONFIG[lead.stage]?.label || lead.stage}
-- Touchpoints feitos: ${lead.touchpoints_count}/7
+- Etapa: ${STAGE_CONFIG[lead.stage]?.label || lead.stage}
+- Touchpoints: ${lead.touchpoints_count}/7
 
-${tpHistory ? 'HISTÓRICO DE TOUCHPOINTS:\n' + tpHistory : 'Nenhum touchpoint registrado ainda.'}
-${serperContext}
+${tpHistory ? 'HISTÓRICO:\n' + tpHistory : 'Nenhum touchpoint ainda.'}
 
-PRÓXIMO TOUCHPOINT: TP${(lead.touchpoints_count || 0) + 1} via ${ch?.label || (nextTP?.channel || 'canal a definir')}
-${nextTP ? 'Sugestão da cadência: ' + nextTP.label : ''}
+PRÓXIMO: TP${(lead.touchpoints_count || 0) + 1} via ${ch?.label || (nextTP?.channel || 'canal a definir')}
+${nextTP ? 'Cadência sugere: ' + nextTP.label : ''}
 
-Gere:
-1. Uma mensagem/roteiro pronto para enviar (adaptado ao canal: ${ch?.label || 'definir'})${serperContext ? ' — USE dados reais encontrados no Google para personalizar' : ''}
-2. Uma dica rápida sobre o que focar neste contato
-
-Seja direto, sem introduções. Fale como um colega. Máximo 200 palavras.`;
+Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo 150 palavras.`;
 
       const resp = await fetch('/api/cadencia-assistant', {
         method: 'POST',
