@@ -460,8 +460,8 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
   const nextTP = CADENCE_SCHEDULE[lead.touchpoints_count];
 
   return (
-    <div className="fixed top-0 right-0 h-full w-[440px] z-[55] bg-white shadow-2xl border-l border-gray-200 flex flex-col">
-      {/* Header */}
+    <div className="fixed top-0 right-0 h-full w-[440px] z-[55] bg-white shadow-2xl border-l border-gray-200 flex flex-col overflow-hidden">
+      {/* Header - fixed */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="min-w-0 flex-1">
@@ -480,6 +480,9 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
           </span>
         </div>
       </div>
+
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto">
 
       {/* Contact info / Edit form */}
       {!editing ? (
@@ -571,7 +574,7 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
       )}
 
       {/* Touchpoint timeline */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="p-4">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Timeline ({touchpoints.length} touchpoints)</p>
         {loading ? (
           <div className="text-center py-6"><Loader2 className="w-5 h-5 animate-spin mx-auto text-gray-400" /></div>
@@ -700,12 +703,14 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
       )}
 
       {lead.status === 'converted' && lead.opportunity_id && (
-        <div className="p-4 border-t bg-green-50 flex-shrink-0">
+        <div className="p-4 border-t bg-green-50">
           <p className="text-sm text-green-700 font-semibold flex items-center gap-1">
             <CheckCircle className="w-4 h-4" /> Convertido em oportunidade #{lead.opportunity_id}
           </p>
         </div>
       )}
+
+      </div>{/* end scrollable content */}
     </div>
   );
 };
