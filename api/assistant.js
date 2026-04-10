@@ -1236,7 +1236,7 @@ export default async function handler(req) {
          method: 'POST',
          headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
          body: JSON.stringify({
-           model: 'claude-sonnet-4-6-20250320',
+           model: 'claude-sonnet-4-20250514',
            max_tokens: 1000,
            temperature: 0.3,
            system: `Você é o "Ventus", coach de vendas da Ventapel Brasil. Linhas: Máquinas Better Pack, Better Pack + Venom (anti-violação), E-comfill + Resmas, E-Combag (sobres papel), Serviço de Manutenção. Fale direto, prático, como colega. NUNCA invente dados.`,
