@@ -1244,6 +1244,11 @@ export default async function handler(req) {
          }),
        });
        const data = await resp.json();
+       console.log('📞 Cadencia Claude response status:', resp.status, 'stop_reason:', data.stop_reason, 'error:', data.error);
+       if (data.error) {
+         console.error('📞 Cadencia Claude API error:', JSON.stringify(data.error));
+         return new Response(JSON.stringify({ response: '❌ API: ' + (data.error.message || JSON.stringify(data.error)) }), { status: 200, headers });
+       }
        return new Response(JSON.stringify({ response: data.content?.[0]?.text || 'Sem resposta.' }), { status: 200, headers });
      } catch (e) {
        console.error('Cadencia Claude error:', e);
