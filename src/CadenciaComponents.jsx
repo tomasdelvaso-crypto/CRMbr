@@ -335,6 +335,7 @@ const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert }) => {
     contact_title: lead.contact_title || '',
     contact_email: lead.contact_email || '',
     contact_phone: lead.contact_phone || '',
+    contact_whatsapp: lead.contact_whatsapp || '',
     contact_linkedin: lead.contact_linkedin || '',
     notes: lead.notes || '',
   });
@@ -435,6 +436,7 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
         contact_title: editForm.contact_title.trim() || null,
         contact_email: editForm.contact_email.trim() || null,
         contact_phone: editForm.contact_phone.trim() || null,
+        contact_whatsapp: editForm.contact_whatsapp.trim() || null,
         contact_linkedin: editForm.contact_linkedin.trim() || null,
         notes: editForm.notes.trim() || null,
       });
@@ -488,15 +490,16 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
               </a>
             )}
             {lead.contact_phone && (
-              <div className="flex items-center gap-2">
-                <a href={`tel:${lead.contact_phone}`} className="text-xs text-blue-600 hover:underline flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5" /> {lead.contact_phone}
-                </a>
-                <a href={`https://wa.me/${(lead.contact_phone || '').replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener"
-                  className="text-xs text-green-600 hover:text-green-800 bg-green-50 px-1.5 py-0.5 rounded font-medium">
-                  WhatsApp
-                </a>
-              </div>
+              <a href={`tel:${lead.contact_phone}`} className="text-xs text-blue-600 hover:underline flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5" /> {lead.contact_phone}
+              </a>
+            )}
+            {(lead.contact_whatsapp || lead.contact_phone) && (
+              <a href={`https://wa.me/${((lead.contact_whatsapp || lead.contact_phone) || '').replace(/[^0-9]/g, '')}`}
+                target="_blank" rel="noopener"
+                className="text-xs text-green-700 hover:text-green-900 bg-green-100 px-2 py-1 rounded-lg font-semibold flex items-center gap-1.5 w-fit">
+                <MessageCircle className="w-3.5 h-3.5" /> WhatsApp {lead.contact_whatsapp || lead.contact_phone}
+              </a>
             )}
             {lead.contact_linkedin && (
               <a href={lead.contact_linkedin.startsWith('http') ? lead.contact_linkedin : `https://${lead.contact_linkedin}`}
@@ -534,8 +537,12 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
           </div>
           <input value={editForm.contact_email} onChange={e => setEditForm(f => ({ ...f, contact_email: e.target.value }))}
             className="w-full border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="Email" type="email" />
-          <input value={editForm.contact_phone} onChange={e => setEditForm(f => ({ ...f, contact_phone: e.target.value }))}
-            className="w-full border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="Telefone" type="tel" />
+          <div className="grid grid-cols-2 gap-2">
+            <input value={editForm.contact_phone} onChange={e => setEditForm(f => ({ ...f, contact_phone: e.target.value }))}
+              className="border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="📞 Telefone" type="tel" />
+            <input value={editForm.contact_whatsapp} onChange={e => setEditForm(f => ({ ...f, contact_whatsapp: e.target.value }))}
+              className="border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="💬 WhatsApp" type="tel" />
+          </div>
           <input value={editForm.contact_linkedin} onChange={e => setEditForm(f => ({ ...f, contact_linkedin: e.target.value }))}
             className="w-full border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="LinkedIn URL" />
           <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
@@ -701,7 +708,7 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
 const NewLeadModal = ({ supabase, currentUser, isAdmin, vendors, onClose, onCreated }) => {
   const [form, setForm] = useState({
     company_name: '', company_domain: '',
-    contact_name: '', contact_title: '', contact_email: '', contact_phone: '', contact_linkedin: '',
+    contact_name: '', contact_title: '', contact_email: '', contact_phone: '', contact_whatsapp: '', contact_linkedin: '',
     source: 'manual', stage: '1a', notes: '',
     vendor: currentUser || '',
   });
@@ -735,6 +742,7 @@ const NewLeadModal = ({ supabase, currentUser, isAdmin, vendors, onClose, onCrea
         contact_title: form.contact_title.trim() || null,
         contact_email: form.contact_email.trim() || null,
         contact_phone: form.contact_phone.trim() || null,
+        contact_whatsapp: form.contact_whatsapp.trim() || null,
         contact_linkedin: form.contact_linkedin.trim() || null,
         stage: form.stage,
         notes: form.notes.trim() || null,
@@ -788,16 +796,19 @@ const NewLeadModal = ({ supabase, currentUser, isAdmin, vendors, onClose, onCrea
               className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="Cargo" />
           </div>
 
+          <input type="email" value={form.contact_email} onChange={e => set('contact_email', e.target.value)}
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="📧 Email" />
+
           <div className="grid grid-cols-2 gap-3">
-            <input type="email" value={form.contact_email} onChange={e => set('contact_email', e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="Email" />
             <input type="tel" value={form.contact_phone} onChange={e => set('contact_phone', e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="Telefone" />
+              className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="📞 Telefone" />
+            <input type="tel" value={form.contact_whatsapp} onChange={e => set('contact_whatsapp', e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="💬 WhatsApp" />
           </div>
 
           <input type="text" value={form.contact_linkedin} onChange={e => set('contact_linkedin', e.target.value)}
             className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
-            placeholder="LinkedIn URL" />
+            placeholder="🔗 LinkedIn URL" />
 
           {/* Vendor (admin only) */}
           {isAdmin && (
