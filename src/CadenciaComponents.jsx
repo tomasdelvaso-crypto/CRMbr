@@ -484,6 +484,31 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
 
+      {/* Stage selector */}
+      {lead.status === 'active' && (
+        <div className="p-2 border-b bg-white flex items-center gap-1">
+          <span className="text-[10px] text-gray-400 font-semibold mr-1">Etapa:</span>
+          {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
+            <button key={key}
+              onClick={async () => {
+                if (key === lead.stage) return;
+                try {
+                  const svc = new LeadService(supabase);
+                  await svc.updateLead(lead.id, { stage: key });
+                  onUpdate();
+                } catch (e) { console.error(e); }
+              }}
+              className={`flex-1 py-1.5 rounded text-[10px] font-bold transition-colors ${
+                lead.stage === key
+                  ? `${cfg.color} text-white`
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}>
+              {key.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Contact info / Edit form */}
       {!editing ? (
         <div className="p-3 border-b bg-gray-50 flex-shrink-0">
