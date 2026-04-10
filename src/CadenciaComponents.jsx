@@ -3,7 +3,7 @@ import {
   Loader2, Plus, Search, Phone, Mail, MessageCircle, Linkedin,
   ChevronRight, X, CheckCircle, XCircle, Clock, AlertTriangle,
   Archive, RotateCcw, Target, Users, TrendingUp, Calendar,
-  Building2, User, ExternalLink, ArrowRight, Brain
+  Building2, User, ExternalLink, ArrowRight, Brain, Edit3
 } from 'lucide-react';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -327,6 +327,17 @@ const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert }) => {
   const [saving, setSaving] = useState(false);
   const [ventusAdvice, setVentusAdvice] = useState(null);
   const [ventusLoading, setVentusLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    company_name: lead.company_name || '',
+    company_domain: lead.company_domain || '',
+    contact_name: lead.contact_name || '',
+    contact_title: lead.contact_title || '',
+    contact_email: lead.contact_email || '',
+    contact_phone: lead.contact_phone || '',
+    contact_linkedin: lead.contact_linkedin || '',
+    notes: lead.notes || '',
+  });
 
   const tpSvc = useMemo(() => new TouchpointService(supabase), [supabase]);
 
@@ -413,6 +424,29 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
     finally { setVentusLoading(false); }
   };
 
+  const saveEdit = async () => {
+    setSaving(true);
+    try {
+      const leadSvc = new LeadService(supabase);
+      await leadSvc.updateLead(lead.id, {
+        company_name: editForm.company_name.trim() || lead.company_name,
+        company_domain: editForm.company_domain.trim() || null,
+        contact_name: editForm.contact_name.trim() || null,
+        contact_title: editForm.contact_title.trim() || null,
+        contact_email: editForm.contact_email.trim() || null,
+        contact_phone: editForm.contact_phone.trim() || null,
+        contact_linkedin: editForm.contact_linkedin.trim() || null,
+        notes: editForm.notes.trim() || null,
+      });
+      setEditing(false);
+      onUpdate();
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao salvar: ' + (e.message || e));
+    }
+    finally { setSaving(false); }
+  };
+
   const canRegister = lead.status === 'active' && lead.touchpoints_count < 7;
   const nextTP = CADENCE_SCHEDULE[lead.touchpoints_count];
 
@@ -438,13 +472,81 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
         </div>
       </div>
 
-      {/* Contact info */}
-      <div className="p-3 border-b bg-gray-50 flex-shrink-0 space-y-1">
-        {lead.contact_email && <p className="text-xs text-gray-600 flex items-center gap-1"><Mail className="w-3 h-3" /> {lead.contact_email}</p>}
-        {lead.contact_phone && <p className="text-xs text-gray-600 flex items-center gap-1"><Phone className="w-3 h-3" /> {lead.contact_phone}</p>}
-        {lead.contact_linkedin && <p className="text-xs text-gray-600 flex items-center gap-1"><Linkedin className="w-3 h-3" /> {lead.contact_linkedin}</p>}
-        {lead.company_domain && <p className="text-xs text-gray-400">{lead.company_domain}</p>}
-      </div>
+      {/* Contact info / Edit form */}
+      {!editing ? (
+        <div className="p-3 border-b bg-gray-50 flex-shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Dados do Contato</span>
+            <button onClick={() => setEditing(true)} className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
+              <Edit3 className="w-3 h-3" /> Editar
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {lead.contact_email && (
+              <a href={`mailto:${lead.contact_email}`} className="text-xs text-blue-600 hover:underline flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5" /> {lead.contact_email}
+              </a>
+            )}
+            {lead.contact_phone && (
+              <div className="flex items-center gap-2">
+                <a href={`tel:${lead.contact_phone}`} className="text-xs text-blue-600 hover:underline flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5" /> {lead.contact_phone}
+                </a>
+                <a href={`https://wa.me/${(lead.contact_phone || '').replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener"
+                  className="text-xs text-green-600 hover:text-green-800 bg-green-50 px-1.5 py-0.5 rounded font-medium">
+                  WhatsApp
+                </a>
+              </div>
+            )}
+            {lead.contact_linkedin && (
+              <a href={lead.contact_linkedin.startsWith('http') ? lead.contact_linkedin : `https://${lead.contact_linkedin}`}
+                target="_blank" rel="noopener" className="text-xs text-blue-600 hover:underline flex items-center gap-1.5">
+                <Linkedin className="w-3.5 h-3.5" /> LinkedIn
+              </a>
+            )}
+            {lead.company_domain && (
+              <a href={lead.company_domain.startsWith('http') ? lead.company_domain : `https://${lead.company_domain}`}
+                target="_blank" rel="noopener" className="text-xs text-gray-500 hover:underline flex items-center gap-1.5">
+                <ExternalLink className="w-3 h-3" /> {lead.company_domain}
+              </a>
+            )}
+            {lead.notes && <p className="text-xs text-gray-500 mt-1 italic">📝 {lead.notes}</p>}
+            {!lead.contact_email && !lead.contact_phone && !lead.contact_linkedin && (
+              <p className="text-xs text-gray-400">Nenhum dado de contato. <button onClick={() => setEditing(true)} className="text-blue-600 underline">Adicionar</button></p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="p-3 border-b bg-blue-50 flex-shrink-0 space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Editando Lead</span>
+            <button onClick={() => setEditing(false)} className="text-xs text-gray-500 hover:text-gray-700">Cancelar</button>
+          </div>
+          <input value={editForm.company_name} onChange={e => setEditForm(f => ({ ...f, company_name: e.target.value }))}
+            className="w-full border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="Empresa *" />
+          <input value={editForm.company_domain} onChange={e => setEditForm(f => ({ ...f, company_domain: e.target.value }))}
+            className="w-full border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="Domínio (empresa.com.br)" />
+          <div className="grid grid-cols-2 gap-2">
+            <input value={editForm.contact_name} onChange={e => setEditForm(f => ({ ...f, contact_name: e.target.value }))}
+              className="border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="Nome do contato" />
+            <input value={editForm.contact_title} onChange={e => setEditForm(f => ({ ...f, contact_title: e.target.value }))}
+              className="border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="Cargo" />
+          </div>
+          <input value={editForm.contact_email} onChange={e => setEditForm(f => ({ ...f, contact_email: e.target.value }))}
+            className="w-full border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="Email" type="email" />
+          <input value={editForm.contact_phone} onChange={e => setEditForm(f => ({ ...f, contact_phone: e.target.value }))}
+            className="w-full border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="Telefone" type="tel" />
+          <input value={editForm.contact_linkedin} onChange={e => setEditForm(f => ({ ...f, contact_linkedin: e.target.value }))}
+            className="w-full border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="LinkedIn URL" />
+          <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
+            className="w-full border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none resize-none" rows={2} placeholder="Notas" />
+          <button onClick={saveEdit} disabled={saving}
+            className="w-full py-1.5 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1">
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+            {saving ? 'Salvando...' : 'Salvar'}
+          </button>
+        </div>
+      )}
 
       {/* Cadence reference */}
       {canRegister && nextTP && (
