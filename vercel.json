@@ -2,6 +2,12 @@
   "functions": {
     "api/assistant.js": {
       "maxDuration": 30
+    },
+    "api/cadencia-assistant.js": {
+      "maxDuration": 30
+    },
+    "api/admin-assistant.js": {
+      "maxDuration": 30
     }
   },
   "rewrites": [
