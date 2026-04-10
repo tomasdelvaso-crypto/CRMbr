@@ -530,7 +530,7 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
               </a>
             )}
             {(lead.contact_whatsapp || lead.contact_phone) && (
-              <a href={`https://wa.me/${((lead.contact_whatsapp || lead.contact_phone) || '').replace(/[^0-9]/g, '')}`}
+              <a href={`https://wa.me/${(() => { const n = ((lead.contact_whatsapp || lead.contact_phone) || '').replace(/[^0-9]/g, ''); return n.startsWith('55') ? n : '55' + n; })()}`}
                 target="_blank" rel="noopener"
                 className="text-xs text-green-700 hover:text-green-900 bg-green-100 px-2 py-1 rounded-lg font-semibold flex items-center gap-1.5 w-fit">
                 <MessageCircle className="w-3.5 h-3.5" /> WhatsApp {lead.contact_whatsapp || lead.contact_phone}
