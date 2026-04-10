@@ -1224,6 +1224,33 @@ export default async function handler(req) {
      );
    }
    
+   // ===== ROTA: CADÊNCIA (bypass all validation, direct to Claude) =====
+   if (requestType === 'cadencia' && userInput) {
+     console.log('📞 Rota: Cadência lead advice');
+     const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+     if (!ANTHROPIC_API_KEY) {
+       return new Response(JSON.stringify({ response: '⚠️ API key não configurada.' }), { status: 200, headers });
+     }
+     try {
+       const resp = await fetch('https://api.anthropic.com/v1/messages', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+         body: JSON.stringify({
+           model: 'claude-haiku-4-5-20251001',
+           max_tokens: 800,
+           temperature: 0.4,
+           system: `Você é o "Ventus", coach de vendas da Ventapel Brasil. Linhas: Máquinas Better Pack, Better Pack + Venom (anti-violação), E-comfill + Resmas, E-Combag (sobres papel), Serviço de Manutenção. Fale direto, prático, como colega. NUNCA invente dados.`,
+           messages: [{ role: 'user', content: userInput }],
+         }),
+       });
+       const data = await resp.json();
+       return new Response(JSON.stringify({ response: data.content?.[0]?.text || 'Sem resposta.' }), { status: 200, headers });
+     } catch (e) {
+       console.error('Cadencia Claude error:', e);
+       return new Response(JSON.stringify({ response: '❌ Erro: ' + (e.message || e) }), { status: 200, headers });
+     }
+   }
+
    // Validação básica
    if (!opportunityData && !isNewOpportunity && !pipelineData?.allOpportunities?.length) {
      return new Response(

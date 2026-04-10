@@ -418,10 +418,10 @@ ${nextTP ? 'Cadência sugere: ' + nextTP.label : ''}
 
 Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo 150 palavras.`;
 
-      const resp = await fetch('/api/cadencia-assistant', {
+      const resp = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, vendorName: lead.vendor })
+        body: JSON.stringify({ userInput: prompt, vendorName: lead.vendor, requestType: 'cadencia' })
       });
       const data = await resp.json();
       setVentusAdvice(data.response || 'Sem resposta do Ventus.');
