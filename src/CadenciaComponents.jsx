@@ -328,17 +328,24 @@ const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert }) => {
   const [ventusAdvice, setVentusAdvice] = useState(null);
   const [ventusLoading, setVentusLoading] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
-    company_name: lead.company_name || '',
-    company_domain: lead.company_domain || '',
-    contact_name: lead.contact_name || '',
-    contact_title: lead.contact_title || '',
-    contact_email: lead.contact_email || '',
-    contact_phone: lead.contact_phone || '',
-    contact_whatsapp: lead.contact_whatsapp || '',
-    contact_linkedin: lead.contact_linkedin || '',
-    notes: lead.notes || '',
-  });
+  const [editForm, setEditForm] = useState({});
+
+  // Reset edit form when lead changes
+  useEffect(() => {
+    setEditing(false);
+    setVentusAdvice(null);
+    setEditForm({
+      company_name: lead.company_name || '',
+      company_domain: lead.company_domain || '',
+      contact_name: lead.contact_name || '',
+      contact_title: lead.contact_title || '',
+      contact_email: lead.contact_email || '',
+      contact_phone: lead.contact_phone || '',
+      contact_whatsapp: lead.contact_whatsapp || '',
+      contact_linkedin: lead.contact_linkedin || '',
+      notes: lead.notes || '',
+    });
+  }, [lead.id]);
 
   const tpSvc = useMemo(() => new TouchpointService(supabase), [supabase]);
 
