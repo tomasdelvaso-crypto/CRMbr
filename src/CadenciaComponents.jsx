@@ -421,21 +421,10 @@ Gere:
 
 Seja direto, sem introduções. Fale como um colega. Máximo 200 palavras.`;
 
-      // Pass lead as a minimal opportunityData so backend doesn't block it
-      const fakeOpp = {
-        client: lead.company_name,
-        name: 'Lead Cadência — ' + lead.company_name,
-        vendor: lead.vendor,
-        stage: 1,
-        value: 0,
-        sponsor: lead.contact_name || null,
-        product: null,
-        scales: { dor: { score: 0 }, poder: { score: 0 }, visao: { score: 0 }, valor: { score: 0 }, controle: { score: 0 }, compras: { score: 0 } },
-      };
-      const resp = await fetch('/api/assistant', {
+      const resp = await fetch('/api/cadencia-assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userInput: prompt, opportunityData: fakeOpp, vendorName: lead.vendor })
+        body: JSON.stringify({ prompt, vendorName: lead.vendor })
       });
       const data = await resp.json();
       setVentusAdvice(data.response || 'Sem resposta do Ventus.');
