@@ -484,31 +484,6 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
 
-      {/* Stage selector */}
-      {lead.status === 'active' && (
-        <div className="p-2 border-b bg-white flex items-center gap-1">
-          <span className="text-[10px] text-gray-400 font-semibold mr-1">Etapa:</span>
-          {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
-            <button key={key}
-              onClick={async () => {
-                if (key === lead.stage) return;
-                try {
-                  const svc = new LeadService(supabase);
-                  await svc.updateLead(lead.id, { stage: key });
-                  onUpdate();
-                } catch (e) { console.error(e); }
-              }}
-              className={`flex-1 py-1.5 rounded text-[10px] font-bold transition-colors ${
-                lead.stage === key
-                  ? `${cfg.color} text-white`
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-              }`}>
-              {key.toUpperCase()}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Contact info / Edit form */}
       {!editing ? (
         <div className="p-3 border-b bg-gray-50 flex-shrink-0">
@@ -582,6 +557,30 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
             className="w-full border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="LinkedIn URL" />
           <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
             className="w-full border rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none resize-none" rows={2} placeholder="Notas" />
+          {/* Stage selector */}
+          <div>
+            <span className="text-[10px] text-gray-500 font-semibold">Etapa no Kanban:</span>
+            <div className="flex gap-1 mt-1">
+              {Object.entries(STAGE_CONFIG).map(([key, cfg]) => (
+                <button type="button" key={key}
+                  onClick={async () => {
+                    if (key === lead.stage) return;
+                    try {
+                      const svc = new LeadService(supabase);
+                      await svc.updateLead(lead.id, { stage: key });
+                      onUpdate();
+                    } catch (e) { console.error(e); }
+                  }}
+                  className={`flex-1 py-1.5 rounded text-[10px] font-bold transition-colors ${
+                    lead.stage === key
+                      ? `${cfg.color} text-white`
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}>
+                  {key.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
           <button onClick={saveEdit} disabled={saving}
             className="w-full py-1.5 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1">
             {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
