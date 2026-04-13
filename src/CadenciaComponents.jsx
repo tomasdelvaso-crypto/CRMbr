@@ -586,6 +586,20 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
             {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
             {saving ? 'Salvando...' : 'Salvar'}
           </button>
+          <button type="button"
+            onClick={async () => {
+              if (!confirm(`Excluir lead "${lead.company_name}" permanentemente?`)) return;
+              try {
+                const svc = new LeadService(supabase);
+                await supabase.from('touchpoints').delete().eq('lead_id', lead.id);
+                await supabase.from('leads').delete().eq('id', lead.id);
+                onClose();
+                onUpdate();
+              } catch (e) { console.error(e); alert('Erro ao excluir: ' + (e.message || e)); }
+            }}
+            className="w-full py-1.5 bg-white text-red-500 border border-red-200 rounded text-xs font-medium hover:bg-red-50 flex items-center justify-center gap-1 mt-1">
+            <XCircle className="w-3 h-3" /> Excluir lead
+          </button>
         </div>
       )}
 
