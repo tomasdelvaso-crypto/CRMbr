@@ -331,9 +331,12 @@ const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert }) => {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
 
+  const [editingTp, setEditingTp] = useState(null); // { id, channel, result, notes }
+
   // Reset edit form when lead changes
   useEffect(() => {
     setEditing(false);
+    setEditingTp(null);
     setVentusAdvice(null);
     setEditForm({
       company_name: lead.company_name || '',
@@ -625,6 +628,8 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
               const ch = CHANNEL_CONFIG[tp.channel];
               const res = RESULT_CONFIG[tp.result];
               const ChIcon = ch?.icon || Clock;
+              const isEditingThis = editingTp?.id === tp.id;
+
               return (
                 <div key={tp.id} className="flex gap-3">
                   <div className="flex flex-col items-center">
@@ -634,16 +639,74 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
                     {i < touchpoints.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 mt-1" />}
                   </div>
                   <div className="flex-1 min-w-0 pb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-gray-700">TP {tp.sequence_number}</span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${res?.bg || 'bg-gray-100'} ${res?.color || 'text-gray-600'}`}>
-                        {res?.icon} {res?.label}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-gray-400 mt-0.5">
-                      {new Date(tp.executed_at).toLocaleDateString('pt-BR')} · {ch?.label}
-                    </p>
-                    {tp.notes && <p className="text-xs text-gray-600 mt-1 bg-gray-50 p-2 rounded">{tp.notes}</p>}
+                    {!isEditingThis ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-gray-700">TP {tp.sequence_number}</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${res?.bg || 'bg-gray-100'} ${res?.color || 'text-gray-600'}`}>
+                            {res?.icon} {res?.label}
+                          </span>
+                          {editing && (
+                            <div className="ml-auto flex gap-1">
+                              <button onClick={() => setEditingTp({ id: tp.id, channel: tp.channel, result: tp.result, notes: tp.notes || '' })}
+                                className="text-[10px] text-blue-500 hover:text-blue-700 font-medium">Editar</button>
+                              <button onClick={async () => {
+                                if (!confirm('Excluir este touchpoint?')) return;
+                                await supabase.from('touchpoints').delete().eq('id', tp.id);
+                                // Recalc lead touchpoints_count
+                                const remaining = touchpoints.length - 1;
+                                await supabase.from('leads').update({
+                                  touchpoints_count: remaining,
+                                  last_touchpoint_date: remaining > 0 ? null : null,
+                                }).eq('id', lead.id);
+                                await loadTouchpoints();
+                                onUpdate();
+                              }} className="text-[10px] text-red-500 hover:text-red-700 font-medium">Excluir</button>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          {new Date(tp.executed_at).toLocaleDateString('pt-BR')} · {ch?.label}
+                        </p>
+                        {tp.notes && <p className="text-xs text-gray-600 mt-1 bg-gray-50 p-2 rounded">{tp.notes}</p>}
+                      </>
+                    ) : (
+                      <div className="space-y-2 bg-blue-50 p-2 rounded-lg border border-blue-200">
+                        <div className="flex gap-1">
+                          {Object.entries(CHANNEL_CONFIG).map(([k, c]) => {
+                            const I = c.icon;
+                            return (
+                              <button key={k} onClick={() => setEditingTp(p => ({ ...p, channel: k }))}
+                                className={`flex-1 py-1 rounded text-[10px] font-medium border ${editingTp.channel === k ? `${c.bg} ${c.color} ${c.border}` : 'bg-white text-gray-400 border-gray-200'}`}>
+                                <I className="w-3 h-3 mx-auto" />
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <select value={editingTp.result} onChange={e => setEditingTp(p => ({ ...p, result: e.target.value }))}
+                          className="w-full border rounded px-2 py-1 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none">
+                          {Object.entries(RESULT_CONFIG).map(([k, r]) => (
+                            <option key={k} value={k}>{r.icon} {r.label}</option>
+                          ))}
+                        </select>
+                        <input value={editingTp.notes} onChange={e => setEditingTp(p => ({ ...p, notes: e.target.value }))}
+                          className="w-full border rounded px-2 py-1 text-xs focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="Nota" />
+                        <div className="flex gap-1">
+                          <button onClick={async () => {
+                            await supabase.from('touchpoints').update({
+                              channel: editingTp.channel,
+                              result: editingTp.result,
+                              notes: editingTp.notes.trim() || null,
+                            }).eq('id', tp.id);
+                            setEditingTp(null);
+                            await loadTouchpoints();
+                            onUpdate();
+                          }} className="flex-1 py-1 bg-blue-600 text-white rounded text-[10px] font-semibold">Salvar</button>
+                          <button onClick={() => setEditingTp(null)}
+                            className="flex-1 py-1 bg-gray-100 text-gray-600 rounded text-[10px] font-medium">Cancelar</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
