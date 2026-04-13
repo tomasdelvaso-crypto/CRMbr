@@ -588,17 +588,16 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
           </button>
           <button type="button"
             onClick={async () => {
-              if (!confirm(`Excluir lead "${lead.company_name}" permanentemente?`)) return;
+              if (!confirm(`Arquivar lead "${lead.company_name}"?`)) return;
               try {
                 const svc = new LeadService(supabase);
-                await supabase.from('touchpoints').delete().eq('lead_id', lead.id);
-                await supabase.from('leads').delete().eq('id', lead.id);
+                await svc.archiveLead(lead.id);
                 onClose();
                 onUpdate();
-              } catch (e) { console.error(e); alert('Erro ao excluir: ' + (e.message || e)); }
+              } catch (e) { console.error(e); alert('Erro ao arquivar: ' + (e.message || e)); }
             }}
             className="w-full py-1.5 bg-white text-red-500 border border-red-200 rounded text-xs font-medium hover:bg-red-50 flex items-center justify-center gap-1 mt-1">
-            <XCircle className="w-3 h-3" /> Excluir lead
+            <Archive className="w-3 h-3" /> Arquivar lead
           </button>
         </div>
       )}
