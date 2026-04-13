@@ -13,7 +13,7 @@ const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: CORS_HEADERS });
 
 // ── Prompt do Ventus Manager ─────────────────────────────────────────────────
-function buildAdminPrompt(adminName, vendorStats, stagnationAlerts, userInput) {
+function buildAdminPrompt(adminName, vendorStats, stagnationAlerts, userInput, cadenciaStats) {
 
   // ── 1. Resumo por vendedor ──
   const teamSummary = vendorStats.map(v =>
@@ -122,6 +122,20 @@ ${strongPoints.length > 0 ? strongPoints.map(p => `💪 ${p}`).join('\n') : '—
 
 ${alertsSummary}
 
+━━━ CADÊNCIA DE PROSPECÇÃO ━━━
+
+${cadenciaStats && cadenciaStats.length > 0
+  ? cadenciaStats.map(c => {
+      let line = `• ${c.vendor}: ${c.activeLeads} leads ativos · ${c.overdueLeads} atrasados (5+ dias) · ${c.touchpoints7d} touchpoints últimos 7d · ${c.convertedLeads} convertidos`;
+      if (c.recentLeads?.length > 0) {
+        line += '\n  Leads ativos: ' + c.recentLeads.map(l =>
+          `${l.company}${l.contact ? ' (' + l.contact + ')' : ''} — etapa ${l.stage.toUpperCase()} — TP ${l.touchpoints}/7 — ${l.daysSinceContact}d sem contato`
+        ).join('; ');
+      }
+      return line;
+    }).join('\n')
+  : 'Sem dados de cadência disponíveis.'}
+
 ━━━ PERGUNTA DO GESTOR ━━━
 
 ${userInput}
@@ -174,7 +188,7 @@ export default async function handler(req) {
 
   try {
     const body = await req.json();
-    const { userInput, adminName, vendorStats = [], stagnationAlerts = [] } = body;
+    const { userInput, adminName, vendorStats = [], stagnationAlerts = [], cadenciaStats = [] } = body;
 
     if (!userInput?.trim()) {
       return json({ response: 'Pode me perguntar sobre a equipe — desempenho, alertas, quem precisa de atenção...' });
@@ -187,7 +201,7 @@ export default async function handler(req) {
       return json({ response: fallbackResponse(vendorStats, stagnationAlerts, userInput) });
     }
 
-    const prompt = buildAdminPrompt(adminName, vendorStats, stagnationAlerts, userInput);
+    const prompt = buildAdminPrompt(adminName, vendorStats, stagnationAlerts, userInput, cadenciaStats);
 
     const clRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

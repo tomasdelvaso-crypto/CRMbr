@@ -43,7 +43,7 @@ const severityClasses = {
 };
 
 // ── VentusAdmin sidebar ───────────────────────────────────────────────────────
-const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts }) => {
+const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts, supabase }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -56,7 +56,7 @@ const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts }) => {
     '📋 Quais oportunidades estão mal preenchidas?',
     '🔴 Onde estão os pontos fracos do pipeline?',
     '💪 Quais são os pontos fortes que devo explorar?',
-    '💡 O que devo cobrar em cada vendedor essa semana?',
+    '📞 Como está a cadência de prospecção do time?',
   ];
 
   const send = useCallback(async (text) => {
@@ -136,6 +136,62 @@ const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts }) => {
         };
       });
 
+      // Load cadência data
+      let cadenciaStats = [];
+      if (supabase) {
+        try {
+          const [leadsRes, tpRes] = await Promise.all([
+            supabase.from('leads').select('*').order('created_at', { ascending: false }),
+            supabase.from('touchpoints').select('lead_id, channel, result, notes, executed_at').order('executed_at', { ascending: false }).limit(100),
+          ]);
+          const leads = leadsRes.data || [];
+          const tps = tpRes.data || [];
+          const now = Date.now();
+          const sevenDaysAgo = now - 7 * 86400000;
+
+          // Group by vendor
+          const byVendor = {};
+          leads.forEach(l => {
+            if (!byVendor[l.vendor]) byVendor[l.vendor] = { leads: [], tps7d: 0, active: 0, overdue: 0, converted: 0, archived: 0 };
+            byVendor[l.vendor].leads.push(l);
+            if (l.status === 'active') byVendor[l.vendor].active++;
+            if (l.status === 'converted') byVendor[l.vendor].converted++;
+            if (l.status === 'archived') byVendor[l.vendor].archived++;
+            const daysSince = l.last_touchpoint_date
+              ? Math.floor((now - new Date(l.last_touchpoint_date).getTime()) / 86400000)
+              : Math.floor((now - new Date(l.created_at).getTime()) / 86400000);
+            if (l.status === 'active' && daysSince >= 5) byVendor[l.vendor].overdue++;
+          });
+
+          // Count touchpoints per vendor last 7 days
+          tps.forEach(tp => {
+            if (new Date(tp.executed_at).getTime() > sevenDaysAgo) {
+              const lead = leads.find(l => l.id === tp.lead_id);
+              if (lead && byVendor[lead.vendor]) byVendor[lead.vendor].tps7d++;
+            }
+          });
+
+          cadenciaStats = Object.entries(byVendor).map(([vendor, d]) => ({
+            vendor,
+            activeLeads: d.active,
+            overdueLeads: d.overdue,
+            convertedLeads: d.converted,
+            archivedLeads: d.archived,
+            touchpoints7d: d.tps7d,
+            totalLeads: d.leads.length,
+            recentLeads: d.leads.filter(l => l.status === 'active').slice(0, 5).map(l => ({
+              company: l.company_name,
+              contact: l.contact_name,
+              stage: l.stage,
+              touchpoints: l.touchpoints_count,
+              daysSinceContact: l.last_touchpoint_date
+                ? Math.floor((now - new Date(l.last_touchpoint_date).getTime()) / 86400000)
+                : Math.floor((now - new Date(l.created_at).getTime()) / 86400000),
+            })),
+          }));
+        } catch (e) { console.error('Error loading cadencia for Ventus:', e); }
+      }
+
       const res = await fetch('/api/admin-assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -143,6 +199,7 @@ const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts }) => {
           userInput: text,
           adminName: currentUser,
           vendorStats: statsPayload,
+          cadenciaStats,
           stagnationAlerts: stagnationAlerts.slice(0, 25).map(a => ({
             vendor: a.vendor,
             client: a.opportunity.client,
@@ -697,6 +754,7 @@ const AdminDashboard = ({ supabase, opportunities, vendors, currentUser }) => {
         currentUser={currentUser}
         vendorStats={vendorStats}
         stagnationAlerts={stagnationAlerts}
+        supabase={supabase}
       />
     </div>
   );
