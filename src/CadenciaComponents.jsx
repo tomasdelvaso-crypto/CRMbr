@@ -31,6 +31,7 @@ const RESULT_CONFIG = {
   not_now:           { label: 'Respondeu "não agora"', icon: '🟡', color: 'text-yellow-600', bg: 'bg-yellow-100' },
   not_interested:    { label: 'Não tem interesse',     icon: '🔴', color: 'text-red-600',   bg: 'bg-red-100' },
   meeting_scheduled: { label: 'Reunião agendada!',     icon: '🎯', color: 'text-indigo-600', bg: 'bg-indigo-100' },
+  other:             { label: 'Outro',                 icon: '📝', color: 'text-gray-600',   bg: 'bg-gray-100' },
 };
 
 const STAGE_CONFIG = {
@@ -368,6 +369,7 @@ const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert }) => {
 
   const handleRegister = async () => {
     if (!channel || !result) return;
+    if (result === 'other' && !notes.trim()) { alert('Para resultado "Outro", a nota é obrigatória.'); return; }
     setSaving(true);
     try {
       await tpSvc.register(lead.id, { channel, result, notes });
@@ -721,7 +723,7 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
             className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none resize-none"
             rows={2} placeholder="Nota opcional..." />
 
-          <button onClick={handleRegister} disabled={saving || !channel || !result}
+          <button onClick={handleRegister} disabled={saving || !channel || !result || (result === 'other' && !notes.trim())}
             className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold text-sm hover:shadow-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
             {saving ? 'Registrando...' : 'Registrar Touchpoint'}
