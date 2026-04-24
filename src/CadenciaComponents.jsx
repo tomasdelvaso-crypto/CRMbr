@@ -715,6 +715,31 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
         )}
       </div>
 
+      {/* Canal atual — referencia visual del próximo touchpoint */}
+      {canRegister && nextTP && (
+        <div className="p-3 border-t bg-white flex-shrink-0">
+          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Canal do próximo touchpoint (TP {nextTP.tp})
+          </p>
+          <div className="flex gap-1">
+            {Object.entries(CHANNEL_CONFIG).map(([key, cfg]) => {
+              const Icon = cfg.icon;
+              const isCurrent = nextTP.channel === key;
+              return (
+                <div key={key}
+                  className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                    isCurrent
+                      ? `${cfg.bg} ${cfg.color} ${cfg.border} ring-2 ring-offset-1 ring-current`
+                      : 'bg-gray-50 text-gray-400 border-gray-200'
+                  }`}>
+                  <Icon className="w-3.5 h-3.5" />{cfg.label}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Ventus advice */}
       {canRegister && (
         <div className="p-3 border-t bg-purple-50 flex-shrink-0">
