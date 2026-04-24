@@ -715,25 +715,56 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
         )}
       </div>
 
-      {/* Canal atual — referencia visual del próximo touchpoint */}
-      {canRegister && nextTP && (
+      {/* Canais ativos — seleção livre, até 2 canais */}
+      {lead.status === 'active' && (
         <div className="p-3 border-t bg-white flex-shrink-0">
-          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Canal do próximo touchpoint (TP {nextTP.tp})
-          </p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+              Canais ativos (até 2)
+            </p>
+            {nextTP && (!lead.active_channels || lead.active_channels.length === 0) && (
+              <span className="text-[10px] text-gray-400 italic">
+                Sugestão cadência: {CHANNEL_CONFIG[nextTP.channel]?.label}
+              </span>
+            )}
+          </div>
           <div className="flex gap-1">
             {Object.entries(CHANNEL_CONFIG).map(([key, cfg]) => {
               const Icon = cfg.icon;
-              const isCurrent = nextTP.channel === key;
+              const selected = (lead.active_channels || []).includes(key);
+              const suggested = !selected
+                && (!lead.active_channels || lead.active_channels.length === 0)
+                && nextTP?.channel === key;
+
               return (
-                <div key={key}
-                  className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium border transition-colors ${
-                    isCurrent
+                <button type="button" key={key}
+                  onClick={async () => {
+                    const current = lead.active_channels || [];
+                    let next;
+                    if (current.includes(key)) {
+                      next = current.filter(c => c !== key);
+                    } else if (current.length >= 2) {
+                      // Reemplaza el primero (FIFO) para mantener máx 2
+                      next = [current[1], key];
+                    } else {
+                      next = [...current, key];
+                    }
+                    try {
+                      const svc = new LeadService(supabase);
+                      await svc.updateLead(lead.id, { active_channels: next });
+                      onUpdate();
+                    } catch (e) { console.error(e); }
+                  }}
+                  title={selected ? 'Desmarcar canal ativo' : 'Marcar como canal ativo'}
+                  className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium border transition-all ${
+                    selected
                       ? `${cfg.bg} ${cfg.color} ${cfg.border} ring-2 ring-offset-1 ring-current`
-                      : 'bg-gray-50 text-gray-400 border-gray-200'
+                      : suggested
+                      ? `${cfg.bg} ${cfg.color} ${cfg.border} opacity-60 hover:opacity-100`
+                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
                   }`}>
                   <Icon className="w-3.5 h-3.5" />{cfg.label}
-                </div>
+                </button>
               );
             })}
           </div>
