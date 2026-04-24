@@ -1286,10 +1286,12 @@ export const CadenciaDashboard = ({ supabase, currentUser, isAdmin, vendors }) =
       {/* TouchpointPanel sidebar */}
       {selectedLead && (
         <TouchpointPanel
-          lead={selectedLead}
+          lead={leads.find(l => l.id === selectedLead.id) || selectedLead}
           supabase={supabase}
           onClose={() => setSelectedLead(null)}
-          onUpdate={() => { loadLeads(); }}
+          onUpdate={async () => {
+            await loadLeads();
+          }}
           onConvert={handleConvert}
         />
       )}
