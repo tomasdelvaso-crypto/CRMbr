@@ -5,6 +5,13 @@ import AIAssistant from './AIAssistant';
 import { ActivityPanel, ActivityDashboard } from './ActivityComponents';
 import AdminDashboard from './AdminDashboard';
 import { CadenciaDashboard } from './CadenciaComponents';
+import {
+  emptyScales,
+  getScaleScore,
+  calculateHealthScore,
+  checkStageRequirements,
+  checkInactivity,
+} from './lib/scoring';
 
 // --- CONFIGURAÇÃO DE SUPABASE ---
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -92,23 +99,7 @@ interface VendorInfo {
 }
 
 // --- UTILIDADES ---
-const emptyScales = (): Scales => ({
-  dor: { score: 0, description: '' },
-  poder: { score: 0, description: '' },
-  visao: { score: 0, description: '' },
-  valor: { score: 0, description: '' },
-  controle: { score: 0, description: '' },
-  compras: { score: 0, description: '' }
-});
-
-const getScaleScore = (scale: Scale | number | undefined | null): number => {
-  if (scale === null || scale === undefined) return 0;
-  if (typeof scale === 'number') return scale;
-  if (typeof scale === 'object' && 'score' in scale) {
-    return typeof scale.score === 'number' ? scale.score : 0;
-  }
-  return 0;
-};
+// emptyScales y getScaleScore viven ahora en ./lib/scoring (ver import arriba).
 
 // --- PRODUCT LINES CONFIG ---
 const PRODUCT_LINES: Record<string, { label: string; icon: string; color: string; bg: string }> = {
@@ -236,23 +227,8 @@ const supabaseService = new SupabaseService();
 
 // --- COMPONENTE OpportunityHealthScore ---
 const OpportunityHealthScore: React.FC<{ opportunity: Opportunity }> = ({ opportunity }) => {
-  const calculateHealthScore = () => {
-    if (!opportunity.scales) return 0;
-    
-    const scores = [
-      getScaleScore(opportunity.scales.dor),
-      getScaleScore(opportunity.scales.poder),
-      getScaleScore(opportunity.scales.visao),
-      getScaleScore(opportunity.scales.valor),
-      getScaleScore(opportunity.scales.controle),
-      getScaleScore(opportunity.scales.compras)
-    ];
-    
-    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-    return Math.round(avg);
-  };
-  
-  const score = calculateHealthScore();
+  // Health score unificado con el backend: promedio de las 6 escalas con 1 decimal.
+  const score = calculateHealthScore(opportunity.scales);
   const getColor = () => {
     if (score >= 7) return 'text-green-600';
     if (score >= 4) return 'text-yellow-600';
@@ -1088,34 +1064,8 @@ const LoadingSpinner: React.FC = () => (
 );
 
 // --- FUNÇÕES AUXILIARES ---
-const checkStageRequirements = (opportunity: Opportunity, stageId: number): boolean => {
-  if (!opportunity.scales) return false;
-
-  const scales = opportunity.scales || emptyScales();
-
-  switch (stageId) {
-    case 2:
-      return getScaleScore(scales.dor) >= 5 && 
-             getScaleScore(scales.poder) >= 4;
-    case 3:
-      return getScaleScore(scales.visao) >= 5;
-    case 4:
-      return getScaleScore(scales.valor) >= 6;
-    case 5:
-      return getScaleScore(scales.controle) >= 7 && 
-             getScaleScore(scales.compras) >= 6;
-    default:
-      return true;
-  }
-};
-
-const checkInactivity = (lastUpdate: string, days: number): boolean => {
-  const lastUpdateDate = new Date(lastUpdate);
-  const today = new Date();
-  const diffTime = Math.abs(today.getTime() - lastUpdateDate.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays >= days;
-};
+// checkStageRequirements y checkInactivity viven ahora en ./lib/scoring
+// (ver import arriba).
 
 // --- COMPONENTE PRINCIPAL ---
 const CRMVentapel: React.FC = () => {
