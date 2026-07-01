@@ -6,6 +6,13 @@ export const config = {
 };
 
 import PromptBuilder from './lib/promptBuilder.js';
+import {
+  getScaleValue,
+  getScaleDescription,
+  calculateHealthScore,
+  getDaysSinceLastContact,
+  calculateProbability,
+} from './lib/scoring.js';
 
 // ============= CASOS DE ÊXITO REAIS VENTAPEL - VERSÃO AMPLIADA =============
 const CASOS_EXITO_REAIS = {
@@ -222,42 +229,8 @@ const METRICAS_BENCHMARK = {
 };
 
 // ============= HELPERS =============
-function getScaleValue(scale) {
- if (!scale) return 0;
- if (typeof scale === 'object' && scale.score !== undefined) return scale.score;
- if (typeof scale === 'number') return scale;
- return 0;
-}
-
-// NOVA FUNÇÃO: Extrair descrição da escala
-function getScaleDescription(scale) {
-  if (!scale) return '';
-  if (typeof scale === 'object' && scale.description !== undefined) {
-    return scale.description || '';
-  }
-  return '';
-}
-
-function calculateHealthScore(scales) {
- if (!scales) return 0;
- const values = [
-   getScaleValue(scales.dor || scales.pain),
-   getScaleValue(scales.poder || scales.power),
-   getScaleValue(scales.visao || scales.vision),
-   getScaleValue(scales.valor || scales.value),
-   getScaleValue(scales.controle || scales.control),
-   getScaleValue(scales.compras || scales.purchase)
- ];
- const sum = values.reduce((acc, val) => acc + val, 0);
- return values.length > 0 ? (sum / values.length).toFixed(1) : 0;
-}
-
-function getDaysSinceLastContact(lastUpdate) {
- if (!lastUpdate) return 999;
- const last = new Date(lastUpdate);
- const now = new Date();
- return Math.floor((now - last) / (1000 * 60 * 60 * 24));
-}
+// getScaleValue, getScaleDescription, calculateHealthScore y
+// getDaysSinceLastContact viven ahora en ./lib/scoring.js (ver import arriba).
 
 // ============= FUNÇÃO MELHORADA PARA BUSCAR CASOS RELEVANTES =============
 function findRelevantCases(opportunity) {
@@ -425,18 +398,8 @@ function analyzeOpportunity(opportunity) {
  const healthScore = parseFloat(calculateHealthScore(opportunity.scales));
  const daysSince = getDaysSinceLastContact(opportunity.last_update);
  
- // Calcular probabilidade baseada em escalas
- let probability = 0;
- if (healthScore >= 8) probability = 85;
- else if (healthScore >= 7) probability = 70;
- else if (healthScore >= 5) probability = 40;
- else if (healthScore >= 3) probability = 20;
- else probability = 5;
-
- // Ajustar por dias sem contato
- if (daysSince > 30) probability = Math.max(probability - 50, 5);
- else if (daysSince > 14) probability = Math.max(probability - 20, 10);
- else if (daysSince > 7) probability = Math.max(probability - 10, 15);
+ // Probabilidade baseada em escalas e dias sem contato (ver ./lib/scoring.js)
+ const probability = calculateProbability(healthScore, daysSince);
 
  // Identificar escalas críticas
  const criticalScales = [];
