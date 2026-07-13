@@ -93,10 +93,14 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       const activityHistory = await loadActivityHistory();
       const r = await fetch('/api/assistant', { method: 'POST', headers: await apiHeaders(),
         body: JSON.stringify({ userInput: text, opportunityData: currentOpportunity, vendorName: currentUser, pipelineData, activityHistory, chatHistory, isAdmin }) });
-      if (!r.ok) throw new Error('Server error');
-      const d = await r.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: d.response || 'Erro', timestamp: new Date().toISOString() }]);
-      if (d.analysis) setAnalysis(d.analysis);
+      const d = await r.json().catch(() => null);
+      if (!r.ok) {
+        // 401 = sessão expirada; mostrar a mensagem do servidor em vez de erro genérico
+        setMessages(prev => [...prev, { role: 'assistant', content: d?.response || `❌ Erro do servidor (${r.status}). Tente novamente.`, timestamp: new Date().toISOString() }]);
+        return;
+      }
+      setMessages(prev => [...prev, { role: 'assistant', content: d?.response || 'Erro', timestamp: new Date().toISOString() }]);
+      if (d?.analysis) setAnalysis(d.analysis);
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: '❌ Erro de conexão.', timestamp: new Date().toISOString() }]);
     } finally { setIsLoading(false); }
