@@ -5,6 +5,13 @@ import AIAssistant from './AIAssistant';
 import { ActivityPanel, ActivityDashboard } from './ActivityComponents';
 import AdminDashboard from './AdminDashboard';
 import { CadenciaDashboard } from './CadenciaComponents';
+// Lógica PPVVCC compartilhada com o backend (fonte única de verdade)
+import {
+  getScaleValue,
+  calculateHealthScore,
+  checkStageRequirements as checkScaleGates,
+  SCALE_DEFINITIONS,
+} from '../api/_lib/ppvvcc.js';
 
 // --- CONFIGURAÇÃO DE SUPABASE ---
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -101,14 +108,7 @@ const emptyScales = (): Scales => ({
   compras: { score: 0, description: '' }
 });
 
-const getScaleScore = (scale: Scale | number | undefined | null): number => {
-  if (scale === null || scale === undefined) return 0;
-  if (typeof scale === 'number') return scale;
-  if (typeof scale === 'object' && 'score' in scale) {
-    return typeof scale.score === 'number' ? scale.score : 0;
-  }
-  return 0;
-};
+const getScaleScore = (scale: Scale | number | undefined | null): number => getScaleValue(scale);
 
 // --- PRODUCT LINES CONFIG ---
 const PRODUCT_LINES: Record<string, { label: string; icon: string; color: string; bg: string }> = {
@@ -118,6 +118,41 @@ const PRODUCT_LINES: Record<string, { label: string; icon: string; color: string
   ecombag: { label: 'E-Combag', icon: '📨', color: 'text-purple-700', bg: 'bg-purple-100' },
   servico_manutencao: { label: 'Serviço de Manutenção', icon: '🔧', color: 'text-yellow-700', bg: 'bg-yellow-100' },
 };
+
+// --- NORMALIZAÇÃO DE OPORTUNIDADES (usada no fetch e nos eventos realtime) ---
+const normalizeScales = (scales: any): Scales => {
+  if (!scales || typeof scales !== 'object') {
+    return emptyScales();
+  }
+
+  try {
+    if (scales.dor && typeof scales.dor === 'object' && 'score' in scales.dor) {
+      return scales;
+    }
+
+    if (typeof scales.dor === 'number' || typeof scales.pain === 'number') {
+      return {
+        dor: { score: scales.dor || scales.pain || 0, description: '' },
+        poder: { score: scales.poder || scales.power || 0, description: '' },
+        visao: { score: scales.visao || scales.vision || 0, description: '' },
+        valor: { score: scales.valor || scales.value || 0, description: '' },
+        controle: { score: scales.controle || scales.control || 0, description: '' },
+        compras: { score: scales.compras || scales.purchase || 0, description: '' }
+      };
+    }
+  } catch (e) {
+    console.error('Error normalizando scales:', e);
+  }
+
+  return emptyScales();
+};
+
+const normalizeOpportunity = (opp: any): Opportunity => ({
+  ...opp,
+  scales: normalizeScales(opp.scales),
+  value: Number(opp.value) || 0,
+  probability: Number(opp.probability) || 0
+});
 
 // --- API SERVICE ---
 class SupabaseService {
@@ -130,12 +165,7 @@ class SupabaseService {
 
       if (error) throw error;
 
-      return (data || []).map(opp => ({
-        ...opp,
-        scales: this.normalizeScales(opp.scales),
-        value: Number(opp.value) || 0,
-        probability: Number(opp.probability) || 0
-      }));
+      return (data || []).map(normalizeOpportunity);
     } catch (error) {
       console.error('Error fetching opportunities:', error);
       throw error;
@@ -155,33 +185,6 @@ class SupabaseService {
     }
 
     return vendorsData;
-  }
-
-  private normalizeScales(scales: any): Scales {
-    if (!scales || typeof scales !== 'object') {
-      return emptyScales();
-    }
-
-    try {
-      if (scales.dor && typeof scales.dor === 'object' && 'score' in scales.dor) {
-        return scales;
-      }
-
-      if (typeof scales.dor === 'number' || typeof scales.pain === 'number') {
-        return {
-          dor: { score: scales.dor || scales.pain || 0, description: '' },
-          poder: { score: scales.poder || scales.power || 0, description: '' },
-          visao: { score: scales.visao || scales.vision || 0, description: '' },
-          valor: { score: scales.valor || scales.value || 0, description: '' },
-          controle: { score: scales.controle || scales.control || 0, description: '' },
-          compras: { score: scales.compras || scales.purchase || 0, description: '' }
-        };
-      }
-    } catch (e) {
-      console.error('Error normalizando scales:', e);
-    }
-
-    return emptyScales();
   }
 
   async insertOpportunity(data: Omit<Opportunity, 'id' | 'created_at'>): Promise<Opportunity> {
@@ -236,29 +239,13 @@ const supabaseService = new SupabaseService();
 
 // --- COMPONENTE OpportunityHealthScore ---
 const OpportunityHealthScore: React.FC<{ opportunity: Opportunity }> = ({ opportunity }) => {
-  const calculateHealthScore = () => {
-    if (!opportunity.scales) return 0;
-    
-    const scores = [
-      getScaleScore(opportunity.scales.dor),
-      getScaleScore(opportunity.scales.poder),
-      getScaleScore(opportunity.scales.visao),
-      getScaleScore(opportunity.scales.valor),
-      getScaleScore(opportunity.scales.controle),
-      getScaleScore(opportunity.scales.compras)
-    ];
-    
-    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-    return Math.round(avg);
-  };
-  
-  const score = calculateHealthScore();
+  const score = Math.round(calculateHealthScore(opportunity.scales));
   const getColor = () => {
     if (score >= 7) return 'text-green-600';
     if (score >= 4) return 'text-yellow-600';
     return 'text-red-600';
   };
-  
+
   return (
     <span className={`font-bold ${getColor()}`}>
       ♥ {score}/10
@@ -266,12 +253,12 @@ const OpportunityHealthScore: React.FC<{ opportunity: Opportunity }> = ({ opport
   );
 };
 
-// --- DEFINIÇÕES DE ETAPAS E ESCALAS ---
+// --- DEFINIÇÕES DE ETAPAS E ESCALAS (apresentação/UI; gates vêm do módulo compartilhado) ---
 const stages: StageRequirement[] = [
-  { 
-    id: 1, 
-    name: 'Prospecção', 
-    probability: 0, 
+  {
+    id: 1,
+    name: 'Prospecção',
+    probability: 0,
     color: 'bg-gray-500',
     requirements: ['Identificar dor do cliente', 'Contato inicial estabelecido'],
     checklist: {
@@ -281,10 +268,10 @@ const stages: StageRequirement[] = [
       'Realizou primeiro contato': 'primeiro_contato'
     }
   },
-  { 
-    id: 2, 
-    name: 'Qualificação', 
-    probability: 20, 
+  {
+    id: 2,
+    name: 'Qualificação',
+    probability: 20,
     color: 'bg-blue-500',
     requirements: ['Score DOR ≥ 5', 'Score PODER ≥ 4', 'Budget confirmado'],
     checklist: {
@@ -295,10 +282,10 @@ const stages: StageRequirement[] = [
       'Critérios de decisão entendidos': 'criterios_entendidos'
     }
   },
-  { 
-    id: 3, 
-    name: 'Apresentação', 
-    probability: 40, 
+  {
+    id: 3,
+    name: 'Apresentação',
+    probability: 40,
     color: 'bg-yellow-500',
     requirements: ['Score VISÃO ≥ 5', 'Apresentação agendada', 'Stakeholders definidos'],
     checklist: {
@@ -309,9 +296,9 @@ const stages: StageRequirement[] = [
       'Próximos passos acordados': 'proximos_passos'
     }
   },
-  { 
-    id: 4, 
-    name: 'Validação/Teste', 
+  {
+    id: 4,
+    name: 'Validação/Teste',
     probability: 60,
     color: 'bg-orange-500',
     requirements: ['Score VALOR ≥ 6', 'Teste/POC executado', 'ROI validado'],
@@ -323,9 +310,9 @@ const stages: StageRequirement[] = [
       'Aprovação técnica obtida': 'aprovacao_tecnica'
     }
   },
-  { 
-    id: 5, 
-    name: 'Negociação', 
+  {
+    id: 5,
+    name: 'Negociação',
     probability: 80,
     color: 'bg-green-500',
     requirements: ['Score CONTROLE ≥ 7', 'Score COMPRAS ≥ 6', 'Proposta enviada'],
@@ -337,10 +324,10 @@ const stages: StageRequirement[] = [
       'Contrato em revisão legal': 'revisao_legal'
     }
   },
-  { 
-    id: 6, 
-    name: 'Fechado', 
-    probability: 100, 
+  {
+    id: 6,
+    name: 'Fechado',
+    probability: 100,
     color: 'bg-emerald-600',
     requirements: ['Contrato assinado', 'Pagamento processado'],
     checklist: {
@@ -353,28 +340,28 @@ const stages: StageRequirement[] = [
 ];
 
 const scales = [
-  { 
-    id: 'dor', 
-    name: 'DOR', 
-    icon: AlertCircle, 
-    description: 'Dor identificada e admitida', 
-    color: 'text-red-600', 
-    bgColor: 'bg-red-50', 
+  {
+    id: 'dor',
+    name: 'DOR',
+    icon: AlertCircle,
+    description: 'Dor identificada e admitida',
+    color: 'text-red-600',
+    bgColor: 'bg-red-50',
     borderColor: 'border-red-200',
     questions: [
       'Cliente admite ter o problema?',
-      'Problema está custando dinheiro?', 
+      'Problema está custando dinheiro?',
       'Consequências são mensuráveis?',
       'Urgência para resolver?'
     ]
   },
-  { 
-    id: 'poder', 
-    name: 'PODER', 
-    icon: User, 
-    description: 'Acesso ao decisor', 
-    color: 'text-blue-600', 
-    bgColor: 'bg-blue-50', 
+  {
+    id: 'poder',
+    name: 'PODER',
+    icon: User,
+    description: 'Acesso ao decisor',
+    color: 'text-blue-600',
+    bgColor: 'bg-blue-50',
     borderColor: 'border-blue-200',
     questions: [
       'Conhece o decisor final?',
@@ -383,13 +370,13 @@ const scales = [
       'Processo de decisão mapeado?'
     ]
   },
-  { 
-    id: 'visao', 
-    name: 'VISÃO', 
-    icon: Eye, 
-    description: 'Visão de solução construída', 
-    color: 'text-purple-600', 
-    bgColor: 'bg-purple-50', 
+  {
+    id: 'visao',
+    name: 'VISÃO',
+    icon: Eye,
+    description: 'Visão de solução construída',
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50',
     borderColor: 'border-purple-200',
     questions: [
       'Cliente vê valor na solução?',
@@ -398,13 +385,13 @@ const scales = [
       'Cliente consegue visualizar implementação?'
     ]
   },
-  { 
-    id: 'valor', 
-    name: 'VALOR', 
-    icon: DollarSign, 
-    description: 'ROI/Benefícios validados', 
-    color: 'text-green-600', 
-    bgColor: 'bg-green-50', 
+  {
+    id: 'valor',
+    name: 'VALOR',
+    icon: DollarSign,
+    description: 'ROI/Benefícios validados',
+    color: 'text-green-600',
+    bgColor: 'bg-green-50',
     borderColor: 'border-green-200',
     questions: [
       'ROI foi calculado?',
@@ -413,13 +400,13 @@ const scales = [
       'Benefícios são mensuráveis?'
     ]
   },
-  { 
-    id: 'controle', 
-    name: 'CONTROLE', 
-    icon: Target, 
-    description: 'Controle do processo', 
-    color: 'text-orange-600', 
-    bgColor: 'bg-orange-50', 
+  {
+    id: 'controle',
+    name: 'CONTROLE',
+    icon: Target,
+    description: 'Controle do processo',
+    color: 'text-orange-600',
+    bgColor: 'bg-orange-50',
     borderColor: 'border-orange-200',
     questions: [
       'Você conduz o processo?',
@@ -428,13 +415,13 @@ const scales = [
       'Competidores identificados?'
     ]
   },
-  { 
-    id: 'compras', 
-    name: 'COMPRAS', 
-    description: 'Processo de compras', 
-    icon: ShoppingCart, 
-    color: 'text-indigo-600', 
-    bgColor: 'bg-indigo-50', 
+  {
+    id: 'compras',
+    name: 'COMPRAS',
+    description: 'Processo de compras',
+    icon: ShoppingCart,
+    color: 'text-indigo-600',
+    bgColor: 'bg-indigo-50',
     borderColor: 'border-indigo-200',
     questions: [
       'Processo de compras mapeado?',
@@ -445,86 +432,8 @@ const scales = [
   }
 ];
 
-const scaleDefinitions = {
-  dor: [
-    { level: 0, text: "Não há identificação de necessidade ou dor pelo cliente" },
-    { level: 1, text: "Vendedor assume necessidades do cliente" },
-    { level: 2, text: "Pessoa de Contato admite necessidade" },
-    { level: 3, text: "Pessoa de Contato admite razões e sintomas causadores de dor" },
-    { level: 4, text: "Pessoa de Contato admite dor" },
-    { level: 5, text: "Vendedor documenta dor e Pessoa de Contato concorda" },
-    { level: 6, text: "Pessoa de Contato formaliza necessidades do Tomador de Decisão" },
-    { level: 7, text: "Tomador de Decisão admite necessidades" },
-    { level: 8, text: "Tomador de Decisão admite razões e sintomas causadores de dor" },
-    { level: 9, text: "Tomador de Decisão admite dor" },
-    { level: 10, text: "Vendedor documenta dor e Power concorda" }
-  ],
-  poder: [
-    { level: 0, text: "Tomador de Decisão não foi identificado ainda" },
-    { level: 1, text: "Processo de decisão revelado por Pessoa de Contato" },
-    { level: 2, text: "Tomador de Decisão Potencial identificado" },
-    { level: 3, text: "Pedido de acesso a Tomador de Decisão acordado por Pessoa de Contato" },
-    { level: 4, text: "Tomador de Decisão acessado" },
-    { level: 5, text: "Tomador de Decisão concorda em explorar oportunidade" },
-    { level: 6, text: "Processo de decisão e compra confirmado pelo Tomador de Decisão" },
-    { level: 7, text: "Tomador de Decisão concorda em fazer uma Prova de Valor" },
-    { level: 8, text: "Tomador de Decisão concorda com conteúdo da proposta" },
-    { level: 9, text: "Tomador de Decisão confirma aprovação verbal" },
-    { level: 10, text: "Tomador de Decisão aprova formalmente internamente" }
-  ],
-  visao: [
-    { level: 0, text: "Nenhuma visão ou visão concorrente estabelecida" },
-    { level: 1, text: "Visão do Pessoa de Contato criada em termos de produto" },
-    { level: 2, text: "Visão Pessoa de Contato criada em termos: Situação/Problema/Implicação" },
-    { level: 3, text: "Visão diferenciada criada com Pessoa de Contato (SPI)" },
-    { level: 4, text: "Visão diferenciada documentada com Pessoa de Contato" },
-    { level: 5, text: "Documentação concordada por Pessoa de Contato" },
-    { level: 6, text: "Visão Power criada em termos de produto" },
-    { level: 7, text: "Visão Power criada em termos: Situação/Problema/Implicação" },
-    { level: 8, text: "Visão diferenciada criada com Tomador de Decisão (SPIN)" },
-    { level: 9, text: "Visão diferenciada documentada com Tomador de Decisão" },
-    { level: 10, text: "Documentação concordada por Tomador de Decisão" }
-  ],
-  valor: [
-    { level: 0, text: "Pessoa de Contato explora a solução, mas valor não foi identificado" },
-    { level: 1, text: "Vendedor identifica proposição de valor para o negócio" },
-    { level: 2, text: "Pessoa de Contato concorda em explorar a proposta de valor" },
-    { level: 3, text: "Tomador de Decisão concorda em explorar a proposta de valor" },
-    { level: 4, text: "Critérios para definição de valor estabelecidos com Tomador de Decisão" },
-    { level: 5, text: "Valor descoberto está associado à visão Tomador de Decisão" },
-    { level: 6, text: "Análise de valor conduzida por vendedor (demo)" },
-    { level: 7, text: "Análise de valor conduzida pelo Pessoa de Contato (trial)" },
-    { level: 8, text: "Tomador de Decisão concorda com análise de Valor" },
-    { level: 9, text: "Conclusão da análise de valor documentada pelo vendedor" },
-    { level: 10, text: "Tomador de Decisão confirma por escrito conclusões da análise" }
-  ],
-  controle: [
-    { level: 0, text: "Nenhum follow documentado de conversa com Pessoa de Contato" },
-    { level: 1, text: "1ª visão (SPI) enviada para Pessoa de Contato" },
-    { level: 2, text: "1ª visão concordada ou modificada por Pessoa de Contato (SPIN)" },
-    { level: 3, text: "1ª visão enviada para Tomador de Decisão (SPI)" },
-    { level: 4, text: "1ª visão concordada ou modificada por Tomador de Decisão (SPIN)" },
-    { level: 5, text: "Vendedor recebe aprovação para explorar Valor" },
-    { level: 6, text: "Plano de avaliação enviado para Tomador de Decisão" },
-    { level: 7, text: "Tomador de Decisão concorda ou modifica a Avaliação" },
-    { level: 8, text: "Plano de Avaliação conduzido (quando aplicável)" },
-    { level: 9, text: "Resultado da Avaliação aprovado pelo Tomador de Decisão" },
-    { level: 10, text: "Tomador de Decisão aprova proposta para negociação final" }
-  ],
-  compras: [
-    { level: 0, text: "Processo de compras desconhecido" },
-    { level: 1, text: "Processo de compras esclarecido pela pessoa de contato" },
-    { level: 2, text: "Processo de compras confirmado pelo Tomador de Decisão" },
-    { level: 3, text: "Condições comerciais validadas com o cliente" },
-    { level: 4, text: "Proposta apresentada para o cliente" },
-    { level: 5, text: "Processo de negociação iniciado com departamento de compras" },
-    { level: 6, text: "Condições comerciais aprovadas e formalizadas" },
-    { level: 7, text: "Contrato assinado" },
-    { level: 8, text: "Pedido de compras recebido" },
-    { level: 9, text: "Cobrança emitida" },
-    { level: 10, text: "Pagamento realizado" }
-  ]
-};
+// Definições de nível 0-10 por escala — importadas do módulo compartilhado
+const scaleDefinitions = SCALE_DEFINITIONS;
 
 // ===== PERGUNTAS SPIN EM PORTUGUÊS =====
 const spinQuestions = {
@@ -675,7 +584,7 @@ interface SPINQuestionsPanelProps {
 const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQuestionUsed }) => {
   const [expanded, setExpanded] = useState(false);
   const [usedQuestions, setUsedQuestions] = useState<Set<string>>(new Set());
-  
+
   const questions = spinQuestions[scaleId as keyof typeof spinQuestions];
   if (!questions) return null;
 
@@ -716,7 +625,7 @@ const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQues
         </div>
         <ChevronDown className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''} text-yellow-700`} />
       </button>
-      
+
       {expanded && (
         <div className="mt-3 space-y-3">
           {Object.entries(questions).map(([tipo, perguntas]) => (
@@ -746,7 +655,7 @@ const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQues
           ))}
           <div className="mt-2 p-2 bg-blue-50 rounded-lg">
             <p className="text-xs text-blue-700">
-              💡 <strong>Dica:</strong> Marque as perguntas enquanto fala com o cliente. 
+              💡 <strong>Dica:</strong> Marque as perguntas enquanto fala com o cliente.
               As respostas chave adicione nas observações da escala.
             </p>
           </div>
@@ -757,25 +666,22 @@ const SPINQuestionsPanel: React.FC<SPINQuestionsPanelProps> = ({ scaleId, onQues
 };
 
 // ===== FUNÇÃO PARA CALCULAR PROGRESSO SPIN =====
+const TOTAL_SPIN_QUESTIONS = Object.values(spinQuestions).reduce(
+  (sum, category) => sum + Object.values(category).reduce((s, qs) => s + qs.length, 0),
+  0
+);
+
 const calculateSPINProgress = (opportunity: Opportunity) => {
   let questionsAnswered = 0;
-  let totalQuestions = 0;
-  
+
   Object.values(opportunity.scales || {}).forEach(scale => {
     if (scale.description) {
       questionsAnswered += (scale.description.match(/✓/g) || []).length;
     }
   });
-  
-  // Contar total de perguntas SPIN disponíveis
-  Object.values(spinQuestions).forEach(category => {
-    Object.values(category).forEach(questions => {
-      totalQuestions += questions.length;
-    });
-  });
-  
-  if (totalQuestions === 0) return 0;
-  return Math.round((questionsAnswered / totalQuestions) * 100);
+
+  if (TOTAL_SPIN_QUESTIONS === 0) return 0;
+  return Math.round((questionsAnswered / TOTAL_SPIN_QUESTIONS) * 100);
 };
 
 // --- CONTEXT API ---
@@ -793,6 +699,7 @@ interface OpportunitiesContextType {
   updateOpportunity: (id: number, data: OpportunityFormData) => Promise<boolean>;
   deleteOpportunity: (id: number) => Promise<void>;
   moveStage: (opportunity: Opportunity, newStage: number) => Promise<void>;
+  assumeOpportunity: (opportunity: Opportunity) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -814,14 +721,26 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Upsert local de uma oportunidade (mutações próprias e eventos realtime)
+  const upsertOpportunity = useCallback((row: any) => {
+    const normalized = normalizeOpportunity(row);
+    setOpportunities(prev => {
+      const exists = prev.some(o => o.id === normalized.id);
+      const next = exists
+        ? prev.map(o => (o.id === normalized.id ? normalized : o))
+        : [...prev, normalized];
+      return next.sort((a, b) => (b.value || 0) - (a.value || 0));
+    });
+  }, []);
+
   const loadVendors = useCallback(async () => {
     try {
       const vendorData = await supabaseService.fetchVendors();
       setVendors(vendorData);
-      
+
       // Resolve currentUser from authenticated session
       const authUserId = session.user.id;
-      const matchedVendor = vendorData.find(v => 
+      const matchedVendor = vendorData.find(v =>
         v.auth_user_id === authUserId || (v as any).auth_id === authUserId
       );
       if (matchedVendor) {
@@ -854,18 +773,18 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
   const createOpportunity = useCallback(async (formData: OpportunityFormData): Promise<boolean> => {
     try {
       setError(null);
-      
+
       if (!formData.name?.trim() || !formData.client?.trim() || !formData.value) {
         setError('Por favor, preencha os campos obrigatórios: Nome, Cliente e Valor');
         return false;
       }
-      
+
       let safeScales = formData.scales;
       if (!safeScales || typeof safeScales !== 'object') {
         console.warn('⚠️ Scales inválidas, usando valores padrão');
         safeScales = emptyScales();
       }
-      
+
       const newOpportunity = {
         name: formData.name.trim(),
         client: formData.client.trim(),
@@ -888,27 +807,27 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
         outcome: formData.outcome || null,
         outcome_notes: formData.outcome_notes?.trim() || null,
       };
-      await supabaseService.insertOpportunity(newOpportunity);
-      await loadOpportunities();
+      const created = await supabaseService.insertOpportunity(newOpportunity as any);
+      upsertOpportunity(created);
       return true;
-      
+
     } catch (err) {
       console.error('❌ Erro ao criar oportunidade:', err);
       setError(`Erro ao criar oportunidade: ${(err as Error).message || 'Verifique os dados'}`);
       return false;
     }
-  }, [loadOpportunities, currentUser]);
+  }, [currentUser, upsertOpportunity]);
 
   const updateOpportunity = useCallback(async (id: number, formData: OpportunityFormData): Promise<boolean> => {
     try {
       setError(null);
-      
+
       let safeScales = formData.scales;
       if (!safeScales || typeof safeScales !== 'object') {
         console.warn('⚠️ Scales inválidas em update, usando valores padrão');
         safeScales = emptyScales();
       }
-      
+
       const updatedData = {
         name: formData.name.trim(),
         client: formData.client.trim(),
@@ -932,16 +851,16 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
         outcome_notes: formData.outcome_notes?.trim() || null,
       };
 
-      await supabaseService.updateOpportunity(id, updatedData);
-      await loadOpportunities();
+      const updated = await supabaseService.updateOpportunity(id, updatedData as any);
+      upsertOpportunity(updated);
       return true;
-      
+
     } catch (err) {
       console.error('❌ Erro ao atualizar oportunidade:', err);
       setError(`Erro ao atualizar: ${(err as Error).message || 'Verifique os dados'}`);
       return false;
     }
-  }, [loadOpportunities, currentUser]);
+  }, [currentUser, upsertOpportunity]);
 
   const deleteOpportunity = useCallback(async (id: number): Promise<void> => {
     if (!confirm('Tem certeza de que deseja excluir esta oportunidade?')) {
@@ -968,7 +887,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
 
     try {
       setError(null);
-      
+
       const updatedData = {
         stage: newStage,
         probability: stage.probability,
@@ -976,9 +895,9 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
       };
 
       await supabaseService.updateOpportunity(opportunity.id, updatedData);
-      
-      setOpportunities(prev => prev.map(opp => 
-        opp.id === opportunity.id 
+
+      setOpportunities(prev => prev.map(opp =>
+        opp.id === opportunity.id
           ? { ...opp, ...updatedData }
           : opp
       ));
@@ -989,17 +908,43 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
     }
   }, [loadOpportunities]);
 
+  // "Assumir" oportunidade sem vendedor — sem recarregar a página
+  const assumeOpportunity = useCallback(async (opportunity: Opportunity): Promise<void> => {
+    if (!currentUser) return;
+    try {
+      setError(null);
+      const updated = await supabaseService.updateOpportunity(opportunity.id, {
+        vendor: currentUser,
+        last_update: new Date().toISOString().split('T')[0]
+      });
+      upsertOpportunity(updated);
+    } catch (err) {
+      console.error('Erro ao assumir:', err);
+      setError('Erro ao assumir oportunidade.');
+    }
+  }, [currentUser, upsertOpportunity]);
+
   useEffect(() => {
     loadVendors();
     loadOpportunities();
 
+    // Realtime: aplicar o payload do evento direto no estado,
+    // sem refazer o fetch completo da tabela a cada mudança.
     const subscription = supabase
       .channel('opportunities-changes')
-      .on('postgres_changes', 
+      .on('postgres_changes',
         { event: '*', schema: 'public', table: 'opportunities' },
-        (payload) => {
-          console.log('Mudança detectada:', payload);
-          loadOpportunities();
+        (payload: any) => {
+          if (payload.eventType === 'DELETE') {
+            const deletedId = payload.old?.id;
+            if (deletedId !== undefined) {
+              setOpportunities(prev => prev.filter(o => o.id !== deletedId));
+            }
+            return;
+          }
+          if (payload.new) {
+            upsertOpportunity(payload.new);
+          }
         }
       )
       .subscribe();
@@ -1035,8 +980,9 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
     updateOpportunity,
     deleteOpportunity,
     moveStage,
+    assumeOpportunity,
     logout
-  }), [opportunities, loading, error, vendors, currentUser, loadOpportunities, loadVendors, createOpportunity, updateOpportunity, deleteOpportunity, moveStage, logout]);
+  }), [opportunities, loading, error, vendors, currentUser, loadOpportunities, loadVendors, createOpportunity, updateOpportunity, deleteOpportunity, moveStage, assumeOpportunity, logout]);
 
   return (
     <OpportunitiesContext.Provider value={value}>
@@ -1090,23 +1036,7 @@ const LoadingSpinner: React.FC = () => (
 // --- FUNÇÕES AUXILIARES ---
 const checkStageRequirements = (opportunity: Opportunity, stageId: number): boolean => {
   if (!opportunity.scales) return false;
-
-  const scales = opportunity.scales || emptyScales();
-
-  switch (stageId) {
-    case 2:
-      return getScaleScore(scales.dor) >= 5 && 
-             getScaleScore(scales.poder) >= 4;
-    case 3:
-      return getScaleScore(scales.visao) >= 5;
-    case 4:
-      return getScaleScore(scales.valor) >= 6;
-    case 5:
-      return getScaleScore(scales.controle) >= 7 && 
-             getScaleScore(scales.compras) >= 6;
-    default:
-      return true;
-  }
+  return checkScaleGates(opportunity.scales, stageId);
 };
 
 const checkInactivity = (lastUpdate: string, days: number): boolean => {
@@ -1117,120 +1047,40 @@ const checkInactivity = (lastUpdate: string, days: number): boolean => {
   return diffDays >= days;
 };
 
-// --- COMPONENTE PRINCIPAL ---
-const CRMVentapel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [showNewOpportunity, setShowNewOpportunity] = useState(false);
-  const [editingOpportunity, setEditingOpportunity] = useState<Opportunity | null>(null);
-  const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
-  const [dashboardVendorFilter, setDashboardVendorFilter] = useState('all');
-  const [selectedStageForList, setSelectedStageForList] = useState<number | null>(null);
-  const [showStageChecklist, setShowStageChecklist] = useState<{ opportunity: Opportunity, targetStage: number } | null>(null);
-  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+// --- DASHBOARD (componente top-level: não é recriado a cada render do pai) ---
+interface DashboardMetrics {
+  totalValue: number;
+  weightedValue: number;
+  totalOpportunities: number;
+  avgScore: number;
+  avgProbability: number;
+  stageDistribution: (StageRequirement & { count: number; value: number; weightedValue: number; opportunities: Opportunity[] })[];
+}
 
-  const { 
-    opportunities, 
-    loading, 
-    error, 
-    vendors,
-    currentUser,
-    setCurrentUser,
-    setError, 
-    createOpportunity, 
-    updateOpportunity, 
-    deleteOpportunity, 
-    moveStage,
-    logout 
-  } = useOpportunitiesContext();
-  
-  const filters = useFilters();
+interface DashboardViewProps {
+  metrics: DashboardMetrics;
+  currentVendorInfo: VendorInfo | null;
+  dashboardVendorFilter: string;
+  setDashboardVendorFilter: (v: string) => void;
+  selectedStageForList: number | null;
+  setSelectedStageForList: (v: number | null) => void;
+  onEdit: (opp: Opportunity) => void;
+  onAnalyze: (opp: Opportunity) => void;
+}
 
-  const currentVendorInfo = useMemo(() => {
-    return vendors.find(v => v.name === currentUser) || null;
-  }, [vendors, currentUser]);
+const DashboardView: React.FC<DashboardViewProps> = ({
+  metrics,
+  currentVendorInfo,
+  dashboardVendorFilter,
+  setDashboardVendorFilter,
+  selectedStageForList,
+  setSelectedStageForList,
+  onEdit,
+  onAnalyze,
+}) => {
+  const { error, setError, vendors, currentUser } = useOpportunitiesContext();
 
-  const userOpportunities = useMemo(() => {
-    if (!currentUser) return opportunities;
-    if (currentVendorInfo?.is_admin) return opportunities;
-    return opportunities.filter(opp => opp.vendor === currentUser || !opp.vendor || !opp.vendor.trim());
-  }, [opportunities, currentUser, currentVendorInfo]);
-
-  const filteredOpportunities = useMemo(() => {
-    return userOpportunities.filter(opp => {
-      const matchesSearch = opp.name.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
-                           opp.client.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
-                           (opp.product && opp.product.toLowerCase().includes(filters.searchTerm.toLowerCase()));
-      const matchesStage = filters.filterStage === 'all' || opp.stage.toString() === filters.filterStage;
-      const matchesVendor = filters.filterVendor === 'all' || opp.vendor === filters.filterVendor;
-      
-      let matchesInactivity = true;
-      if (filters.filterInactivity === '7days') {
-        matchesInactivity = checkInactivity(opp.last_update, 7);
-      } else if (filters.filterInactivity === '30days') {
-        matchesInactivity = checkInactivity(opp.last_update, 30);
-      }
-
-      const matchesProductLine = filters.filterProductLine === 'all' || 
-        (opp.product_lines && opp.product_lines.includes(filters.filterProductLine));
-      
-      return matchesSearch && matchesStage && matchesVendor && matchesInactivity && matchesProductLine;
-    });
-  }, [userOpportunities, filters.searchTerm, filters.filterStage, filters.filterVendor, filters.filterInactivity, filters.filterProductLine]);
-
-  const dashboardOpportunities = useMemo(() => {
-    const baseOpps = currentVendorInfo?.is_admin ? opportunities : userOpportunities;
-    if (dashboardVendorFilter === 'all') return baseOpps;
-    return baseOpps.filter(opp => opp.vendor === dashboardVendorFilter);
-  }, [opportunities, userOpportunities, dashboardVendorFilter, currentVendorInfo]);
-
-  const metrics = useMemo(() => ({
-    totalValue: dashboardOpportunities.reduce((sum, opp) => sum + (opp.value || 0), 0),
-    weightedValue: dashboardOpportunities.reduce((sum, opp) => sum + ((opp.value || 0) * (opp.probability || 0) / 100), 0),
-    totalOpportunities: dashboardOpportunities.length,
-    avgScore: dashboardOpportunities.length > 0 ? 
-      dashboardOpportunities.reduce((sum, opp) => {
-        if (!opp.scales) return sum;
-        const scaleScores = [
-          getScaleScore(opp.scales.dor),
-          getScaleScore(opp.scales.poder),
-          getScaleScore(opp.scales.visao),
-          getScaleScore(opp.scales.valor),
-          getScaleScore(opp.scales.controle),
-          getScaleScore(opp.scales.compras)
-        ];
-        const avgOppScore = scaleScores.reduce((a, b) => a + b, 0) / scaleScores.length;
-        return sum + avgOppScore;
-      }, 0) / dashboardOpportunities.length : 0,
-    avgProbability: dashboardOpportunities.length > 0 ?
-      dashboardOpportunities.reduce((sum, opp) => sum + (opp.probability || 0), 0) / dashboardOpportunities.length : 0,
-    stageDistribution: stages.map(stage => ({
-      ...stage,
-      count: dashboardOpportunities.filter(opp => opp.stage === stage.id).length,
-      value: dashboardOpportunities.filter(opp => opp.stage === stage.id).reduce((sum, opp) => sum + (opp.value || 0), 0),
-      weightedValue: dashboardOpportunities.filter(opp => opp.stage === stage.id).reduce((sum, opp) => sum + ((opp.value || 0) * (opp.probability || 0) / 100), 0),
-      opportunities: dashboardOpportunities.filter(opp => opp.stage === stage.id)
-    }))
-  }), [dashboardOpportunities]);
-
-  const openAssistantWithOpportunity = useCallback((opportunity: Opportunity) => {
-    setSelectedOpportunity(opportunity);
-    setIsAssistantOpen(true);
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('openAssistant'));
-    }, 100);
-  }, []);
-
-  const handleMoveStage = useCallback(async (opportunity: Opportunity, newStage: number) => {
-    if (newStage > opportunity.stage && !checkStageRequirements(opportunity, opportunity.stage)) {
-      setShowStageChecklist({ opportunity, targetStage: newStage });
-      return;
-    }
-    
-    await moveStage(opportunity, newStage);
-  }, [moveStage]);
-
-  // --- COMPONENTES INTERNOS ---
-  const Dashboard = () => (
+  return (
     <div className="space-y-8">
       {error && <ErrorAlert error={error} onClose={() => setError(null)} />}
 
@@ -1273,7 +1123,7 @@ const CRMVentapel: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-gradient-to-br from-blue-50 to-cyan-50 p-6 rounded-xl shadow-sm border border-blue-200">
           <div className="flex items-center">
             <div className="p-3 bg-blue-100 rounded-lg">
@@ -1285,7 +1135,7 @@ const CRMVentapel: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-xl shadow-sm border border-purple-200">
           <div className="flex items-center">
             <div className="p-3 bg-purple-100 rounded-lg">
@@ -1297,7 +1147,7 @@ const CRMVentapel: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-gradient-to-br from-orange-50 to-red-50 p-6 rounded-xl shadow-sm border border-orange-200">
           <div className="flex items-center">
             <div className="p-3 bg-orange-100 rounded-lg">
@@ -1331,18 +1181,18 @@ const CRMVentapel: React.FC = () => {
             </select>
           </div>
         </div>
-        
+
         <div className="space-y-4">
           {metrics.stageDistribution.slice(0, 5).map(stage => (
             <div key={stage.id}>
-              <div 
+              <div
                 className="flex items-center cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
                 onClick={() => setSelectedStageForList(selectedStageForList === stage.id ? null : stage.id)}
               >
                 <div className="w-40 text-base font-medium text-gray-700">{stage.name}</div>
                 <div className="flex-1 mx-6">
                   <div className="bg-gray-200 rounded-full h-8 relative">
-                    <div 
+                    <div
                       className={stage.color + ' h-8 rounded-full transition-all duration-500'}
                       style={{ width: Math.max((stage.count / Math.max(...metrics.stageDistribution.map(s => s.count), 1)) * 100, 5) + '%' }}
                     ></div>
@@ -1360,7 +1210,7 @@ const CRMVentapel: React.FC = () => {
                 </div>
                 <ChevronDown className={'w-5 h-5 ml-4 text-gray-400 transition-transform ' + (selectedStageForList === stage.id ? 'rotate-180' : '')} />
               </div>
-              
+
               {selectedStageForList === stage.id && stage.opportunities.length > 0 && (
                 <div className="mt-4 ml-8 mr-8 p-4 bg-gray-50 rounded-lg">
                   <table className="w-full text-base">
@@ -1397,8 +1247,7 @@ const CRMVentapel: React.FC = () => {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelectedOpportunity(opp);
-                                  setEditingOpportunity(opp);
+                                  onEdit(opp);
                                 }}
                                 className="text-blue-600 hover:text-blue-800"
                                 title="Ver detalhes"
@@ -1408,7 +1257,7 @@ const CRMVentapel: React.FC = () => {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  openAssistantWithOpportunity(opp);
+                                  onAnalyze(opp);
                                 }}
                                 className="text-purple-600 hover:text-purple-800"
                                 title="Analisar com Coach IA"
@@ -1426,7 +1275,7 @@ const CRMVentapel: React.FC = () => {
             </div>
           ))}
         </div>
-        
+
         <div className="mt-6 pt-6 border-t border-gray-200">
           <div className="flex justify-between items-center">
             <div className="text-lg font-semibold text-gray-800">
@@ -1445,286 +1294,1060 @@ const CRMVentapel: React.FC = () => {
       </div>
     </div>
   );
+};
 
-  const OpportunityCard: React.FC<{ opportunity: Opportunity }> = ({ opportunity }) => {
-    const stage = stages.find(s => s.id === opportunity.stage);
-    const nextStage = stages.find(s => s.id === opportunity.stage + 1);
-    const prevStage = stages.find(s => s.id === opportunity.stage - 1);
-    
-    const avgScore = opportunity.scales ? 
-      [
-        getScaleScore(opportunity.scales.dor),
-        getScaleScore(opportunity.scales.poder),
-        getScaleScore(opportunity.scales.visao),
-        getScaleScore(opportunity.scales.valor),
-        getScaleScore(opportunity.scales.controle),
-        getScaleScore(opportunity.scales.compras)
-      ].reduce((a, b) => a + b, 0) / 6 : 0;
+// --- CARD DE OPORTUNIDADE (top-level) ---
+interface OpportunityCardProps {
+  opportunity: Opportunity;
+  isSelected: boolean;
+  onEdit: (opp: Opportunity) => void;
+  onAnalyze: (opp: Opportunity) => void;
+  onMoveStage: (opp: Opportunity, newStage: number) => void;
+}
 
-    const canAdvance = nextStage && checkStageRequirements(opportunity, opportunity.stage);
-    const isInactive7Days = checkInactivity(opportunity.last_update, 7);
-    const isInactive30Days = checkInactivity(opportunity.last_update, 30);
+const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelected, onEdit, onAnalyze, onMoveStage }) => {
+  const { currentUser, deleteOpportunity, assumeOpportunity } = useOpportunitiesContext();
 
-    return (
-      <div className={'bg-white rounded-xl shadow-sm border p-6 hover:shadow-lg transition-all ' + 
-        (isInactive30Days ? 'border-red-300 bg-red-50' : isInactive7Days ? 'border-yellow-300 bg-yellow-50' : '')}>
-        <div className="flex justify-between items-start mb-6">
-          <div className="flex-1">
-            <div className="flex items-center space-x-3 mb-2">
-              <h3 className="text-xl font-bold text-gray-900">{opportunity.name}</h3>
-              <OpportunityHealthScore opportunity={opportunity} />
-              {/* Indicador SPIN */}
-              <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center">
-                <FileQuestion className="w-3 h-3 mr-1" />
-                SPIN: {calculateSPINProgress(opportunity)}%
+  const stage = stages.find(s => s.id === opportunity.stage);
+  const nextStage = stages.find(s => s.id === opportunity.stage + 1);
+  const prevStage = stages.find(s => s.id === opportunity.stage - 1);
+
+  const avgScore = calculateHealthScore(opportunity.scales);
+
+  const canAdvance = nextStage && checkStageRequirements(opportunity, opportunity.stage);
+  const isInactive7Days = checkInactivity(opportunity.last_update, 7);
+  const isInactive30Days = checkInactivity(opportunity.last_update, 30);
+
+  return (
+    <div className={'bg-white rounded-xl shadow-sm border p-6 hover:shadow-lg transition-all ' +
+      (isInactive30Days ? 'border-red-300 bg-red-50' : isInactive7Days ? 'border-yellow-300 bg-yellow-50' : '')}>
+      <div className="flex justify-between items-start mb-6">
+        <div className="flex-1">
+          <div className="flex items-center space-x-3 mb-2">
+            <h3 className="text-xl font-bold text-gray-900">{opportunity.name}</h3>
+            <OpportunityHealthScore opportunity={opportunity} />
+            {/* Indicador SPIN */}
+            <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center">
+              <FileQuestion className="w-3 h-3 mr-1" />
+              SPIN: {calculateSPINProgress(opportunity)}%
+            </span>
+            {isInactive30Days && (
+              <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full flex items-center">
+                <Clock className="w-3 h-3 mr-1" />
+                +30 dias sem movimento
               </span>
-              {isInactive30Days && (
-                <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full flex items-center">
-                  <Clock className="w-3 h-3 mr-1" />
-                  +30 dias sem movimento
-                </span>
-              )} 
-              {!isInactive30Days && isInactive7Days && (
-                <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full flex items-center">
-                  <Clock className="w-3 h-3 mr-1" />
-                  +7 dias sem movimento
-                </span>
-              )}
-              {opportunity.outcome === 'won' && (
-                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold">✅ Ganhou</span>
-              )}
-              {opportunity.outcome === 'lost' && (
-                <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-semibold">❌ Perdeu</span>
-              )}
-              {opportunity.outcome === 'abandoned' && (
-                <span className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded-full font-semibold">⏸️ Abandonada</span>
-              )}
-              <button
-                onClick={() => {
-                  setEditingOpportunity(opportunity);
-                  setSelectedOpportunity(opportunity);
-                }}
-                className="p-2.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                title="Editar oportunidade"
-              >
-                <Edit3 className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => openAssistantWithOpportunity(opportunity)}
-                className="p-2.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"
-                title="Analisar com Coach IA"
-              >
-                <Brain className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => deleteOpportunity(opportunity.id)}
-                className="p-2.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                title="Excluir oportunidade"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
+            )}
+            {!isInactive30Days && isInactive7Days && (
+              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full flex items-center">
+                <Clock className="w-3 h-3 mr-1" />
+                +7 dias sem movimento
+              </span>
+            )}
+            {opportunity.outcome === 'won' && (
+              <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold">✅ Ganhou</span>
+            )}
+            {opportunity.outcome === 'lost' && (
+              <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-semibold">❌ Perdeu</span>
+            )}
+            {opportunity.outcome === 'abandoned' && (
+              <span className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded-full font-semibold">⏸️ Abandonada</span>
+            )}
+            <button
+              onClick={() => onEdit(opportunity)}
+              className="p-2.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              title="Editar oportunidade"
+            >
+              <Edit3 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => onAnalyze(opportunity)}
+              className="p-2.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors"
+              title="Analisar com Coach IA"
+            >
+              <Brain className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => deleteOpportunity(opportunity.id)}
+              className="p-2.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              title="Excluir oportunidade"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xl font-semibold text-blue-600">{opportunity.client}</p>
+            {opportunity.vendor && opportunity.vendor.trim() ? (
+              <p className="text-base text-gray-600">👤 {opportunity.vendor}</p>
+            ) : (
+              <div className="flex items-center gap-2">
+                <p className="text-base text-orange-600 font-semibold">👤 Sem vendedor</p>
+                {currentUser && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      assumeOpportunity(opportunity);
+                    }}
+                    className="px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    🙋 Assumir
+                  </button>
+                )}
+              </div>
+            )}
+            {opportunity.product_lines && opportunity.product_lines.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {opportunity.product_lines.map(pl => {
+                  const config = PRODUCT_LINES[pl];
+                  return config ? (
+                    <span key={pl} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.color}`}>
+                      {config.icon} {config.label}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            )}
+            <p className="text-base text-purple-600">📦 {opportunity.product}</p>
+            {opportunity.industry && (
+              <p className="text-base text-gray-600">🏭 {opportunity.industry}</p>
+            )}
+            {opportunity.expected_close && (
+              <p className="text-base text-gray-600">📅 Fechamento: {new Date(opportunity.expected_close).toLocaleDateString('pt-BR')}</p>
+            )}
+          </div>
+          {opportunity.next_action && (
+            <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-base text-blue-800">📅 <strong>Próxima ação:</strong> {opportunity.next_action}</p>
             </div>
-            <div className="space-y-1">
-              <p className="text-xl font-semibold text-blue-600">{opportunity.client}</p>
-                           {opportunity.vendor && opportunity.vendor.trim() ? (
-                <p className="text-base text-gray-600">👤 {opportunity.vendor}</p>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <p className="text-base text-orange-600 font-semibold">👤 Sem vendedor</p>
-                  {currentUser && (
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        try {
-                          await supabaseService.updateOpportunity(opportunity.id, {
-                            ...opportunity,
-                            vendor: currentUser,
-                            value: opportunity.value || 0,
-                            last_update: new Date().toISOString().split('T')[0]
-                          });
-                          window.location.reload();
-                        } catch (err) {
-                          console.error('Erro ao assumir:', err);
-                        }
-                      }}
-                      className="px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      🙋 Assumir
-                    </button>
+          )}
+          <div className="mt-2 text-sm text-gray-500">
+            Última atualização: {new Date(opportunity.last_update).toLocaleDateString('pt-BR')}
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-bold text-green-600 mb-2">
+            R$ {(opportunity.value || 0).toLocaleString('pt-BR')}
+          </p>
+          <span className={'inline-block px-4 py-2 rounded-full text-sm font-bold text-white ' + (stage?.color || '') + ' mb-2'}>
+            {stage?.name} ({opportunity.probability || 0}%)
+          </span>
+          <p className="text-sm text-gray-600 font-medium">
+            Ponderado: R$ {((opportunity.value || 0) * (opportunity.probability || 0) / 100).toLocaleString('pt-BR')}
+          </p>
+        </div>
+      </div>
+
+      <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="font-semibold text-gray-700">🎯 Gestão de Etapa</h4>
+          <div className="flex space-x-2">
+            {prevStage && (
+              <button
+                onClick={() => onMoveStage(opportunity, prevStage.id)}
+                className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+              >
+                ← {prevStage.name}
+              </button>
+            )}
+            {nextStage && (
+              <button
+                onClick={() => onMoveStage(opportunity, nextStage.id)}
+                className={'px-3 py-1 text-xs rounded-md transition-colors flex items-center ' + (canAdvance
+                    ? 'bg-green-500 text-white hover:bg-green-600'
+                    : 'bg-red-100 text-red-600 cursor-not-allowed')}
+              >
+                {nextStage.name} →
+                {canAdvance ? <Check className="w-3 h-3 ml-1" /> : <X className="w-3 h-3 ml-1" />}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {nextStage && (
+          <div className="text-xs text-gray-600">
+            <p className="font-medium mb-1">Requisitos para {nextStage.name}:</p>
+            <ul className="space-y-1">
+              {nextStage.requirements?.map((req, idx) => (
+                <li key={idx} className="flex items-center">
+                  <div className={'w-2 h-2 rounded-full mr-2 ' + (checkStageRequirements(opportunity, opportunity.stage) ? 'bg-green-500' : 'bg-red-500')}></div>
+                  {req}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-3">
+          <span className="text-base font-bold text-gray-700">📊 Score PPVVCC Geral</span>
+          <div className="flex items-center space-x-2">
+            <span className="text-lg font-bold text-gray-900">{avgScore.toFixed(1)}/10</span>
+            {isSelected && (
+              <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center">
+                <Brain className="w-3 h-3 mr-1" />
+                Em análise
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="bg-gray-200 rounded-full h-4 mb-4">
+          <div
+            className="bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 h-4 rounded-full transition-all duration-500"
+            style={{ width: (avgScore / 10) * 100 + '%' }}
+          ></div>
+        </div>
+
+        {opportunity.scales && (
+          <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
+            {scales.map(scale => {
+              const Icon = scale.icon;
+              const scaleData = opportunity.scales[scale.id as keyof Scales];
+              const scoreValue = getScaleScore(scaleData);
+              return (
+                <div key={scale.id} className={scale.bgColor + ' ' + scale.borderColor + ' border rounded-lg p-2 cursor-pointer hover:shadow-md transition-all'}
+                     onClick={() => onEdit(opportunity)}
+                     title={scaleData.description || scale.name}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <Icon className={'w-4 h-4 mr-1 ' + scale.color} />
+                      <span className="text-sm font-bold">{scale.name}</span>
+                    </div>
+                    <span className="text-xl font-bold text-gray-800">{scoreValue}</span>
+                  </div>
+                  {scaleData.description && (
+                    <p className="text-xs text-gray-500 mt-1 truncate">{scaleData.description}</p>
                   )}
                 </div>
-              )}
-              {opportunity.product_lines && opportunity.product_lines.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {opportunity.product_lines.map(pl => {
-                    const config = PRODUCT_LINES[pl];
-                    return config ? (
-                      <span key={pl} className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.color}`}>
-                        {config.icon} {config.label}
-                      </span>
-                    ) : null;
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t pt-4">
+        <h4 className="text-base font-semibold text-gray-700 mb-3">👥 Contatos Principais</h4>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 text-base">
+          {opportunity.power_sponsor && (
+            <div className="flex items-center">
+              <span className="font-medium text-gray-600 mr-2">Power Sponsor:</span>
+              <span className="text-gray-800">{opportunity.power_sponsor}</span>
+            </div>
+          )}
+          {opportunity.sponsor && (
+            <div className="flex items-center">
+              <span className="font-medium text-gray-600 mr-2">Sponsor:</span>
+              <span className="text-gray-800">{opportunity.sponsor}</span>
+            </div>
+          )}
+          {opportunity.influencer && (
+            <div className="flex items-center">
+              <span className="font-medium text-gray-600 mr-2">Influenciador:</span>
+              <span className="text-gray-800">{opportunity.influencer}</span>
+            </div>
+          )}
+          {opportunity.support_contact && (
+            <div className="flex items-center">
+              <span className="font-medium text-gray-600 mr-2">Contato Apoio:</span>
+              <span className="text-gray-800">{opportunity.support_contact}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <ActivityPanel
+        opportunity={opportunity}
+        currentUser={currentUser}
+        supabase={supabase}
+      />
+    </div>
+  );
+};
+
+// --- FORMULÁRIO DE OPORTUNIDADE (top-level: não perde estado com re-renders do pai) ---
+interface OpportunityFormProps {
+  opportunity?: Opportunity | null;
+  onClose: () => void;
+}
+
+const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose }) => {
+  const { vendors, currentUser, createOpportunity, updateOpportunity } = useOpportunitiesContext();
+  const currentVendorInfo = useMemo(() => vendors.find(v => v.name === currentUser) || null, [vendors, currentUser]);
+
+  const [formData, setFormData] = useState<OpportunityFormData>({
+    name: opportunity?.name || '',
+    client: opportunity?.client || '',
+    vendor: opportunity?.vendor || currentUser || vendors[0]?.name || '',
+    value: opportunity?.value?.toString() || '',
+    stage: opportunity?.stage || 1,
+    priority: opportunity?.priority || 'média',
+    expected_close: opportunity?.expected_close || '',
+    next_action: opportunity?.next_action || '',
+    product: opportunity?.product || '',
+    power_sponsor: opportunity?.power_sponsor || '',
+    sponsor: opportunity?.sponsor || '',
+    influencer: opportunity?.influencer || '',
+    support_contact: opportunity?.support_contact || '',
+    scales: opportunity?.scales || emptyScales(),
+    industry: opportunity?.industry || '',
+    product_lines: opportunity?.product_lines || [],
+    outcome: opportunity?.outcome || null,
+    outcome_notes: opportunity?.outcome_notes || '',
+  });
+
+  const [activeScale, setActiveScale] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [showScaleSelector, setShowScaleSelector] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!formData.name?.trim()) {
+      alert('❌ Por favor, insira o nome da oportunidade');
+      return;
+    }
+
+    if (!formData.client?.trim()) {
+      alert('❌ Por favor, insira o nome do cliente');
+      return;
+    }
+
+    const valueNum = parseFloat(formData.value?.toString() || '0');
+    if (isNaN(valueNum) || valueNum <= 0) {
+      alert('❌ Por favor, insira um valor válido maior que 0');
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const dataToSend = {
+        ...formData,
+        scales: formData.scales || emptyScales()
+      };
+
+      const success = opportunity
+        ? await updateOpportunity(opportunity.id, dataToSend)
+        : await createOpportunity(dataToSend);
+
+      if (success) {
+        onClose();
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const updateScale = (scaleId: string, field: 'score' | 'description', value: string | number) => {
+    if (field === 'score') {
+      const numValue = typeof value === 'string' ? parseInt(value) : value;
+      if (numValue < 0 || numValue > 10) return;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      scales: {
+        ...prev.scales,
+        [scaleId]: {
+          ...prev.scales[scaleId as keyof Scales],
+          [field]: field === 'score' ? (typeof value === 'string' ? parseInt(value) || 0 : value) : value
+        }
+      }
+    }));
+  };
+
+  const selectScaleLevel = (scaleId: string, level: number, description: string) => {
+    updateScale(scaleId, 'score', level);
+    updateScale(scaleId, 'description', description);
+    setShowScaleSelector(null);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-xl max-w-6xl w-full my-8 max-h-[90vh] overflow-y-auto">
+        <div className="p-8">
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900">
+                {opportunity ? '✏️ Editar Oportunidade' : '➕ Nova Oportunidade'}
+              </h2>
+              <p className="text-gray-600 mt-1">
+                {opportunity ? 'Atualize os dados da oportunidade' : 'Adicione uma nova oportunidade ao pipeline Ventapel'}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-3 hover:bg-gray-100 rounded-xl transition-colors"
+              disabled={submitting}
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+                <h3 className="text-lg font-semibold mb-4 text-blue-800">📋 Informações Básicas</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Nome da Oportunidade *</label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Ex: Solução de Fechamento Amazon"
+                      disabled={submitting}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Cliente *</label>
+                    <input
+                      type="text"
+                      value={formData.client}
+                      onChange={(e) => setFormData({...formData, client: e.target.value})}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Nome da empresa"
+                      disabled={submitting}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Vendedor *</label>
+                      <select
+                        value={formData.vendor}
+                        onChange={(e) => setFormData({...formData, vendor: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        disabled={submitting || (!currentVendorInfo?.is_admin && !!currentUser)}
+                      >
+                        {vendors.map(vendor => (
+                          <option key={vendor.name} value={vendor.name}>
+                            {vendor.name} {vendor.role && `(${vendor.role})`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Valor (R$) *</label>
+                      <input
+                        type="number"
+                        value={formData.value}
+                        onChange={(e) => setFormData({...formData, value: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="250000"
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Etapa *</label>
+                      <select
+                        value={formData.stage}
+                        onChange={(e) => setFormData({...formData, stage: parseInt(e.target.value)})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        disabled={submitting}
+                      >
+                        {stages.slice(0, 5).map(stage => (
+                          <option key={stage.id} value={stage.id}>
+                            {stage.name} ({stage.probability}%)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Prioridade</label>
+                      <select
+                        value={formData.priority}
+                        onChange={(e) => setFormData({...formData, priority: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        disabled={submitting}
+                      >
+                        <option value="baixa">Baixa</option>
+                        <option value="média">Média</option>
+                        <option value="alta">Alta</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Linhas de Produto</label>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(PRODUCT_LINES).map(([key, pl]) => {
+                        const selected = (formData.product_lines || []).includes(key);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => {
+                              const current = formData.product_lines || [];
+                              const updated = selected ? current.filter(k => k !== key) : [...current, key];
+                              setFormData({...formData, product_lines: updated});
+                            }}
+                            disabled={submitting}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all ${selected ? `${pl.bg} ${pl.color} border-current ring-2 ring-current ring-opacity-30` : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'}`}
+                          >
+                            {pl.icon} {pl.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Produto</label>
+                      <input
+                        type="text"
+                        value={formData.product}
+                        onChange={(e) => setFormData({...formData, product: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Ex: Máquinas BP + Fita"
+                        disabled={submitting}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Indústria</label>
+                      <input
+                        type="text"
+                        value={formData.industry}
+                        onChange={(e) => setFormData({...formData, industry: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Ex: E-commerce, Farmacêutica"
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Fechamento Previsto</label>
+                      <input
+                        type="date"
+                        value={formData.expected_close}
+                        onChange={(e) => setFormData({...formData, expected_close: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        disabled={submitting}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Próxima Ação</label>
+                      <input
+                        type="text"
+                        value={formData.next_action}
+                        onChange={(e) => setFormData({...formData, next_action: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Ex: Demo técnica agendada para 15/02"
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-green-50 rounded-xl p-6 border border-green-200">
+                <h3 className="text-lg font-semibold mb-4 text-green-800">👥 Contatos Principais</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Power Sponsor</label>
+                    <input
+                      type="text"
+                      value={formData.power_sponsor}
+                      onChange={(e) => setFormData({...formData, power_sponsor: e.target.value})}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Quem assina o contrato"
+                      disabled={submitting}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Sponsor</label>
+                    <input
+                      type="text"
+                      value={formData.sponsor}
+                      onChange={(e) => setFormData({...formData, sponsor: e.target.value})}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Decisor usuário"
+                      disabled={submitting}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Principal Influenciador</label>
+                    <input
+                      type="text"
+                      value={formData.influencer}
+                      onChange={(e) => setFormData({...formData, influencer: e.target.value})}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Influencia a decisão"
+                      disabled={submitting}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">Contato de Apoio</label>
+                    <input
+                      type="text"
+                      value={formData.support_contact}
+                      onChange={(e) => setFormData({...formData, support_contact: e.target.value})}
+                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Suporte interno"
+                      disabled={submitting}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
+                <h3 className="text-lg font-semibold mb-4 text-purple-800">📊 Escalas PPVVCC</h3>
+                <div className="space-y-4">
+                  {scales.map(scale => {
+                    const Icon = scale.icon;
+                    const scaleData = formData.scales[scale.id as keyof Scales];
+                    const isActive = activeScale === scale.id;
+                    const isSelectorOpen = showScaleSelector === scale.id;
+
+                    return (
+                      <div key={scale.id} className={scale.bgColor + ' ' + scale.borderColor + ' border-2 rounded-lg p-4 transition-all ' + (isActive ? 'ring-2 ring-purple-400' : '')}>
+                        <div
+                          className="flex items-center justify-between cursor-pointer"
+                          onClick={() => setActiveScale(isActive ? null : scale.id)}
+                        >
+                          <div className="flex items-center">
+                            <Icon className={'w-5 h-5 mr-3 ' + scale.color} />
+                            <div>
+                              <span className="font-bold text-sm">{scale.name}</span>
+                              <p className="text-xs text-gray-600">{scale.description}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-2xl font-bold">{scaleData.score}</span>
+                            <ChevronRight className={'w-4 h-4 transition-transform ' + (isActive ? 'rotate-90' : '')} />
+                          </div>
+                        </div>
+
+                        {isActive && (
+                          <div className="mt-4 pt-4 border-t border-gray-200">
+                            <div className="space-y-3">
+                              <div>
+                                <div className="flex justify-between items-center mb-2">
+                                  <label className="block text-sm font-medium">Score (0-10)</label>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setShowScaleSelector(isSelectorOpen ? null : scale.id);
+                                    }}
+                                    className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-lg hover:bg-purple-200 transition-colors flex items-center"
+                                  >
+                                    Ver opções de escala
+                                    {isSelectorOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
+                                  </button>
+                                </div>
+
+                                {isSelectorOpen && (
+                                  <div className="mb-4 bg-white rounded-lg p-3 max-h-60 overflow-y-auto border border-purple-200">
+                                    {scaleDefinitions[scale.id as keyof typeof scaleDefinitions].map((def) => (
+                                      <button
+                                        key={def.level}
+                                        type="button"
+                                        onClick={() => selectScaleLevel(scale.id, def.level, def.text)}
+                                        className={'w-full text-left p-2 mb-1 rounded-lg transition-colors ' +
+                                          (scaleData.score === def.level
+                                            ? 'bg-purple-100 border-2 border-purple-500'
+                                            : 'hover:bg-gray-50 border border-gray-200')}
+                                      >
+                                        <div className="flex items-start">
+                                          <span className="font-bold text-purple-700 mr-2 min-w-[20px]">{def.level}</span>
+                                          <span className="text-xs text-gray-700">{def.text}</span>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="10"
+                                  value={scaleData.score}
+                                  onChange={(e) => updateScale(scale.id, 'score', parseInt(e.target.value))}
+                                  className="w-full"
+                                  disabled={submitting}
+                                />
+                                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                  <span>0</span>
+                                  <span className="font-bold">{scaleData.score}</span>
+                                  <span>10</span>
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium mb-2">Observações</label>
+                                <textarea
+                                  value={scaleData.description}
+                                  onChange={(e) => updateScale(scale.id, 'description', e.target.value)}
+                                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                  rows={3}
+                                  placeholder="Descreva a situação atual..."
+                                  disabled={submitting}
+                                />
+                              </div>
+
+                              {/* INTEGRAÇÃO DO PAINEL SPIN */}
+                              <SPINQuestionsPanel
+                                scaleId={scale.id}
+                                onQuestionUsed={(question) => {
+                                  const currentDesc = scaleData.description || '';
+                                  const newDesc = currentDesc ?
+                                    currentDesc + '\n✓ ' + question :
+                                    '✓ ' + question;
+                                  updateScale(scale.id, 'description', newDesc);
+                                }}
+                              />
+
+                              <div className="bg-white p-3 rounded-lg">
+                                <p className="text-xs font-medium text-gray-700 mb-2">Perguntas-chave gerais:</p>
+                                <ul className="text-xs text-gray-600 space-y-1">
+                                  {scale.questions?.map((question, idx) => (
+                                    <li key={idx} className="flex items-start">
+                                      <span className="text-purple-500 mr-2">•</span>
+                                      {question}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
                   })}
                 </div>
-              )}
-              <p className="text-base text-purple-600">📦 {opportunity.product}</p>
-              {opportunity.industry && (
-                <p className="text-base text-gray-600">🏭 {opportunity.industry}</p>
-              )}
-              {opportunity.expected_close && (
-                <p className="text-base text-gray-600">📅 Fechamento: {new Date(opportunity.expected_close).toLocaleDateString('pt-BR')}</p>
-              )}
-            </div>
-            {opportunity.next_action && (
-              <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-base text-blue-800">📅 <strong>Próxima ação:</strong> {opportunity.next_action}</p>
               </div>
-            )}
-            <div className="mt-2 text-sm text-gray-500">
-              Última atualização: {new Date(opportunity.last_update).toLocaleDateString('pt-BR')}
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-2xl font-bold text-green-600 mb-2">
-              R$ {(opportunity.value || 0).toLocaleString('pt-BR')}
-            </p>
-            <span className={'inline-block px-4 py-2 rounded-full text-sm font-bold text-white ' + (stage?.color || '') + ' mb-2'}>
-              {stage?.name} ({opportunity.probability || 0}%)
-            </span>
-            <p className="text-sm text-gray-600 font-medium">
-              Ponderado: R$ {((opportunity.value || 0) * (opportunity.probability || 0) / 100).toLocaleString('pt-BR')}
-            </p>
-          </div>
-        </div>
-
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-gray-700">🎯 Gestão de Etapa</h4>
-            <div className="flex space-x-2">
-              {prevStage && (
-                <button
-                  onClick={() => handleMoveStage(opportunity, prevStage.id)}
-                  className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-                >
-                  ← {prevStage.name}
-                </button>
-              )}
-              {nextStage && (
-                <button
-                  onClick={() => handleMoveStage(opportunity, nextStage.id)}
-                  className={'px-3 py-1 text-xs rounded-md transition-colors flex items-center ' + (canAdvance 
-                      ? 'bg-green-500 text-white hover:bg-green-600' 
-                      : 'bg-red-100 text-red-600 cursor-not-allowed')}
-                >
-                  {nextStage.name} →
-                  {canAdvance ? <Check className="w-3 h-3 ml-1" /> : <X className="w-3 h-3 ml-1" />}
-                </button>
-              )}
-            </div>
-          </div>
-          
-          {nextStage && (
-            <div className="text-xs text-gray-600">
-              <p className="font-medium mb-1">Requisitos para {nextStage.name}:</p>
-              <ul className="space-y-1">
-                {nextStage.requirements?.map((req, idx) => (
-                  <li key={idx} className="flex items-center">
-                    <div className={'w-2 h-2 rounded-full mr-2 ' + (checkStageRequirements(opportunity, opportunity.stage) ? 'bg-green-500' : 'bg-red-500')}></div>
-                    {req}
-                  </li>
+          {/* Resultado Final */}
+          {opportunity && (
+            <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 mt-6">
+              <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                🏁 Resultado Final
+              </h3>
+              <div className="flex gap-3 mb-4">
+                {([
+                  { value: null, label: 'Em andamento', color: 'bg-blue-100 text-blue-700 border-blue-300', activeColor: 'bg-blue-500 text-white border-blue-600' },
+                  { value: 'won', label: '✅ Ganhou', color: 'bg-green-50 text-green-700 border-green-300', activeColor: 'bg-green-500 text-white border-green-600' },
+                  { value: 'lost', label: '❌ Perdeu', color: 'bg-red-50 text-red-700 border-red-300', activeColor: 'bg-red-500 text-white border-red-600' },
+                  { value: 'abandoned', label: '⏸️ Abandonada', color: 'bg-gray-100 text-gray-600 border-gray-300', activeColor: 'bg-gray-500 text-white border-gray-600' },
+                ] as const).map(opt => (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => setFormData({...formData, outcome: opt.value as any})}
+                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
+                      formData.outcome === opt.value ? opt.activeColor : opt.color
+                    } hover:shadow-sm`}
+                  >
+                    {opt.label}
+                  </button>
                 ))}
-              </ul>
+              </div>
+              {formData.outcome && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    📝 Lições aprendidas / Observações para o futuro
+                  </label>
+                  <textarea
+                    value={formData.outcome_notes || ''}
+                    onChange={e => setFormData({...formData, outcome_notes: e.target.value})}
+                    placeholder={
+                      formData.outcome === 'won' ? 'O que funcionou bem? Que argumentos convenceram? O que replicar...' :
+                      formData.outcome === 'lost' ? 'Por que perdemos? O que faltou? O que o concorrente ofereceu...' :
+                      'Por que foi abandonada? Vale retomar no futuro?'
+                    }
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                    rows={3}
+                  />
+                </div>
+              )}
             </div>
           )}
+
+          {/* Activity Panel - solo al editar */}
+          {opportunity && (
+            <div className="mt-6">
+              <ActivityPanel
+                opportunity={opportunity}
+                currentUser={currentUser}
+                supabase={supabase}
+              />
+            </div>
+          )}
+
+          <div className="flex justify-end space-x-4 mt-8 pt-6 border-t">
+            <button
+              onClick={onClose}
+              className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              disabled={submitting}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg hover:from-blue-700 hover:to-green-700 flex items-center transition-colors font-medium disabled:opacity-50"
+              disabled={submitting}
+            >
+              {submitting ? (
+                <React.Fragment>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Salvando...
+                </React.Fragment>
+              ) : (
+                <React.Fragment>
+                  <Save className="w-5 h-5 mr-2" />
+                  {opportunity ? 'Atualizar' : 'Criar'} Oportunidade
+                </React.Fragment>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- MODAL DE CHECKLIST DE ETAPA (top-level; hooks sempre no topo) ---
+interface StageChecklistModalProps {
+  opportunity: Opportunity;
+  targetStage: number;
+  onConfirm: (opportunity: Opportunity, targetStage: number) => Promise<void>;
+  onClose: () => void;
+}
+
+const StageChecklistModal: React.FC<StageChecklistModalProps> = ({ opportunity, targetStage, onConfirm, onClose }) => {
+  const currentStage = stages.find(s => s.id === opportunity.stage);
+  const target = stages.find(s => s.id === targetStage);
+
+  const [checkedItems, setCheckedItems] = useState<{[key: string]: boolean}>(() => {
+    const items: {[key: string]: boolean} = {};
+    if (currentStage?.checklist) {
+      Object.values(currentStage.checklist).forEach(key => {
+        items[key] = false;
+      });
+    }
+    return items;
+  });
+
+  if (!currentStage || !target) return null;
+
+  const handleCheckChange = (key: string) => {
+    setCheckedItems(prev => ({...prev, [key]: !prev[key]}));
+  };
+
+  const allChecked = currentStage.checklist && Object.values(currentStage.checklist).every(key => checkedItems[key] === true);
+
+  const confirmStageChange = async () => {
+    if (!allChecked) {
+      alert('Por favor, complete todos os itens do checklist antes de avançar.');
+      return;
+    }
+
+    try {
+      await onConfirm(opportunity, targetStage);
+      onClose();
+    } catch (error) {
+      console.error('Erro ao mover etapa:', error);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl max-w-2xl w-full">
+        <div className="p-6 border-b">
+          <h3 className="text-xl font-bold text-gray-900">
+            ✅ Checklist para avançar para {target.name}
+          </h3>
+          <p className="text-gray-600 mt-1">
+            Complete todos os itens antes de mover a oportunidade
+          </p>
         </div>
 
-        <div className="mb-6">
-          <div className="flex justify-between items-center mb-3">
-            <span className="text-base font-bold text-gray-700">📊 Score PPVVCC Geral</span>
-            <div className="flex items-center space-x-2">
-              <span className="text-lg font-bold text-gray-900">{avgScore.toFixed(1)}/10</span>
-              {selectedOpportunity?.id === opportunity.id && (
-                <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center">
-                  <Brain className="w-3 h-3 mr-1" />
-                  Em análise
-                </span>
-              )}
-            </div>
+        <div className="p-6">
+          <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h4 className="font-semibold text-blue-800 mb-2">📋 {opportunity.name}</h4>
+            <p className="text-sm text-blue-700">{opportunity.client}</p>
           </div>
-          <div className="bg-gray-200 rounded-full h-4 mb-4">
-            <div 
-              className="bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 h-4 rounded-full transition-all duration-500"
-              style={{ width: (avgScore / 10) * 100 + '%' }}
-            ></div>
-          </div>
-          
-          {opportunity.scales && (
-            <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
-              {scales.map(scale => {
-                const Icon = scale.icon;
-                const scaleData = opportunity.scales[scale.id as keyof Scales];
-                const scoreValue = getScaleScore(scaleData);
-                return (
-                  <div key={scale.id} className={scale.bgColor + ' ' + scale.borderColor + ' border rounded-lg p-2 cursor-pointer hover:shadow-md transition-all'}
-                       onClick={() => {
-                         setEditingOpportunity(opportunity);
-                         setSelectedOpportunity(opportunity);
-                       }}
-                       title={scaleData.description || scale.name}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <Icon className={'w-4 h-4 mr-1 ' + scale.color} />
-                        <span className="text-sm font-bold">{scale.name}</span>
-                      </div>
-                      <span className="text-xl font-bold text-gray-800">{scoreValue}</span>
-                    </div>
-                    {scaleData.description && (
-                      <p className="text-xs text-gray-500 mt-1 truncate">{scaleData.description}</p>
+
+          <div className="space-y-3">
+            {currentStage.checklist && Object.entries(currentStage.checklist).map(([label, key]) => {
+              const isChecked = checkedItems[key] === true;
+              return (
+                <label key={key} className="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => handleCheckChange(key)}
+                    className="mt-0.5 mr-3 w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                  <div className="flex-1">
+                    <span className="text-gray-800 font-medium">{label}</span>
+                    {isChecked && (
+                      <CheckCircle className="inline-block w-5 h-5 text-green-600 ml-2" />
                     )}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                </label>
+              );
+            })}
+          </div>
 
-        <div className="border-t pt-4">
-          <h4 className="text-base font-semibold text-gray-700 mb-3">👥 Contatos Principais</h4>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 text-base">
-            {opportunity.power_sponsor && (
-              <div className="flex items-center">
-                <span className="font-medium text-gray-600 mr-2">Power Sponsor:</span>
-                <span className="text-gray-800">{opportunity.power_sponsor}</span>
-              </div>
-            )}
-            {opportunity.sponsor && (
-              <div className="flex items-center">
-                <span className="font-medium text-gray-600 mr-2">Sponsor:</span>
-                <span className="text-gray-800">{opportunity.sponsor}</span>
-              </div>
-            )}
-            {opportunity.influencer && (
-              <div className="flex items-center">
-                <span className="font-medium text-gray-600 mr-2">Influenciador:</span>
-                <span className="text-gray-800">{opportunity.influencer}</span>
-              </div>
-            )}
-            {opportunity.support_contact && (
-              <div className="flex items-center">
-                <span className="font-medium text-gray-600 mr-2">Contato Apoio:</span>
-                <span className="text-gray-800">{opportunity.support_contact}</span>
-              </div>
-            )}
+          <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+            <p className="text-sm text-amber-800">
+              <AlertCircle className="inline-block w-4 h-4 mr-1" />
+              <strong>Atenção:</strong> Confirme que todos os requisitos foram cumpridos antes de avançar.
+            </p>
           </div>
         </div>
 
-        <ActivityPanel 
-          opportunity={opportunity}
-          currentUser={currentUser}
-          supabase={supabase}
-        />
+        <div className="p-6 border-t flex justify-end space-x-4">
+          <button
+            onClick={onClose}
+            className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={confirmStageChange}
+            className={'px-6 py-3 rounded-lg transition-colors flex items-center font-medium ' +
+              (allChecked
+                ? 'bg-gradient-to-r from-blue-600 to-green-600 text-white hover:from-blue-700 hover:to-green-700'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed')}
+            disabled={!allChecked}
+          >
+            <Check className="w-5 h-5 mr-2" />
+            Confirmar e Avançar
+          </button>
+        </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
+
+// --- COMPONENTE PRINCIPAL ---
+const CRMVentapel: React.FC = () => {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [showNewOpportunity, setShowNewOpportunity] = useState(false);
+  const [editingOpportunity, setEditingOpportunity] = useState<Opportunity | null>(null);
+  const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
+  const [dashboardVendorFilter, setDashboardVendorFilter] = useState('all');
+  const [selectedStageForList, setSelectedStageForList] = useState<number | null>(null);
+  const [showStageChecklist, setShowStageChecklist] = useState<{ opportunity: Opportunity, targetStage: number } | null>(null);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+
+  const {
+    opportunities,
+    loading,
+    error,
+    vendors,
+    currentUser,
+    setError,
+    moveStage,
+    logout
+  } = useOpportunitiesContext();
+
+  const filters = useFilters();
+
+  const currentVendorInfo = useMemo(() => {
+    return vendors.find(v => v.name === currentUser) || null;
+  }, [vendors, currentUser]);
+
+  const userOpportunities = useMemo(() => {
+    if (!currentUser) return opportunities;
+    if (currentVendorInfo?.is_admin) return opportunities;
+    return opportunities.filter(opp => opp.vendor === currentUser || !opp.vendor || !opp.vendor.trim());
+  }, [opportunities, currentUser, currentVendorInfo]);
+
+  const filteredOpportunities = useMemo(() => {
+    return userOpportunities.filter(opp => {
+      const matchesSearch = opp.name.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
+                           opp.client.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
+                           (opp.product && opp.product.toLowerCase().includes(filters.searchTerm.toLowerCase()));
+      const matchesStage = filters.filterStage === 'all' || opp.stage.toString() === filters.filterStage;
+      const matchesVendor = filters.filterVendor === 'all' || opp.vendor === filters.filterVendor;
+
+      let matchesInactivity = true;
+      if (filters.filterInactivity === '7days') {
+        matchesInactivity = checkInactivity(opp.last_update, 7);
+      } else if (filters.filterInactivity === '30days') {
+        matchesInactivity = checkInactivity(opp.last_update, 30);
+      }
+
+      const matchesProductLine = filters.filterProductLine === 'all' ||
+        (opp.product_lines && opp.product_lines.includes(filters.filterProductLine));
+
+      return matchesSearch && matchesStage && matchesVendor && matchesInactivity && matchesProductLine;
+    });
+  }, [userOpportunities, filters.searchTerm, filters.filterStage, filters.filterVendor, filters.filterInactivity, filters.filterProductLine]);
+
+  const dashboardOpportunities = useMemo(() => {
+    const baseOpps = currentVendorInfo?.is_admin ? opportunities : userOpportunities;
+    if (dashboardVendorFilter === 'all') return baseOpps;
+    return baseOpps.filter(opp => opp.vendor === dashboardVendorFilter);
+  }, [opportunities, userOpportunities, dashboardVendorFilter, currentVendorInfo]);
+
+  const metrics: DashboardMetrics = useMemo(() => {
+    // Uma única passada pelo array para totais e distribuição por etapa
+    const byStage = new Map<number, { count: number; value: number; weightedValue: number; opportunities: Opportunity[] }>();
+    stages.forEach(s => byStage.set(s.id, { count: 0, value: 0, weightedValue: 0, opportunities: [] }));
+
+    let totalValue = 0;
+    let weightedValue = 0;
+    let scoreSum = 0;
+    let probabilitySum = 0;
+
+    dashboardOpportunities.forEach(opp => {
+      const value = opp.value || 0;
+      const weighted = value * (opp.probability || 0) / 100;
+      totalValue += value;
+      weightedValue += weighted;
+      probabilitySum += opp.probability || 0;
+      scoreSum += calculateHealthScore(opp.scales);
+
+      const bucket = byStage.get(opp.stage);
+      if (bucket) {
+        bucket.count++;
+        bucket.value += value;
+        bucket.weightedValue += weighted;
+        bucket.opportunities.push(opp);
+      }
+    });
+
+    const n = dashboardOpportunities.length;
+    return {
+      totalValue,
+      weightedValue,
+      totalOpportunities: n,
+      avgScore: n > 0 ? scoreSum / n : 0,
+      avgProbability: n > 0 ? probabilitySum / n : 0,
+      stageDistribution: stages.map(stage => ({
+        ...stage,
+        ...byStage.get(stage.id)!
+      }))
+    };
+  }, [dashboardOpportunities]);
+
+  const openAssistantWithOpportunity = useCallback((opportunity: Opportunity) => {
+    setSelectedOpportunity(opportunity);
+    setIsAssistantOpen(true);
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('openAssistant'));
+    }, 100);
+  }, []);
+
+  const handleEditOpportunity = useCallback((opportunity: Opportunity) => {
+    setEditingOpportunity(opportunity);
+    setSelectedOpportunity(opportunity);
+  }, []);
+
+  const handleMoveStage = useCallback(async (opportunity: Opportunity, newStage: number) => {
+    if (newStage > opportunity.stage && !checkStageRequirements(opportunity, opportunity.stage)) {
+      setShowStageChecklist({ opportunity, targetStage: newStage });
+      return;
+    }
+
+    await moveStage(opportunity, newStage);
+  }, [moveStage]);
 
   const opportunityListContent = (
     <div className="space-y-6">
@@ -1814,7 +2437,14 @@ const CRMVentapel: React.FC = () => {
       ) : (
         <div className="grid gap-6">
           {filteredOpportunities.map(opportunity => (
-            <OpportunityCard key={opportunity.id} opportunity={opportunity} />
+            <OpportunityCard
+              key={opportunity.id}
+              opportunity={opportunity}
+              isSelected={selectedOpportunity?.id === opportunity.id}
+              onEdit={handleEditOpportunity}
+              onAnalyze={openAssistantWithOpportunity}
+              onMoveStage={handleMoveStage}
+            />
           ))}
           {filteredOpportunities.length === 0 && (
             <div className="text-center py-12 bg-white rounded-xl border">
@@ -1833,662 +2463,6 @@ const CRMVentapel: React.FC = () => {
       )}
     </div>
   );
-
-  interface OpportunityFormProps {
-    opportunity?: Opportunity | null;
-    onClose: () => void;
-  }
-
-  const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose }) => {
-    const [formData, setFormData] = useState<OpportunityFormData>({
-      name: opportunity?.name || '',
-      client: opportunity?.client || '',
-      vendor: opportunity?.vendor || currentUser || vendors[0]?.name || '',
-      value: opportunity?.value?.toString() || '',
-      stage: opportunity?.stage || 1,
-      priority: opportunity?.priority || 'média',
-      expected_close: opportunity?.expected_close || '',
-      next_action: opportunity?.next_action || '',
-      product: opportunity?.product || '',
-      power_sponsor: opportunity?.power_sponsor || '',
-      sponsor: opportunity?.sponsor || '',
-      influencer: opportunity?.influencer || '',
-      support_contact: opportunity?.support_contact || '',
-      scales: opportunity?.scales || emptyScales(),
-      industry: opportunity?.industry || '',
-      product_lines: opportunity?.product_lines || [],
-      outcome: opportunity?.outcome || null,
-      outcome_notes: opportunity?.outcome_notes || '',
-    });
-
-    const [activeScale, setActiveScale] = useState<string | null>(null);
-    const [submitting, setSubmitting] = useState(false);
-    const [showScaleSelector, setShowScaleSelector] = useState<string | null>(null);
-
-    const handleSubmit = async () => {
-      if (!formData.name?.trim()) {
-        alert('❌ Por favor, insira o nome da oportunidade');
-        return;
-      }
-      
-      if (!formData.client?.trim()) {
-        alert('❌ Por favor, insira o nome do cliente');
-        return;
-      }
-      
-      const valueNum = parseFloat(formData.value?.toString() || '0');
-      if (isNaN(valueNum) || valueNum <= 0) {
-        alert('❌ Por favor, insira um valor válido maior que 0');
-        return;
-      }
-
-      setSubmitting(true);
-      
-      try {
-        const dataToSend = {
-          ...formData,
-          scales: formData.scales || emptyScales()
-        };
-        
-        const success = opportunity 
-          ? await updateOpportunity(opportunity.id, dataToSend)
-          : await createOpportunity(dataToSend);
-          
-        if (success) {
-          onClose();
-          if (opportunity && selectedOpportunity?.id === opportunity.id) {
-            setSelectedOpportunity(null);
-          }
-        }
-      } finally {
-        setSubmitting(false);
-      }
-    };
-
-    const updateScale = (scaleId: string, field: 'score' | 'description', value: string | number) => {
-      if (field === 'score') {
-        const numValue = typeof value === 'string' ? parseInt(value) : value;
-        if (numValue < 0 || numValue > 10) return;
-      }
-      
-      setFormData(prev => ({
-        ...prev,
-        scales: {
-          ...prev.scales,
-          [scaleId]: {
-            ...prev.scales[scaleId as keyof Scales],
-            [field]: field === 'score' ? (typeof value === 'string' ? parseInt(value) || 0 : value) : value
-          }
-        }
-      }));
-    };
-
-    const selectScaleLevel = (scaleId: string, level: number, description: string) => {
-      updateScale(scaleId, 'score', level);
-      updateScale(scaleId, 'description', description);
-      setShowScaleSelector(null);
-    };
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center p-4 z-50 overflow-y-auto">
-        <div className="bg-white rounded-xl max-w-6xl w-full my-8 max-h-[90vh] overflow-y-auto">
-          <div className="p-8">
-            <div className="flex justify-between items-center mb-8">
-              <div>
-                <h2 className="text-3xl font-bold text-gray-900">
-                  {opportunity ? '✏️ Editar Oportunidade' : '➕ Nova Oportunidade'}
-                </h2>
-                <p className="text-gray-600 mt-1">
-                  {opportunity ? 'Atualize os dados da oportunidade' : 'Adicione uma nova oportunidade ao pipeline Ventapel'}
-                </p>
-              </div>
-              <button 
-                onClick={onClose}
-                className="p-3 hover:bg-gray-100 rounded-xl transition-colors"
-                disabled={submitting}
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="space-y-6">
-                <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
-                  <h3 className="text-lg font-semibold mb-4 text-blue-800">📋 Informações Básicas</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Nome da Oportunidade *</label>
-                      <input
-                        type="text"
-                        value={formData.name}
-                        onChange={(e) => setFormData({...formData, name: e.target.value})}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Ex: Solução de Fechamento Amazon"
-                        disabled={submitting}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Cliente *</label>
-                      <input
-                        type="text"
-                        value={formData.client}
-                        onChange={(e) => setFormData({...formData, client: e.target.value})}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Nome da empresa"
-                        disabled={submitting}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Vendedor *</label>
-                        <select
-                          value={formData.vendor}
-                          onChange={(e) => setFormData({...formData, vendor: e.target.value})}
-                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          disabled={submitting || (!currentVendorInfo?.is_admin && !!currentUser)}
-                        >
-                          {vendors.map(vendor => (
-                            <option key={vendor.name} value={vendor.name}>
-                              {vendor.name} {vendor.role && `(${vendor.role})`}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Valor (R$) *</label>
-                        <input
-                          type="number"
-                          value={formData.value}
-                          onChange={(e) => setFormData({...formData, value: e.target.value})}
-                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          placeholder="250000"
-                          disabled={submitting}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Etapa *</label>
-                        <select
-                          value={formData.stage}
-                          onChange={(e) => setFormData({...formData, stage: parseInt(e.target.value)})}
-                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          disabled={submitting}
-                        >
-                          {stages.slice(0, 5).map(stage => (
-                            <option key={stage.id} value={stage.id}>
-                              {stage.name} ({stage.probability}%)
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Prioridade</label>
-                        <select
-                          value={formData.priority}
-                          onChange={(e) => setFormData({...formData, priority: e.target.value})}
-                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          disabled={submitting}
-                        >
-                          <option value="baixa">Baixa</option>
-                          <option value="média">Média</option>
-                          <option value="alta">Alta</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Linhas de Produto</label>
-                      <div className="flex flex-wrap gap-2">
-                        {Object.entries(PRODUCT_LINES).map(([key, pl]) => {
-                          const selected = (formData.product_lines || []).includes(key);
-                          return (
-                            <button
-                              key={key}
-                              type="button"
-                              onClick={() => {
-                                const current = formData.product_lines || [];
-                                const updated = selected ? current.filter(k => k !== key) : [...current, key];
-                                setFormData({...formData, product_lines: updated});
-                              }}
-                              disabled={submitting}
-                              className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all ${selected ? `${pl.bg} ${pl.color} border-current ring-2 ring-current ring-opacity-30` : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'}`}
-                            >
-                              {pl.icon} {pl.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Produto</label>
-                        <input
-                          type="text"
-                          value={formData.product}
-                          onChange={(e) => setFormData({...formData, product: e.target.value})}
-                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          placeholder="Ex: Máquinas BP + Fita"
-                          disabled={submitting}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Indústria</label>
-                        <input
-                          type="text"
-                          value={formData.industry}
-                          onChange={(e) => setFormData({...formData, industry: e.target.value})}
-                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          placeholder="Ex: E-commerce, Farmacêutica"
-                          disabled={submitting}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Fechamento Previsto</label>
-                        <input
-                          type="date"
-                          value={formData.expected_close}
-                          onChange={(e) => setFormData({...formData, expected_close: e.target.value})}
-                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          disabled={submitting}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2 text-gray-700">Próxima Ação</label>
-                        <input
-                          type="text"
-                          value={formData.next_action}
-                          onChange={(e) => setFormData({...formData, next_action: e.target.value})}
-                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          placeholder="Ex: Demo técnica agendada para 15/02"
-                          disabled={submitting}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-green-50 rounded-xl p-6 border border-green-200">
-                  <h3 className="text-lg font-semibold mb-4 text-green-800">👥 Contatos Principais</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Power Sponsor</label>
-                      <input
-                        type="text"
-                        value={formData.power_sponsor}
-                        onChange={(e) => setFormData({...formData, power_sponsor: e.target.value})}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Quem assina o contrato"
-                        disabled={submitting}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Sponsor</label>
-                      <input
-                        type="text"
-                        value={formData.sponsor}
-                        onChange={(e) => setFormData({...formData, sponsor: e.target.value})}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Decisor usuário"
-                        disabled={submitting}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Principal Influenciador</label>
-                      <input
-                        type="text"
-                        value={formData.influencer}
-                        onChange={(e) => setFormData({...formData, influencer: e.target.value})}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Influencia a decisão"
-                        disabled={submitting}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700">Contato de Apoio</label>
-                      <input
-                        type="text"
-                        value={formData.support_contact}
-                        onChange={(e) => setFormData({...formData, support_contact: e.target.value})}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Suporte interno"
-                        disabled={submitting}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
-                  <h3 className="text-lg font-semibold mb-4 text-purple-800">📊 Escalas PPVVCC</h3>
-                  <div className="space-y-4">
-                    {scales.map(scale => {
-                      const Icon = scale.icon;
-                      const scaleData = formData.scales[scale.id as keyof Scales];
-                      const isActive = activeScale === scale.id;
-                      const isSelectorOpen = showScaleSelector === scale.id;
-
-                      return (
-                        <div key={scale.id} className={scale.bgColor + ' ' + scale.borderColor + ' border-2 rounded-lg p-4 transition-all ' + (isActive ? 'ring-2 ring-purple-400' : '')}>
-                          <div 
-                            className="flex items-center justify-between cursor-pointer"
-                            onClick={() => setActiveScale(isActive ? null : scale.id)}
-                          >
-                            <div className="flex items-center">
-                              <Icon className={'w-5 h-5 mr-3 ' + scale.color} />
-                              <div>
-                                <span className="font-bold text-sm">{scale.name}</span>
-                                <p className="text-xs text-gray-600">{scale.description}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <span className="text-2xl font-bold">{scaleData.score}</span>
-                              <ChevronRight className={'w-4 h-4 transition-transform ' + (isActive ? 'rotate-90' : '')} />
-                            </div>
-                          </div>
-
-                          {isActive && (
-                            <div className="mt-4 pt-4 border-t border-gray-200">
-                              <div className="space-y-3">
-                                <div>
-                                  <div className="flex justify-between items-center mb-2">
-                                    <label className="block text-sm font-medium">Score (0-10)</label>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setShowScaleSelector(isSelectorOpen ? null : scale.id);
-                                      }}
-                                      className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-lg hover:bg-purple-200 transition-colors flex items-center"
-                                    >
-                                      Ver opções de escala
-                                      {isSelectorOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
-                                    </button>
-                                  </div>
-
-                                  {isSelectorOpen && (
-                                    <div className="mb-4 bg-white rounded-lg p-3 max-h-60 overflow-y-auto border border-purple-200">
-                                      {scaleDefinitions[scale.id as keyof typeof scaleDefinitions].map((def) => (
-                                        <button
-                                          key={def.level}
-                                          type="button"
-                                          onClick={() => selectScaleLevel(scale.id, def.level, def.text)}
-                                          className={'w-full text-left p-2 mb-1 rounded-lg transition-colors ' + 
-                                            (scaleData.score === def.level 
-                                              ? 'bg-purple-100 border-2 border-purple-500' 
-                                              : 'hover:bg-gray-50 border border-gray-200')}
-                                        >
-                                          <div className="flex items-start">
-                                            <span className="font-bold text-purple-700 mr-2 min-w-[20px]">{def.level}</span>
-                                            <span className="text-xs text-gray-700">{def.text}</span>
-                                          </div>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-
-                                  <input
-                                    type="range"
-                                    min="0"
-                                    max="10"
-                                    value={scaleData.score}
-                                    onChange={(e) => updateScale(scale.id, 'score', parseInt(e.target.value))}
-                                    className="w-full"
-                                    disabled={submitting}
-                                  />
-                                  <div className="flex justify-between text-xs text-gray-500 mt-1">
-                                    <span>0</span>
-                                    <span className="font-bold">{scaleData.score}</span>
-                                    <span>10</span>
-                                  </div>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium mb-2">Observações</label>
-                                  <textarea
-                                    value={scaleData.description}
-                                    onChange={(e) => updateScale(scale.id, 'description', e.target.value)}
-                                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                    rows={3}
-                                    placeholder="Descreva a situação atual..."
-                                    disabled={submitting}
-                                  />
-                                </div>
-
-                                {/* INTEGRAÇÃO DO PAINEL SPIN */}
-                                <SPINQuestionsPanel 
-                                  scaleId={scale.id}
-                                  onQuestionUsed={(question) => {
-                                    const currentDesc = scaleData.description || '';
-                                    const newDesc = currentDesc ? 
-                                      currentDesc + '\n✓ ' + question : 
-                                      '✓ ' + question;
-                                    updateScale(scale.id, 'description', newDesc);
-                                  }}
-                                />
-
-                                <div className="bg-white p-3 rounded-lg">
-                                  <p className="text-xs font-medium text-gray-700 mb-2">Perguntas-chave gerais:</p>
-                                  <ul className="text-xs text-gray-600 space-y-1">
-                                    {scale.questions?.map((question, idx) => (
-                                      <li key={idx} className="flex items-start">
-                                        <span className="text-purple-500 mr-2">•</span>
-                                        {question}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-            {/* Resultado Final */}
-            {opportunity && (
-              <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 mt-6">
-                <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                  🏁 Resultado Final
-                </h3>
-                <div className="flex gap-3 mb-4">
-                  {([
-                    { value: null, label: 'Em andamento', color: 'bg-blue-100 text-blue-700 border-blue-300', activeColor: 'bg-blue-500 text-white border-blue-600' },
-                    { value: 'won', label: '✅ Ganhou', color: 'bg-green-50 text-green-700 border-green-300', activeColor: 'bg-green-500 text-white border-green-600' },
-                    { value: 'lost', label: '❌ Perdeu', color: 'bg-red-50 text-red-700 border-red-300', activeColor: 'bg-red-500 text-white border-red-600' },
-                    { value: 'abandoned', label: '⏸️ Abandonada', color: 'bg-gray-100 text-gray-600 border-gray-300', activeColor: 'bg-gray-500 text-white border-gray-600' },
-                  ] as const).map(opt => (
-                    <button
-                      key={String(opt.value)}
-                      type="button"
-                      onClick={() => setFormData({...formData, outcome: opt.value as any})}
-                      className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
-                        formData.outcome === opt.value ? opt.activeColor : opt.color
-                      } hover:shadow-sm`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                {formData.outcome && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-2">
-                      📝 Lições aprendidas / Observações para o futuro
-                    </label>
-                    <textarea
-                      value={formData.outcome_notes || ''}
-                      onChange={e => setFormData({...formData, outcome_notes: e.target.value})}
-                      placeholder={
-                        formData.outcome === 'won' ? 'O que funcionou bem? Que argumentos convenceram? O que replicar...' :
-                        formData.outcome === 'lost' ? 'Por que perdemos? O que faltou? O que o concorrente ofereceu...' :
-                        'Por que foi abandonada? Vale retomar no futuro?'
-                      }
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                      rows={3}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Activity Panel - solo al editar */}
-            {opportunity && (
-              <div className="mt-6">
-                <ActivityPanel 
-                  opportunity={opportunity}
-                  currentUser={currentUser}
-                  supabase={supabase}
-                />
-              </div>
-            )}
-
-            <div className="flex justify-end space-x-4 mt-8 pt-6 border-t">
-              <button
-                onClick={onClose}
-                className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                disabled={submitting}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSubmit}
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg hover:from-blue-700 hover:to-green-700 flex items-center transition-colors font-medium disabled:opacity-50"
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <React.Fragment>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Salvando...
-                  </React.Fragment>
-                ) : (
-                  <React.Fragment>
-                    <Save className="w-5 h-5 mr-2" />
-                    {opportunity ? 'Atualizar' : 'Criar'} Oportunidade
-                  </React.Fragment>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const StageChecklistModal = () => {
-    if (!showStageChecklist) return null;
-
-    const currentStage = stages.find(s => s.id === showStageChecklist.opportunity.stage);
-    const targetStage = stages.find(s => s.id === showStageChecklist.targetStage);
-    
-    const initCheckedItems = () => {
-      const items: {[key: string]: boolean} = {};
-      if (currentStage?.checklist) {
-        Object.values(currentStage.checklist).forEach(key => {
-          items[key] = false;
-        });
-      }
-      return items;
-    };
-    
-    const [checkedItems, setCheckedItems] = useState<{[key: string]: boolean}>(initCheckedItems);
-
-    if (!currentStage || !targetStage) return null;
-
-    const handleCheckChange = (key: string) => {
-      setCheckedItems(prev => ({...prev, [key]: !prev[key]}));
-    };
-
-    const allChecked = currentStage.checklist && Object.values(currentStage.checklist).every(key => checkedItems[key] === true);
-
-    const confirmStageChange = async () => {
-      if (!allChecked) {
-        alert('Por favor, complete todos os itens do checklist antes de avançar.');
-        return;
-      }
-
-      try {
-        await moveStage(showStageChecklist.opportunity, showStageChecklist.targetStage);
-        setShowStageChecklist(null);
-      } catch (error) {
-        console.error('Erro ao mover etapa:', error);
-      }
-    };
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-xl max-w-2xl w-full">
-          <div className="p-6 border-b">
-            <h3 className="text-xl font-bold text-gray-900">
-              ✅ Checklist para avançar para {targetStage.name}
-            </h3>
-            <p className="text-gray-600 mt-1">
-              Complete todos os itens antes de mover a oportunidade
-            </p>
-          </div>
-
-          <div className="p-6">
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <h4 className="font-semibold text-blue-800 mb-2">📋 {showStageChecklist.opportunity.name}</h4>
-              <p className="text-sm text-blue-700">{showStageChecklist.opportunity.client}</p>
-            </div>
-
-            <div className="space-y-3">
-              {currentStage.checklist && Object.entries(currentStage.checklist).map(([label, key]) => {
-                const isChecked = checkedItems[key] === true;
-                return (
-                  <label key={key} className="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => handleCheckChange(key)}
-                      className="mt-0.5 mr-3 w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <div className="flex-1">
-                      <span className="text-gray-800 font-medium">{label}</span>
-                      {isChecked && (
-                        <CheckCircle className="inline-block w-5 h-5 text-green-600 ml-2" />
-                      )}
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-
-            <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
-              <p className="text-sm text-amber-800">
-                <AlertCircle className="inline-block w-4 h-4 mr-1" />
-                <strong>Atenção:</strong> Confirme que todos os requisitos foram cumpridos antes de avançar.
-              </p>
-            </div>
-          </div>
-
-          <div className="p-6 border-t flex justify-end space-x-4">
-            <button
-              onClick={() => setShowStageChecklist(null)}
-              className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={confirmStageChange}
-              className={'px-6 py-3 rounded-lg transition-colors flex items-center font-medium ' + 
-                (allChecked 
-                  ? 'bg-gradient-to-r from-blue-600 to-green-600 text-white hover:from-blue-700 hover:to-green-700' 
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed')}
-              disabled={!allChecked}
-            >
-              <Check className="w-5 h-5 mr-2" />
-              Confirmar e Avançar
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-50">
@@ -2591,9 +2565,20 @@ const CRMVentapel: React.FC = () => {
         </div>
       </nav>
       </div>
-      
+
       <main className="mx-auto px-6 lg:px-10 py-6 pr-16">
-        {activeTab === 'dashboard' && <Dashboard />}
+        {activeTab === 'dashboard' && (
+          <DashboardView
+            metrics={metrics}
+            currentVendorInfo={currentVendorInfo}
+            dashboardVendorFilter={dashboardVendorFilter}
+            setDashboardVendorFilter={setDashboardVendorFilter}
+            selectedStageForList={selectedStageForList}
+            setSelectedStageForList={setSelectedStageForList}
+            onEdit={handleEditOpportunity}
+            onAnalyze={openAssistantWithOpportunity}
+          />
+        )}
         {activeTab === 'opportunities' && opportunityListContent}
           {activeTab === 'activities' && (
           <ActivityDashboard
@@ -2622,23 +2607,31 @@ const CRMVentapel: React.FC = () => {
       </main>
 
       {showNewOpportunity && (
-        <OpportunityForm 
-          onClose={() => setShowNewOpportunity(false)} 
+        <OpportunityForm
+          onClose={() => setShowNewOpportunity(false)}
         />
       )}
 
       {editingOpportunity && (
-        <OpportunityForm 
+        <OpportunityForm
           opportunity={editingOpportunity}
           onClose={() => {
             setEditingOpportunity(null);
             setSelectedOpportunity(null);
-          }} 
+          }}
         />
       )}
 
-      <StageChecklistModal />
-      
+      {showStageChecklist && (
+        <StageChecklistModal
+          key={`${showStageChecklist.opportunity.id}-${showStageChecklist.targetStage}`}
+          opportunity={showStageChecklist.opportunity}
+          targetStage={showStageChecklist.targetStage}
+          onConfirm={moveStage}
+          onClose={() => setShowStageChecklist(null)}
+        />
+      )}
+
       <AIAssistant
         currentOpportunity={selectedOpportunity || editingOpportunity}
         onOpportunityUpdate={async (updated) => {
@@ -2678,8 +2671,8 @@ const LoginScreen: React.FC<{ onLogin: (session: Session) => void }> = ({ onLogi
         onLogin(data.session);
       }
     } catch (err: any) {
-      setError(err.message === 'Invalid login credentials' 
-        ? 'Email ou senha incorretos' 
+      setError(err.message === 'Invalid login credentials'
+        ? 'Email ou senha incorretos'
         : err.message || 'Erro ao fazer login');
     } finally {
       setLoading(false);
@@ -2701,7 +2694,7 @@ const LoginScreen: React.FC<{ onLogin: (session: Session) => void }> = ({ onLogi
 
         <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-6 text-center">Entrar</h2>
-          
+
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center text-red-700 text-sm">
               <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />

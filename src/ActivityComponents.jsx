@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Save, Check, Clock, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, BarChart3, Target, Users, X, Loader2, Zap } from 'lucide-react';
+import { apiHeaders } from './lib/apiHeaders';
 
 const ACTIVITY_TYPE_CONFIG = {
   call:          { icon: '📞', label: 'Ligação',      color: 'bg-blue-100 text-blue-800' },
@@ -270,7 +271,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
         activityHistory = allActs || [];
       } catch (e) { console.error('Error loading history for AI:', e); }
       await svc.expirePending(opportunity.id);
-      const res = await fetch('/api/assistant', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const res = await fetch('/api/assistant', { method: 'POST', headers: await apiHeaders(supabase),
         body: JSON.stringify({ requestType: 'action_plan', opportunityData: opportunity, vendorName: currentUser, activityHistory }) });
       if (res.ok) {
         const d = await res.json();

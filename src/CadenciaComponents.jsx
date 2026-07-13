@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { apiHeaders } from './lib/apiHeaders';
 import {
   Loader2, Plus, Search, Phone, Mail, MessageCircle, Linkedin,
   ChevronRight, X, CheckCircle, XCircle, Clock, AlertTriangle,
@@ -425,7 +426,7 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
 
       const resp = await fetch('/api/assistant', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await apiHeaders(supabase),
         body: JSON.stringify({ userInput: prompt, vendorName: lead.vendor, requestType: 'cadencia' })
       });
       const data = await resp.json();

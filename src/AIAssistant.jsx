@@ -1,5 +1,34 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Target, Brain, Send, Loader2, Bot, Sparkles, Activity, Clock, Zap, AlertTriangle, AlertCircle, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react';
+
+// Campos mínimos que o backend precisa do pipeline — evita mandar o dump
+// completo do Supabase (com descrições de escalas de TODAS as oportunidades)
+// em cada mensagem do chat.
+const trimOpportunityForPipeline = (o) => ({
+  id: o.id,
+  name: o.name,
+  client: o.client,
+  vendor: o.vendor,
+  value: o.value,
+  stage: o.stage,
+  probability: o.probability,
+  last_update: o.last_update,
+  next_action: o.next_action,
+  expected_close: o.expected_close,
+  power_sponsor: o.power_sponsor,
+  industry: o.industry,
+  product: o.product,
+  outcome: o.outcome,
+  outcome_notes: o.outcome_notes,
+  scales: o.scales ? {
+    dor: o.scales.dor?.score ?? o.scales.dor ?? 0,
+    poder: o.scales.poder?.score ?? o.scales.poder ?? 0,
+    visao: o.scales.visao?.score ?? o.scales.visao ?? 0,
+    valor: o.scales.valor?.score ?? o.scales.valor ?? 0,
+    controle: o.scales.controle?.score ?? o.scales.controle ?? 0,
+    compras: o.scales.compras?.score ?? o.scales.compras ?? 0,
+  } : null,
+});
 
 const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, supabase, isAdmin }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -13,38 +42,57 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { const h = () => setIsOpen(true); window.addEventListener('openAssistant', h); return () => window.removeEventListener('openAssistant', h); }, []);
 
+  // Header de auth: quando o backend tiver as env vars configuradas, valida o token
+  const apiHeaders = async () => {
+    const headers = { 'Content-Type': 'application/json' };
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.access_token) headers['Authorization'] = `Bearer ${data.session.access_token}`;
+    } catch (e) { /* sem sessão, segue sem token */ }
+    return headers;
+  };
+
   const loadPipelineData = async () => {
     if (!supabase) return;
-    try { const { data } = await supabase.from('opportunities').select('*').order('value', { ascending: false }); if (data) setPipelineData({ allOpportunities: data }); } catch (e) { console.error(e); }
+    try {
+      const { data } = await supabase.from('opportunities').select('*').order('value', { ascending: false });
+      if (data) setPipelineData({ allOpportunities: data.map(trimOpportunityForPipeline) });
+    } catch (e) { console.error(e); }
+  };
+
+  const loadActivityHistory = async () => {
+    if (!supabase || !currentOpportunity) return [];
+    try {
+      const { data } = await supabase.from('activities').select('*').eq('opportunity_id', currentOpportunity.id).order('created_at', { ascending: false }).limit(15);
+      return data || [];
+    } catch (e) { console.error(e); return []; }
   };
 
   const getUpdatedAnalysis = async () => {
     if (!currentOpportunity) return;
     try {
-      const r = await fetch('/api/assistant', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userInput: '', opportunityData: currentOpportunity, vendorName: currentUser, pipelineData }) });
+      const activityHistory = await loadActivityHistory();
+      const r = await fetch('/api/assistant', { method: 'POST', headers: await apiHeaders(),
+        body: JSON.stringify({ userInput: '', opportunityData: currentOpportunity, vendorName: currentUser, pipelineData, activityHistory }) });
       if (r.ok) { const d = await r.json(); if (d.analysis) setAnalysis(d.analysis); }
     } catch (e) { console.error(e); }
   };
 
   useEffect(() => { if (isOpen && supabase) loadPipelineData(); }, [isOpen]);
   useEffect(() => { if (currentOpportunity && isOpen) getUpdatedAnalysis(); }, [currentOpportunity?.id, isOpen]);
+  // Nova oportunidade selecionada = nova conversa
+  useEffect(() => { setMessages([]); }, [currentOpportunity?.id]);
 
   const processMessage = async (text) => {
     if (!text?.trim()) return;
+    // Histórico ANTES da mensagem atual — vai como memória da conversa
+    const chatHistory = messages.map(m => ({ role: m.role, content: m.content }));
     setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date().toISOString() }]);
     setInput(''); setIsLoading(true);
     try {
-      // Fetch activity history for context
-      let activityHistory = [];
-      if (supabase && currentOpportunity) {
-        try {
-          const { data: histData } = await supabase.from('activities').select('*').eq('opportunity_id', currentOpportunity.id).order('created_at', { ascending: false }).limit(10);
-          activityHistory = histData || [];
-        } catch (e) { console.error(e); }
-      }
-      const r = await fetch('/api/assistant', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userInput: text, opportunityData: currentOpportunity, vendorName: currentUser, pipelineData, activityHistory, isAdmin }) });
+      const activityHistory = await loadActivityHistory();
+      const r = await fetch('/api/assistant', { method: 'POST', headers: await apiHeaders(),
+        body: JSON.stringify({ userInput: text, opportunityData: currentOpportunity, vendorName: currentUser, pipelineData, activityHistory, chatHistory, isAdmin }) });
       if (!r.ok) throw new Error('Server error');
       const d = await r.json();
       setMessages(prev => [...prev, { role: 'assistant', content: d.response || 'Erro', timestamp: new Date().toISOString() }]);
@@ -61,7 +109,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     if ((currentOpportunity.scales?.poder?.score || 0) < 5) s.push("👤 Como chego no tomador de decisão?");
     if ((currentOpportunity.scales?.valor?.score || 0) < 4) s.push("💰 Como quantifico o ROI pro cliente?");
     if ((currentOpportunity.scales?.visao?.score || 0) < 4) s.push("🔭 Como construo a visão da solução?");
-    return s.slice(0, 3);
+    s.push("📊 Análise completa desta oportunidade");
+    return s.slice(0, 4);
   };
 
   const hc = (s) => s >= 7 ? 'text-green-600' : s >= 4 ? 'text-yellow-600' : 'text-red-600';
@@ -93,7 +142,7 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
       <div className={`fixed top-0 right-0 h-full w-[420px] z-[60] bg-white shadow-2xl border-l border-gray-200 flex flex-col transition-transform duration-300 ${
         isOpen ? 'translate-x-0' : 'translate-x-full'
       }`}>
-        
+
         {/* Header */}
         <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 flex-shrink-0">
           <div className="flex items-center gap-3">

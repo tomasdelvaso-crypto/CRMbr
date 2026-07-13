@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { apiHeaders } from './lib/apiHeaders';
 import {
   Users, TrendingUp, AlertTriangle, Clock, Target,
   DollarSign, Activity, Bot, Send, Loader2, ChevronRight,
@@ -194,7 +195,7 @@ const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts, supabase }) =
 
       const res = await fetch('/api/admin-assistant', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await apiHeaders(supabase),
         body: JSON.stringify({
           userInput: text,
           adminName: currentUser,
