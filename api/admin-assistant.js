@@ -1,11 +1,13 @@
 // api/admin-assistant.js
 // Ventus Manager — assistente exclusivo para admins · gestão de equipe PPVVCC
 
+import { verifyRequest, unauthorizedResponse } from './_lib/auth.js';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Credentials': 'true',
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,OPTIONS,PATCH,DELETE,POST,PUT',
-  'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version',
+  'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization',
   'Content-Type': 'application/json',
 };
 
@@ -186,6 +188,9 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: CORS_HEADERS });
   if (req.method !== 'POST') return json({ error: 'Método não permitido' }, 405);
 
+  const auth = await verifyRequest(req);
+  if (!auth.ok) return unauthorizedResponse(CORS_HEADERS);
+
   try {
     const body = await req.json();
     const { userInput, adminName, vendorStats = [], stagnationAlerts = [], cadenciaStats = [] } = body;
@@ -211,9 +216,8 @@ export default async function handler(req) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        temperature: 0.3,
+        model: 'claude-sonnet-5',
+        max_tokens: 4000,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -225,7 +229,10 @@ export default async function handler(req) {
     }
 
     const data = await clRes.json();
-    const response = data.content?.[0]?.text || 'Sem resposta da IA.';
+    const response = (data.content || [])
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('') || 'Sem resposta da IA.';
 
     if (data.usage) {
       const cost = ((data.usage.input_tokens / 1e6) * 3 + (data.usage.output_tokens / 1e6) * 15).toFixed(4);
