@@ -3,7 +3,7 @@
 
 export const config = {
  runtime: 'edge',
- maxDuration: 30,
+ maxDuration: 60,
 };
 
 import PromptBuilder, { buildStaticSystem } from './_lib/promptBuilder.js';
@@ -748,7 +748,12 @@ async function callClaudeAPI({ opportunityData, userInput, webSearchResults, com
      },
      body: JSON.stringify({
        model: CLAUDE_MODEL,
-       max_tokens: depth === 'deep' ? 6000 : 3000,
+       max_tokens: depth === 'deep' ? 5000 : 3000,
+       // effort controla a profundidade do raciocínio: 'low' responde em segundos
+       // (o motor determinístico já entrega a análise mastigada); 'medium' para
+       // análises profundas equivale ao nível alto da geração anterior.
+       // Sem isso, o default 'high' estoura o limite de tempo da função (504).
+       output_config: { effort: depth === 'deep' ? 'medium' : 'low' },
        // System estático em bloco cacheável: metodologia + definições de escala
        // não mudam entre requests → prompt caching reduz custo e latência.
        system: [
