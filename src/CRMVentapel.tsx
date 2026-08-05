@@ -45,6 +45,7 @@ interface Opportunity {
   created_at: string;
   last_update: string;
   next_action?: string;
+  next_action_date?: string;
   probability: number;
   expected_close?: string;
   product?: string;
@@ -68,6 +69,7 @@ interface OpportunityFormData {
   priority: string;
   expected_close?: string;
   next_action?: string;
+  next_action_date?: string;
   product?: string;
   power_sponsor?: string;
   sponsor?: string;
@@ -797,6 +799,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
         scales: safeScales,
         expected_close: formData.expected_close || null,
         next_action: formData.next_action?.trim() || null,
+        next_action_date: formData.next_action_date || null,
         product: formData.product?.trim() || null,
         power_sponsor: formData.power_sponsor?.trim() || null,
         sponsor: formData.sponsor?.trim() || null,
@@ -840,6 +843,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
         scales: safeScales,
         expected_close: formData.expected_close || null,
         next_action: formData.next_action?.trim() || null,
+        next_action_date: formData.next_action_date || null,
         product: formData.product?.trim() || null,
         power_sponsor: formData.power_sponsor?.trim() || null,
         sponsor: formData.sponsor?.trim() || null,
@@ -1415,8 +1419,13 @@ const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelect
             )}
           </div>
           {opportunity.next_action && (
-            <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <p className="text-base text-blue-800">📅 <strong>Próxima ação:</strong> {opportunity.next_action}</p>
+            <div className={'mt-3 p-3 rounded-lg border ' + (opportunity.next_action_date && opportunity.next_action_date < new Date().toISOString().slice(0, 10) ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200')}>
+              <p className={'text-base ' + (opportunity.next_action_date && opportunity.next_action_date < new Date().toISOString().slice(0, 10) ? 'text-red-800' : 'text-blue-800')}>
+                📅 <strong>Próxima ação:</strong> {opportunity.next_action}
+                {opportunity.next_action_date
+                  ? ` — ${new Date(opportunity.next_action_date + 'T00:00:00').toLocaleDateString('pt-BR')}${opportunity.next_action_date < new Date().toISOString().slice(0, 10) ? ' ⚠️ vencida' : ''}`
+                  : ' — sem data'}
+              </p>
             </div>
           )}
           <div className="mt-2 text-sm text-gray-500">
@@ -1582,6 +1591,7 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
     priority: opportunity?.priority || 'média',
     expected_close: opportunity?.expected_close || '',
     next_action: opportunity?.next_action || '',
+    next_action_date: opportunity?.next_action_date || '',
     product: opportunity?.product || '',
     power_sponsor: opportunity?.power_sponsor || '',
     sponsor: opportunity?.sponsor || '',
@@ -1826,14 +1836,24 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-2 text-gray-700">Próxima Ação</label>
-                      <input
-                        type="text"
-                        value={formData.next_action}
-                        onChange={(e) => setFormData({...formData, next_action: e.target.value})}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder="Ex: Demo técnica agendada para 15/02"
-                        disabled={submitting}
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={formData.next_action}
+                          onChange={(e) => setFormData({...formData, next_action: e.target.value})}
+                          className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          placeholder="Ex: Demo técnica com o comprador"
+                          disabled={submitting}
+                        />
+                        <input
+                          type="date"
+                          value={formData.next_action_date}
+                          onChange={(e) => setFormData({...formData, next_action_date: e.target.value})}
+                          className="w-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          title="Data da próxima ação"
+                          disabled={submitting}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
