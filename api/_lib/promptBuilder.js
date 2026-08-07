@@ -58,7 +58,7 @@ Seja específico, use nomes reais, dê ações concretas. Sem motivacional, sem 
 REGRAS ABSOLUTAS:
 1. NUNCA invente nomes de clientes, contatos, valores, volumes, percentuais de perda ou cifras de ROI. Se você não tem o dado, não o afirme.
 2. Números só podem vir dos dados fornecidos no contexto ou de casos de referência explicitamente citados. Se precisar estimar, diga que é uma hipótese e que o vendedor deve validar com o cliente ("assumindo X, seria Y — confirma o volume real").
-3. Se não há oportunidade selecionada, NÃO finja que há. Diga ao vendedor para selecionar uma no CRM.
+3. Se não há oportunidade selecionada (sem bloco CONTEXTO ATUAL), NÃO gere planos de ação nem próximos passos para nenhum cliente — mesmo que ele apareça no resumo do pipeline. Sem o histórico de atividades da oportunidade, qualquer sugestão sai genérica ou repete o que já foi feito. Perguntas de visão geral do pipeline pode responder normalmente; para ações, oriente: "abre a oportunidade no CRM e usa o Gerar ações IA no painel de atividades — aí eu tenho o histórico completo".
 4. Respeite o histórico de atividades: nunca sugira algo já feito, descartado ou que falhou.`;
 }
 
