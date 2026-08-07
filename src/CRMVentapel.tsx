@@ -798,8 +798,6 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
         last_update: new Date().toISOString().split('T')[0],
         scales: safeScales,
         expected_close: formData.expected_close || null,
-        next_action: formData.next_action?.trim() || null,
-        next_action_date: formData.next_action_date || null,
         product: formData.product?.trim() || null,
         power_sponsor: formData.power_sponsor?.trim() || null,
         sponsor: formData.sponsor?.trim() || null,
@@ -842,8 +840,6 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
         last_update: new Date().toISOString().split('T')[0],
         scales: safeScales,
         expected_close: formData.expected_close || null,
-        next_action: formData.next_action?.trim() || null,
-        next_action_date: formData.next_action_date || null,
         product: formData.product?.trim() || null,
         power_sponsor: formData.power_sponsor?.trim() || null,
         sponsor: formData.sponsor?.trim() || null,
@@ -1836,24 +1832,12 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-2 text-gray-700">Próxima Ação</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={formData.next_action}
-                          onChange={(e) => setFormData({...formData, next_action: e.target.value})}
-                          className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          placeholder="Ex: Demo técnica com o comprador"
-                          disabled={submitting}
-                        />
-                        <input
-                          type="date"
-                          value={formData.next_action_date}
-                          onChange={(e) => setFormData({...formData, next_action_date: e.target.value})}
-                          className="w-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                          title="Data da próxima ação"
-                          disabled={submitting}
-                        />
+                      <div className="p-3 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-700">
+                        {formData.next_action
+                          ? <>{formData.next_action}{formData.next_action_date ? ` — ${new Date(formData.next_action_date + 'T00:00:00').toLocaleDateString('pt-BR')}` : ' — sem data'}</>
+                          : <span className="text-gray-400">Nenhuma ação planejada</span>}
                       </div>
+                      <p className="text-xs text-gray-500 mt-1">📅 Gerenciada no painel Atividades &amp; Ações (Planejar) ou pelo Ventus Bot</p>
                     </div>
                   </div>
                 </div>
