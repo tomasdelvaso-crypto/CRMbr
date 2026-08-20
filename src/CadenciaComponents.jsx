@@ -1227,8 +1227,28 @@ export const CadenciaDashboard = ({ supabase, currentUser, isAdmin, vendors }) =
         </div>
       </div>
 
+      {/* Empty state: convite para começar (em vez de um kanban vazio que parece desabilitado) */}
+      {view === 'active' && !loading && activeLeads.length === 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 sm:p-10 text-center max-w-xl mx-auto">
+          <div className="inline-flex p-4 bg-blue-50 rounded-2xl mb-4">
+            <Phone className="w-8 h-8 text-blue-600" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-800 mb-2">Comece sua cadência de prospecção</h3>
+          <p className="text-sm text-gray-500 mb-1">
+            7 touchpoints em 21 dias — LinkedIn, WhatsApp, email e telefone — com um objetivo só: <strong>agendar a reunião</strong>.
+          </p>
+          <p className="text-sm text-gray-500 mb-6">
+            Cadastre a empresa e o contato, e o CRM te diz qual é o próximo toque e quando.
+          </p>
+          <button onClick={() => setShowNewLead(true)}
+            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold text-sm hover:shadow-lg transition-all inline-flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Criar meu primeiro lead
+          </button>
+        </div>
+      )}
+
       {/* Kanban (active view) */}
-      {view === 'active' && (
+      {view === 'active' && !(activeLeads.length === 0 && !loading) && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {Object.entries(STAGE_CONFIG).map(([stageKey, cfg]) => (
             <div key={stageKey} className="flex flex-col">
