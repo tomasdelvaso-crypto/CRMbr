@@ -4,7 +4,7 @@ import {
   Users, TrendingUp, AlertTriangle, Clock, Target,
   DollarSign, Activity, Bot, Send, Loader2, ChevronRight,
   ChevronDown, ChevronUp, BarChart2, Zap, Shield, Eye,
-  CheckCircle, XCircle, Calendar
+  CheckCircle, XCircle, Calendar, X
 } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -223,8 +223,8 @@ const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts, supabase }) =
       {/* Toggle tab */}
       <button
         onClick={() => setIsOpen(o => !o)}
-        className={`fixed top-1/2 -translate-y-1/2 z-50 flex items-center gap-2 py-4 px-2 rounded-l-xl shadow-lg transition-all duration-300 ${
-          isOpen ? 'right-[420px]' : 'right-0'
+        className={`fixed top-1/2 -translate-y-1/2 z-50 items-center gap-2 py-4 px-2 rounded-l-xl shadow-lg transition-all duration-300 ${
+          isOpen ? 'right-[420px] hidden sm:flex' : 'right-0 flex'
         } bg-gradient-to-b from-indigo-700 to-purple-700 text-white hover:from-indigo-800 hover:to-purple-800`}
         title={isOpen ? 'Fechar Ventus Manager' : 'Abrir Ventus Manager'}
       >
@@ -240,17 +240,24 @@ const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts, supabase }) =
       </button>
 
       {/* Sidebar */}
-      <div className={`fixed top-0 right-0 h-full w-[420px] z-40 bg-white shadow-2xl border-l border-gray-200 flex flex-col transition-transform duration-300 ${
+      <div className={`fixed top-0 right-0 h-full w-full sm:w-[420px] z-40 bg-white shadow-2xl border-l border-gray-200 flex flex-col transition-transform duration-300 ${
         isOpen ? 'translate-x-0' : 'translate-x-full'
       }`}>
         {/* Header */}
         <div className="bg-gradient-to-r from-indigo-700 to-purple-700 text-white p-4 flex-shrink-0">
           <div className="flex items-center gap-3">
             <Shield className="w-6 h-6" />
-            <div>
+            <div className="flex-1 min-w-0">
               <h3 className="font-bold text-base">Ventus Manager</h3>
               <p className="text-sm opacity-90">Assistente exclusivo para gestão de equipe</p>
             </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="p-2 -m-1 hover:bg-white/20 rounded-lg transition-colors flex-shrink-0"
+              title="Fechar Ventus Manager"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
           {stagnationAlerts.length > 0 && (
             <div className="mt-2 flex gap-3 text-sm bg-white/15 rounded-lg px-3 py-1.5">
@@ -373,7 +380,7 @@ const VendorCard = ({ stat, isExpanded, onToggle }) => {
         </div>
 
         {/* Metrics row */}
-        <div className="mt-4 grid grid-cols-4 gap-3">
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="text-center">
             <p className="text-xs text-gray-500 mb-0.5">Pipeline</p>
             <p className="text-sm font-bold text-blue-600">{fmtBRL(stat.totalValue)}</p>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
-import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users, Brain, HelpCircle, FileQuestion, LogOut, Lock, Mail } from 'lucide-react';
+import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users, Brain, HelpCircle, FileQuestion, LogOut, Lock, Mail, Phone, SlidersHorizontal } from 'lucide-react';
 import { createClient, Session } from '@supabase/supabase-js';
 import AIAssistant from './AIAssistant';
 import { ActivityPanel, ActivityDashboard } from './ActivityComponents';
@@ -1084,92 +1084,92 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="space-y-8">
       {error && <ErrorAlert error={error} onClose={() => setError(null)} />}
 
-      <div className="bg-gradient-to-r from-blue-600 to-green-600 text-white p-6 rounded-xl shadow-lg">
-        <div className="flex items-center justify-between">
+      <div className="bg-gradient-to-r from-blue-600 to-green-600 text-white p-4 sm:p-6 rounded-xl shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-bold mb-2">🎯 CRM VENTAPEL - Pepito</h2>
-            <p className="text-blue-100">Sistema de Vendas Consultivas - Metodologia PPVVCC</p>
-            <p className="text-blue-100 text-base">🔗 Conectado ao Supabase</p>
+            <h2 className="text-xl sm:text-2xl font-bold mb-1 sm:mb-2">🎯 CRM VENTAPEL - Pepito</h2>
+            <p className="hidden sm:block text-blue-100">Sistema de Vendas Consultivas - Metodologia PPVVCC</p>
+            <p className="hidden sm:block text-blue-100 text-base">🔗 Conectado ao Supabase</p>
             {currentUser && (
-              <p className="text-yellow-300 text-base mt-1">
+              <p className="text-yellow-300 text-sm sm:text-base sm:mt-1">
                 👤 {currentUser} {currentVendorInfo?.role && `(${currentVendorInfo.role})`}
               </p>
             )}
           </div>
-          <div className="text-right">
-            <div className="text-3xl font-bold">R$ {metrics.totalValue.toLocaleString('pt-BR')}</div>
-            <div className="text-blue-100">Pipeline Total</div>
-            <div className="text-lg font-semibold text-yellow-300 mt-1">
+          <div className="sm:text-right">
+            <div className="text-2xl sm:text-3xl font-bold">R$ {metrics.totalValue.toLocaleString('pt-BR')}</div>
+            <div className="text-blue-100 text-sm sm:text-base">Pipeline Total</div>
+            <div className="text-base sm:text-lg font-semibold text-yellow-300 mt-1">
               R$ {metrics.weightedValue.toLocaleString('pt-BR')} ponderado
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-xl shadow-sm border border-green-200">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+        <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-3 sm:p-6 rounded-xl shadow-sm border border-green-200">
           <div className="flex items-center">
-            <div className="p-3 bg-green-100 rounded-lg">
+            <div className="hidden sm:block p-3 bg-green-100 rounded-lg">
               <DollarSign className="w-8 h-8 text-green-600" />
             </div>
-            <div className="ml-4">
-              <p className="text-base font-medium text-green-700">Pipeline Total</p>
-              <p className="text-2xl font-bold text-green-800">
+            <div className="sm:ml-4 min-w-0">
+              <p className="text-sm sm:text-base font-medium text-green-700">Pipeline Total</p>
+              <p className="text-lg sm:text-2xl font-bold text-green-800 truncate">
                 R$ {metrics.totalValue.toLocaleString('pt-BR')}
               </p>
-              <p className="text-base text-green-600">
+              <p className="text-xs sm:text-base text-green-600 truncate">
                 Ponderado: R$ {metrics.weightedValue.toLocaleString('pt-BR')}
               </p>
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-blue-50 to-cyan-50 p-6 rounded-xl shadow-sm border border-blue-200">
+        <div className="bg-gradient-to-br from-blue-50 to-cyan-50 p-3 sm:p-6 rounded-xl shadow-sm border border-blue-200">
           <div className="flex items-center">
-            <div className="p-3 bg-blue-100 rounded-lg">
+            <div className="hidden sm:block p-3 bg-blue-100 rounded-lg">
               <Target className="w-8 h-8 text-blue-600" />
             </div>
-            <div className="ml-4">
-              <p className="text-base font-medium text-blue-700">Oportunidades</p>
-              <p className="text-2xl font-bold text-blue-800">{metrics.totalOpportunities}</p>
+            <div className="sm:ml-4 min-w-0">
+              <p className="text-sm sm:text-base font-medium text-blue-700">Oportunidades</p>
+              <p className="text-lg sm:text-2xl font-bold text-blue-800">{metrics.totalOpportunities}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-xl shadow-sm border border-purple-200">
+        <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-3 sm:p-6 rounded-xl shadow-sm border border-purple-200">
           <div className="flex items-center">
-            <div className="p-3 bg-purple-100 rounded-lg">
+            <div className="hidden sm:block p-3 bg-purple-100 rounded-lg">
               <BarChart3 className="w-8 h-8 text-purple-600" />
             </div>
-            <div className="ml-4">
-              <p className="text-base font-medium text-purple-700">Score PPVVCC</p>
-              <p className="text-2xl font-bold text-purple-800">{metrics.avgScore.toFixed(1)}/10</p>
+            <div className="sm:ml-4 min-w-0">
+              <p className="text-sm sm:text-base font-medium text-purple-700">Score PPVVCC</p>
+              <p className="text-lg sm:text-2xl font-bold text-purple-800">{metrics.avgScore.toFixed(1)}/10</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-orange-50 to-red-50 p-6 rounded-xl shadow-sm border border-orange-200">
+        <div className="bg-gradient-to-br from-orange-50 to-red-50 p-3 sm:p-6 rounded-xl shadow-sm border border-orange-200">
           <div className="flex items-center">
-            <div className="p-3 bg-orange-100 rounded-lg">
+            <div className="hidden sm:block p-3 bg-orange-100 rounded-lg">
               <TrendingUp className="w-8 h-8 text-orange-600" />
             </div>
-            <div className="ml-4">
-              <p className="text-base font-medium text-orange-700">Prob. Média</p>
-              <p className="text-2xl font-bold text-orange-800">{metrics.avgProbability.toFixed(0)}%</p>
+            <div className="sm:ml-4 min-w-0">
+              <p className="text-sm sm:text-base font-medium text-orange-700">Prob. Média</p>
+              <p className="text-lg sm:text-2xl font-bold text-orange-800">{metrics.avgProbability.toFixed(0)}%</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="bg-white p-8 rounded-xl shadow-sm border">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-semibold text-gray-800">📊 Funil de Vendas</h3>
-          <div className="flex items-center space-x-4">
-            <label className="text-base font-medium text-gray-700">Filtrar por vendedor:</label>
+      <div className="bg-white p-4 sm:p-8 rounded-xl shadow-sm border">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-800">📊 Funil de Vendas</h3>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <label className="hidden sm:block text-base font-medium text-gray-700">Filtrar por vendedor:</label>
             <select
               value={dashboardVendorFilter}
               onChange={(e) => setDashboardVendorFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
+              className="w-full sm:w-auto px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
               disabled={!currentVendorInfo?.is_admin && Boolean(currentUser)}
             >
               <option value="all">👥 Todos vendedores</option>
@@ -1186,34 +1186,44 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           {metrics.stageDistribution.slice(0, 5).map(stage => (
             <div key={stage.id}>
               <div
-                className="flex items-center cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
+                className="cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
                 onClick={() => setSelectedStageForList(selectedStageForList === stage.id ? null : stage.id)}
               >
-                <div className="w-40 text-base font-medium text-gray-700">{stage.name}</div>
-                <div className="flex-1 mx-6">
-                  <div className="bg-gray-200 rounded-full h-8 relative">
-                    <div
-                      className={stage.color + ' h-8 rounded-full transition-all duration-500'}
-                      style={{ width: Math.max((stage.count / Math.max(...metrics.stageDistribution.map(s => s.count), 1)) * 100, 5) + '%' }}
-                    ></div>
-                    <div className="absolute inset-0 flex items-center justify-center text-base font-medium text-white">
-                      {stage.count > 0 && stage.count + ' oportunidades'}
-                    </div>
+                {/* Linha superior no mobile: nome + valores */}
+                <div className="flex md:hidden items-center justify-between mb-1">
+                  <span className="text-sm font-medium text-gray-700">{stage.name}</span>
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <span className="font-semibold text-gray-800">R$ {stage.value.toLocaleString('pt-BR')}</span>
+                    <ChevronDown className={'w-4 h-4 text-gray-400 transition-transform ' + (selectedStageForList === stage.id ? 'rotate-180' : '')} />
                   </div>
                 </div>
-                <div className="w-20 text-base text-gray-600 text-center">{stage.count}</div>
-                <div className="w-48 text-base font-medium text-right text-gray-800">
-                  R$ {stage.value.toLocaleString('pt-BR')}
+                <div className="flex items-center">
+                  <div className="hidden md:block w-40 text-base font-medium text-gray-700">{stage.name}</div>
+                  <div className="flex-1 md:mx-6">
+                    <div className="bg-gray-200 rounded-full h-6 md:h-8 relative">
+                      <div
+                        className={stage.color + ' h-6 md:h-8 rounded-full transition-all duration-500'}
+                        style={{ width: Math.max((stage.count / Math.max(...metrics.stageDistribution.map(s => s.count), 1)) * 100, 5) + '%' }}
+                      ></div>
+                      <div className="absolute inset-0 flex items-center justify-center text-sm md:text-base font-medium text-white">
+                        {stage.count > 0 && (stage.count + ' oportunidades')}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="hidden md:block w-20 text-base text-gray-600 text-center">{stage.count}</div>
+                  <div className="hidden md:block w-48 text-base font-medium text-right text-gray-800">
+                    R$ {stage.value.toLocaleString('pt-BR')}
+                  </div>
+                  <div className="hidden md:block w-48 text-base text-right text-gray-600">
+                    Pond: R$ {stage.weightedValue.toLocaleString('pt-BR')}
+                  </div>
+                  <ChevronDown className={'hidden md:block w-5 h-5 ml-4 text-gray-400 transition-transform ' + (selectedStageForList === stage.id ? 'rotate-180' : '')} />
                 </div>
-                <div className="w-48 text-base text-right text-gray-600">
-                  Pond: R$ {stage.weightedValue.toLocaleString('pt-BR')}
-                </div>
-                <ChevronDown className={'w-5 h-5 ml-4 text-gray-400 transition-transform ' + (selectedStageForList === stage.id ? 'rotate-180' : '')} />
               </div>
 
               {selectedStageForList === stage.id && stage.opportunities.length > 0 && (
-                <div className="mt-4 ml-8 mr-8 p-4 bg-gray-50 rounded-lg">
-                  <table className="w-full text-base">
+                <div className="mt-4 md:mx-8 p-2 sm:p-4 bg-gray-50 rounded-lg overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-sm sm:text-base">
                     <thead>
                       <tr className="text-left border-b border-gray-200">
                         <th className="pb-2 font-medium text-gray-700">Oportunidade</th>
@@ -1319,12 +1329,12 @@ const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelect
   const isInactive30Days = checkInactivity(opportunity.last_update, 30);
 
   return (
-    <div className={'bg-white rounded-xl shadow-sm border p-6 hover:shadow-lg transition-all ' +
+    <div className={'bg-white rounded-xl shadow-sm border p-4 sm:p-6 hover:shadow-lg transition-all ' +
       (isInactive30Days ? 'border-red-300 bg-red-50' : isInactive7Days ? 'border-yellow-300 bg-yellow-50' : '')}>
-      <div className="flex justify-between items-start mb-6">
-        <div className="flex-1">
-          <div className="flex items-center space-x-3 mb-2">
-            <h3 className="text-xl font-bold text-gray-900">{opportunity.name}</h3>
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-4 sm:mb-6">
+        <div className="flex-1 min-w-0 w-full">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900">{opportunity.name}</h3>
             <OpportunityHealthScore opportunity={opportunity} />
             {/* Indicador SPIN */}
             <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center">
@@ -1428,27 +1438,27 @@ const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelect
             Última atualização: {new Date(opportunity.last_update).toLocaleDateString('pt-BR')}
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-bold text-green-600 mb-2">
+        <div className="w-full sm:w-auto sm:text-right flex sm:block flex-wrap items-center gap-x-3 gap-y-1 flex-shrink-0">
+          <p className="text-xl sm:text-2xl font-bold text-green-600 sm:mb-2">
             R$ {(opportunity.value || 0).toLocaleString('pt-BR')}
           </p>
-          <span className={'inline-block px-4 py-2 rounded-full text-sm font-bold text-white ' + (stage?.color || '') + ' mb-2'}>
+          <span className={'inline-block px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-bold text-white ' + (stage?.color || '') + ' sm:mb-2'}>
             {stage?.name} ({opportunity.probability || 0}%)
           </span>
-          <p className="text-sm text-gray-600 font-medium">
+          <p className="text-xs sm:text-sm text-gray-600 font-medium">
             Ponderado: R$ {((opportunity.value || 0) * (opportunity.probability || 0) / 100).toLocaleString('pt-BR')}
           </p>
         </div>
       </div>
 
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-        <div className="flex items-center justify-between mb-3">
+      <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gray-50 rounded-lg">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h4 className="font-semibold text-gray-700">🎯 Gestão de Etapa</h4>
-          <div className="flex space-x-2">
+          <div className="flex flex-wrap gap-2">
             {prevStage && (
               <button
                 onClick={() => onMoveStage(opportunity, prevStage.id)}
-                className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                className="px-3 py-2 sm:py-1 text-xs bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
               >
                 ← {prevStage.name}
               </button>
@@ -1456,7 +1466,7 @@ const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelect
             {nextStage && (
               <button
                 onClick={() => onMoveStage(opportunity, nextStage.id)}
-                className={'px-3 py-1 text-xs rounded-md transition-colors flex items-center ' + (canAdvance
+                className={'px-3 py-2 sm:py-1 text-xs rounded-md transition-colors flex items-center ' + (canAdvance
                     ? 'bg-green-500 text-white hover:bg-green-600'
                     : 'bg-red-100 text-red-600 cursor-not-allowed')}
               >
@@ -1503,7 +1513,7 @@ const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelect
         </div>
 
         {opportunity.scales && (
-          <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             {scales.map(scale => {
               const Icon = scale.icon;
               const scaleData = opportunity.scales[scale.id as keyof Scales];
@@ -1666,30 +1676,31 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-xl max-w-6xl w-full my-8 max-h-[90vh] overflow-y-auto">
-        <div className="p-8">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h2 className="text-3xl font-bold text-gray-900">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center p-0 sm:p-4 z-50 overflow-y-auto">
+      {/* No celular o form abre em tela cheia (sheet); no desktop mantém o modal centrado */}
+      <div className="bg-white rounded-none sm:rounded-xl max-w-6xl w-full min-h-full sm:min-h-0 sm:my-8 sm:max-h-[90vh] overflow-y-auto">
+        <div className="p-4 sm:p-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-8">
+          <div className="flex justify-between items-center mb-5 sm:mb-8 sticky top-0 bg-white z-10 -mx-4 sm:mx-0 px-4 sm:px-0 py-2 sm:py-0 border-b sm:border-0">
+            <div className="min-w-0">
+              <h2 className="text-xl sm:text-3xl font-bold text-gray-900 truncate">
                 {opportunity ? '✏️ Editar Oportunidade' : '➕ Nova Oportunidade'}
               </h2>
-              <p className="text-gray-600 mt-1">
+              <p className="hidden sm:block text-gray-600 mt-1">
                 {opportunity ? 'Atualize os dados da oportunidade' : 'Adicione uma nova oportunidade ao pipeline Ventapel'}
               </p>
             </div>
             <button
               onClick={onClose}
-              className="p-3 hover:bg-gray-100 rounded-xl transition-colors"
+              className="p-2.5 sm:p-3 hover:bg-gray-100 rounded-xl transition-colors flex-shrink-0"
               disabled={submitting}
             >
               <X className="w-6 h-6" />
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-8">
             <div className="space-y-6">
-              <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+              <div className="bg-blue-50 rounded-xl p-4 sm:p-6 border border-blue-200">
                 <h3 className="text-lg font-semibold mb-4 text-blue-800">📋 Informações Básicas</h3>
                 <div className="space-y-4">
                   <div>
@@ -1714,7 +1725,7 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                       disabled={submitting}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-2 text-gray-700">Vendedor *</label>
                       <select
@@ -1742,7 +1753,7 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-2 text-gray-700">Etapa *</label>
                       <select
@@ -1795,7 +1806,7 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                       })}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-2 text-gray-700">Produto</label>
                       <input
@@ -1819,7 +1830,7 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-2 text-gray-700">Fechamento Previsto</label>
                       <input
@@ -1843,9 +1854,9 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                 </div>
               </div>
 
-              <div className="bg-green-50 rounded-xl p-6 border border-green-200">
+              <div className="bg-green-50 rounded-xl p-4 sm:p-6 border border-green-200">
                 <h3 className="text-lg font-semibold mb-4 text-green-800">👥 Contatos Principais</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-2 text-gray-700">Power Sponsor</label>
                     <input
@@ -1895,7 +1906,7 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
             </div>
 
             <div className="space-y-6">
-              <div className="bg-purple-50 rounded-xl p-6 border border-purple-200">
+              <div className="bg-purple-50 rounded-xl p-4 sm:p-6 border border-purple-200">
                 <h3 className="text-lg font-semibold mb-4 text-purple-800">📊 Escalas PPVVCC</h3>
                 <div className="space-y-4">
                   {scales.map(scale => {
@@ -2029,7 +2040,7 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
               <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
                 🏁 Resultado Final
               </h3>
-              <div className="flex gap-3 mb-4">
+              <div className="flex flex-wrap gap-2 sm:gap-3 mb-4">
                 {([
                   { value: null, label: 'Em andamento', color: 'bg-blue-100 text-blue-700 border-blue-300', activeColor: 'bg-blue-500 text-white border-blue-600' },
                   { value: 'won', label: '✅ Ganhou', color: 'bg-green-50 text-green-700 border-green-300', activeColor: 'bg-green-500 text-white border-green-600' },
@@ -2080,17 +2091,17 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
             </div>
           )}
 
-          <div className="flex justify-end space-x-4 mt-8 pt-6 border-t">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 sm:gap-4 mt-6 sm:mt-8 pt-5 sm:pt-6 border-t">
             <button
               onClick={onClose}
-              className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="w-full sm:w-auto px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               disabled={submitting}
             >
               Cancelar
             </button>
             <button
               onClick={handleSubmit}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg hover:from-blue-700 hover:to-green-700 flex items-center transition-colors font-medium disabled:opacity-50"
+              className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg hover:from-blue-700 hover:to-green-700 flex items-center justify-center transition-colors font-medium disabled:opacity-50"
               disabled={submitting}
             >
               {submitting ? (
@@ -2157,10 +2168,10 @@ const StageChecklistModal: React.FC<StageChecklistModalProps> = ({ opportunity, 
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl max-w-2xl w-full">
-        <div className="p-6 border-b">
-          <h3 className="text-xl font-bold text-gray-900">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-none sm:rounded-xl max-w-2xl w-full min-h-full sm:min-h-0 sm:max-h-[90vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 border-b">
+          <h3 className="text-lg sm:text-xl font-bold text-gray-900">
             ✅ Checklist para avançar para {target.name}
           </h3>
           <p className="text-gray-600 mt-1">
@@ -2168,7 +2179,7 @@ const StageChecklistModal: React.FC<StageChecklistModalProps> = ({ opportunity, 
           </p>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
             <h4 className="font-semibold text-blue-800 mb-2">📋 {opportunity.name}</h4>
             <p className="text-sm text-blue-700">{opportunity.client}</p>
@@ -2204,16 +2215,16 @@ const StageChecklistModal: React.FC<StageChecklistModalProps> = ({ opportunity, 
           </div>
         </div>
 
-        <div className="p-6 border-t flex justify-end space-x-4">
+        <div className="p-4 sm:p-6 border-t flex flex-col-reverse sm:flex-row sm:justify-end gap-3 sm:gap-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-6">
           <button
             onClick={onClose}
-            className="px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="w-full sm:w-auto px-6 py-3 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             Cancelar
           </button>
           <button
             onClick={confirmStageChange}
-            className={'px-6 py-3 rounded-lg transition-colors flex items-center font-medium ' +
+            className={'w-full sm:w-auto px-6 py-3 rounded-lg transition-colors flex items-center justify-center font-medium ' +
               (allChecked
                 ? 'bg-gradient-to-r from-blue-600 to-green-600 text-white hover:from-blue-700 hover:to-green-700'
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed')}
@@ -2238,6 +2249,8 @@ const CRMVentapel: React.FC = () => {
   const [selectedStageForList, setSelectedStageForList] = useState<number | null>(null);
   const [showStageChecklist, setShowStageChecklist] = useState<{ opportunity: Opportunity, targetStage: number } | null>(null);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  // No celular os filtros ficam recolhidos para não empurrar a lista para baixo
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const {
     opportunities,
@@ -2357,9 +2370,19 @@ const CRMVentapel: React.FC = () => {
     <div className="space-y-6">
       {error && <ErrorAlert error={error} onClose={() => setError(null)} />}
 
-      <div className="bg-white p-6 rounded-xl shadow-sm border">
-        <h3 className="text-lg font-semibold mb-4 text-gray-800">🔍 Filtros e Busca</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border">
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <h3 className="text-lg font-semibold text-gray-800">🔍 Filtros e Busca</h3>
+          <button
+            onClick={() => setShowMobileFilters(!showMobileFilters)}
+            className={'md:hidden flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ' +
+              (showMobileFilters ? 'bg-blue-50 text-blue-700 border-blue-300' : 'bg-white text-gray-600 border-gray-300')}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            Filtros
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4">
           <div className="lg:col-span-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -2372,7 +2395,7 @@ const CRMVentapel: React.FC = () => {
               />
             </div>
           </div>
-          <div>
+          <div className={(showMobileFilters ? '' : 'hidden') + ' md:block'}>
             <select
               value={filters.filterStage}
               onChange={(e) => filters.setFilterStage(e.target.value)}
@@ -2386,7 +2409,7 @@ const CRMVentapel: React.FC = () => {
               ))}
             </select>
           </div>
-          <div>
+          <div className={(showMobileFilters ? '' : 'hidden') + ' md:block'}>
             <select
               value={filters.filterVendor}
               onChange={(e) => filters.setFilterVendor(e.target.value)}
@@ -2401,7 +2424,7 @@ const CRMVentapel: React.FC = () => {
               ))}
             </select>
           </div>
-          <div>
+          <div className={(showMobileFilters ? '' : 'hidden') + ' md:block'}>
             <select
               value={filters.filterInactivity}
               onChange={(e) => filters.setFilterInactivity(e.target.value)}
@@ -2412,7 +2435,7 @@ const CRMVentapel: React.FC = () => {
               <option value="30days">🔴 +30 dias sem movimento</option>
             </select>
           </div>
-          <div>
+          <div className={(showMobileFilters ? '' : 'hidden') + ' md:block'}>
             <select
               value={filters.filterProductLine}
               onChange={(e) => filters.setFilterProductLine(e.target.value)}
@@ -2439,7 +2462,7 @@ const CRMVentapel: React.FC = () => {
       {loading ? (
         <LoadingSpinner />
       ) : (
-        <div className="grid gap-6">
+        <div className="grid gap-4 sm:gap-6">
           {filteredOpportunities.map(opportunity => (
             <OpportunityCard
               key={opportunity.id}
@@ -2472,28 +2495,28 @@ const CRMVentapel: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-50">
       <div className="sticky top-0 z-40 bg-white">
       <header className="bg-white shadow-sm border-b border-blue-200">
-        <div className="mx-auto px-6 lg:px-10">
-          <div className="flex justify-between items-center py-3">
-            <div className="flex items-center">
-              <div className="p-3 bg-gradient-to-r from-blue-600 to-green-600 rounded-xl">
-                <Factory className="w-8 h-8 text-white" />
+        <div className="mx-auto px-3 sm:px-6 lg:px-10">
+          <div className="flex justify-between items-center py-2 sm:py-3">
+            <div className="flex items-center min-w-0">
+              <div className="p-2 sm:p-3 bg-gradient-to-r from-blue-600 to-green-600 rounded-xl flex-shrink-0">
+                <Factory className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
               </div>
-              <div className="ml-4">
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+              <div className="ml-3 sm:ml-4 min-w-0">
+                <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent truncate">
                   CRM VENTAPEL - Pepito
                 </h1>
-                <p className="text-sm text-gray-600">Metodologia PPVVCC - Gestão Completa de Oportunidades</p>
+                <p className="hidden sm:block text-sm text-gray-600">Metodologia PPVVCC - Gestão Completa de Oportunidades</p>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-3">
-                <div className="flex items-center px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                  <User className="w-4 h-4 text-blue-600 mr-2" />
-                  <span className="text-sm font-medium text-blue-800">
+            <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
+              <div className="flex items-center space-x-2 sm:space-x-3">
+                <div className="flex items-center px-2 sm:px-3 py-1.5 sm:py-2 bg-blue-50 border border-blue-200 rounded-lg max-w-[38vw] sm:max-w-none">
+                  <User className="w-4 h-4 text-blue-600 mr-1.5 sm:mr-2 flex-shrink-0" />
+                  <span className="text-xs sm:text-sm font-medium text-blue-800 truncate">
                     {currentUser} {currentVendorInfo?.role && `(${currentVendorInfo.role})`}
                   </span>
                   {currentVendorInfo?.is_admin && (
-                    <span className="ml-2 px-1.5 py-0.5 text-xs bg-blue-600 text-white rounded">Admin</span>
+                    <span className="hidden sm:inline ml-2 px-1.5 py-0.5 text-xs bg-blue-600 text-white rounded">Admin</span>
                   )}
                 </div>
                 <button
@@ -2504,7 +2527,7 @@ const CRMVentapel: React.FC = () => {
                   <LogOut className="w-5 h-5" />
                 </button>
               </div>
-              <div className="text-right">
+              <div className="hidden lg:block text-right">
                 <p className="text-sm font-medium text-blue-600">🌎 ventapel.com.br</p>
                 <div className="flex items-center text-xs text-green-600">
                   <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
@@ -2516,9 +2539,10 @@ const CRMVentapel: React.FC = () => {
         </div>
       </header>
 
-      <nav className="bg-white shadow-sm border-b border-gray-200">
+      {/* Tabs superiores — só desktop; no celular a navegação fica na barra inferior */}
+      <nav className="hidden md:block bg-white shadow-sm border-b border-gray-200">
         <div className="mx-auto px-6 lg:px-10">
-          <div className="flex space-x-8">
+          <div className="flex space-x-4 lg:space-x-8 overflow-x-auto">
             <button
               onClick={() => setActiveTab('dashboard')}
               className={'py-3 px-3 border-b-2 font-bold text-base flex items-center ' + (activeTab === 'dashboard'
@@ -2570,7 +2594,7 @@ const CRMVentapel: React.FC = () => {
       </nav>
       </div>
 
-      <main className="mx-auto px-6 lg:px-10 py-6 pr-16">
+      <main className="mx-auto pl-3 pr-3 sm:pl-6 sm:pr-16 lg:pl-10 pt-4 sm:pt-6 pb-24 md:pb-8">
         {activeTab === 'dashboard' && (
           <DashboardView
             metrics={metrics}
@@ -2609,6 +2633,33 @@ const CRMVentapel: React.FC = () => {
         )}
 
       </main>
+
+      {/* Barra de navegação inferior — só mobile (padrão de app) */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] pb-[env(safe-area-inset-bottom)]">
+        <div className="flex">
+          {([
+            { id: 'dashboard', label: 'Painel', icon: BarChart3 },
+            { id: 'opportunities', label: 'Vendas', icon: Target },
+            { id: 'activities', label: 'Atividades', icon: Clock },
+            { id: 'cadencia', label: 'Cadência', icon: Phone },
+            ...(currentVendorInfo?.is_admin ? [{ id: 'admin', label: 'Equipe', icon: Users }] : []),
+          ] as { id: string; label: string; icon: React.ElementType }[]).map(item => {
+            const Icon = item.icon;
+            const active = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => { setActiveTab(item.id); window.scrollTo({ top: 0 }); }}
+                className={'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] transition-colors ' +
+                  (active ? 'text-blue-600' : 'text-gray-500 active:text-gray-700')}
+              >
+                <Icon className={'w-5 h-5 ' + (active ? 'stroke-[2.5]' : '')} />
+                <span className={'text-[10px] leading-tight ' + (active ? 'font-bold' : 'font-medium')}>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       {showNewOpportunity && (
         <OpportunityForm

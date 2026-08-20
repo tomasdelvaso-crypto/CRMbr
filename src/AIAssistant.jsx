@@ -122,10 +122,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
 
   return (
     <>
-      {/* Toggle tab — always visible on right edge */}
+      {/* Toggle tab — borda direita, só desktop/tablet */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed top-1/2 -translate-y-1/2 z-[60] flex items-center gap-2 py-4 px-2 rounded-l-xl shadow-lg transition-all duration-300 ${
+        className={`hidden sm:flex fixed top-1/2 -translate-y-1/2 z-[60] items-center gap-2 py-4 px-2 rounded-l-xl shadow-lg transition-all duration-300 ${
           isOpen ? 'right-[420px]' : 'right-0'
         } bg-gradient-to-b from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700`}
         title={isOpen ? 'Fechar Ventus' : 'Abrir Ventus'}
@@ -142,8 +142,23 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
         )}
       </button>
 
-      {/* Sidebar panel */}
-      <div className={`fixed top-0 right-0 h-full w-[420px] z-[60] bg-white shadow-2xl border-l border-gray-200 flex flex-col transition-transform duration-300 ${
+      {/* FAB — só mobile, acima da barra de navegação inferior */}
+      {!isOpen && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="sm:hidden fixed bottom-20 right-4 z-[60] p-3.5 rounded-full shadow-xl bg-gradient-to-br from-purple-600 to-blue-600 text-white active:scale-95 transition-transform"
+          style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+          title="Abrir Ventus"
+        >
+          <Bot className="w-6 h-6" />
+          {currentOpportunity && analysis?.alerts?.length > 0 && (
+            <span className="absolute top-1 right-1 w-3 h-3 bg-red-400 rounded-full animate-pulse border-2 border-white" />
+          )}
+        </button>
+      )}
+
+      {/* Sidebar panel — tela cheia no celular, 420px no desktop */}
+      <div className={`fixed top-0 right-0 h-full w-full sm:w-[420px] z-[60] bg-white shadow-2xl border-l border-gray-200 flex flex-col transition-transform duration-300 ${
         isOpen ? 'translate-x-0' : 'translate-x-full'
       }`}>
 
@@ -157,6 +172,13 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
                 {currentOpportunity ? `${currentOpportunity.client} - ${currentOpportunity.name}` : 'Pipeline'}
               </p>
             </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="p-2 -m-1 hover:bg-white/20 rounded-lg transition-colors flex-shrink-0"
+              title="Fechar Ventus"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
           {currentOpportunity && analysis?.opportunity && (
             <div className="mt-2 flex items-center gap-3 text-sm bg-white/15 rounded-lg px-3 py-1.5">

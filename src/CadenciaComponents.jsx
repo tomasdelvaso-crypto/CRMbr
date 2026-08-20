@@ -466,7 +466,7 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
   const nextTP = CADENCE_SCHEDULE[lead.touchpoints_count];
 
   return (
-    <div className="fixed top-0 right-0 h-full w-[440px] z-[55] bg-white shadow-2xl border-l border-gray-200 flex flex-col overflow-hidden">
+    <div className="fixed top-0 right-0 h-full w-full sm:w-[440px] z-[55] bg-white shadow-2xl border-l border-gray-200 flex flex-col overflow-hidden">
       {/* Header - fixed */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 flex-shrink-0">
         <div className="flex items-center justify-between">
