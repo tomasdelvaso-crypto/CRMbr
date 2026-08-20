@@ -570,7 +570,7 @@ const AdminDashboard = ({ supabase, opportunities, vendors, currentUser }) => {
   return (
     <div className="space-y-8 pb-20">
       {/* Page title */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
             <Shield className="w-6 h-6 text-indigo-600" />
@@ -578,7 +578,7 @@ const AdminDashboard = ({ supabase, opportunities, vendors, currentUser }) => {
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Visão exclusiva para administradores · {new Date().toLocaleDateString('pt-BR')}</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-500">Vendedor</label>
             <select

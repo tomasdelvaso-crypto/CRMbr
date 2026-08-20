@@ -417,7 +417,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
             <h3 className="font-bold text-lg">Atividades & Ações</h3>
             <span className="ml-2 bg-white bg-opacity-20 rounded-full px-3 py-0.5 text-sm">{activities.length}</span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button onClick={generate} disabled={generating}
               className="bg-white bg-opacity-20 text-white px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-opacity-30 flex items-center disabled:opacity-50">
               {generating ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Zap className="w-4 h-4 mr-1" />}
