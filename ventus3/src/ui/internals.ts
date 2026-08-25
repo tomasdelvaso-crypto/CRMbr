@@ -118,8 +118,20 @@ export function useBackDismiss(activo: boolean, onDismiss: () => void): void {
   useEffect(() => {
     if (!activo || typeof window === 'undefined') return
 
-    window.history.pushState({ ventusOverlay: Date.now() }, '', window.location.href)
-    empurrado.current = true
+    // El push va en un timeout de 0 ms, y eso NO es un rodeo: en desarrollo,
+    // StrictMode monta el efecto, lo desmonta y lo vuelve a montar. Empujando
+    // en el cuerpo del efecto, la limpieza del montaje descartado disparaba un
+    // `history.back()` real, y el `popstate` que ese back genera llegaba
+    // después — encima de la pantalla que acababa de abrir el overlay. El
+    // síntoma era un diálogo de confirmación que se abría y se cerraba solo.
+    // Con el push diferido, el montaje descartado no llega a empujar nada y la
+    // limpieza no tiene qué deshacer. Para la persona no cambia nada: no hay
+    // forma de apretar «atrás» en el mismo frame en que el overlay aparece.
+    let id: number | null = window.setTimeout(() => {
+      id = null
+      window.history.pushState({ ventusOverlay: Date.now() }, '', window.location.href)
+      empurrado.current = true
+    }, 0)
 
     const onPop = () => {
       if (!empurrado.current) return
@@ -130,6 +142,7 @@ export function useBackDismiss(activo: boolean, onDismiss: () => void): void {
 
     return () => {
       window.removeEventListener('popstate', onPop)
+      if (id !== null) window.clearTimeout(id)
       // Si el overlay se cerró por un botón (no por el back), hay que sacar
       // nuestra entrada del historial o el próximo back no hará nada.
       if (empurrado.current) {

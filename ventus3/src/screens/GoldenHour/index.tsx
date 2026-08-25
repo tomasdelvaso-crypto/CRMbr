@@ -108,6 +108,8 @@ export default function GoldenHourScreen() {
 
   /* ── El back del sistema pide confirmación ────────────────────────────── */
   const restanteRef = useRef(0)
+  // ¿Ya estamos preguntando si sale? Ver las guardas de `aoVoltar`.
+  const perguntandoRef = useRef(false)
   const restanteMs = resumo?.restanteMs ?? 0
   useEffect(() => {
     restanteRef.current = restanteMs
@@ -118,9 +120,36 @@ export default function GoldenHourScreen() {
 
     // Entrada de historial con la MISMA URL: el back del sistema la consume y
     // nos deja interceptarlo sin sacar al vendedor de la pantalla.
-    window.history.pushState({ golden: true }, '')
+    //
+    // `marcar()` es idempotente porque el efecto se monta dos veces en
+    // desarrollo (StrictMode): dos marcas dejarían al primer back consumiendo
+    // una entrada fantasma y el vendedor apretando dos veces para salir.
+    const marcar = (): void => {
+      const atual = window.history.state as { golden?: boolean } | null
+      if (atual?.golden === true) return
+      window.history.pushState({ golden: true }, '')
+    }
+    marcar()
+
+    let idRemarcar: number | null = null
 
     const aoVoltar = (): void => {
+      // ── Las dos guardas, que no son defensivas: sin ellas el diálogo se
+      // abre solo. Los overlays del design system (Sheet, Confirm) empujan su
+      // PROPIA entrada de historial al abrirse y la sacan con history.back()
+      // al cerrarse con un botón. Ese back genera un popstate que no tiene
+      // nada que ver con salir de la hora.
+      //
+      //  1. Si el diálogo de salida está abierto, cualquier popstate es suyo
+      //     (o del que se está cerrando): no se pregunta dos veces.
+      if (perguntandoRef.current) return
+      //  2. Si seguimos parados sobre nuestra marca, lo que se consumió fue la
+      //     entrada de otro overlay —una nota de voz, un sheet cualquiera—, no
+      //     la de la Golden Hour.
+      const atual = window.history.state as { golden?: boolean } | null
+      if (atual?.golden === true) return
+
+      perguntandoRef.current = true
       void (async () => {
         const sair = await confirmar({
           title: 'Sair da Golden Hour?',
@@ -130,16 +159,29 @@ export default function GoldenHourScreen() {
           tone: 'perigo',
           footnote: 'Os toques já registrados ficam salvos e sobem sozinhos.',
         })
-        if (sair) {
-          void navigate('/', { replace: true })
-        } else {
-          window.history.pushState({ golden: true }, '')
-        }
+        // Las dos salidas esperan al macrotask siguiente, y por el mismo
+        // motivo: el diálogo saca su propia entrada del historial DESPUÉS de
+        // que la promesa resuelve. Navegando antes, ese `history.back()` se
+        // llevaba puesta la navegación y el vendedor volvía a la Golden Hour
+        // después de haber tocado «Sair»; marcando antes, la marca quedaba
+        // justo donde el back se la lleva.
+        idRemarcar = window.setTimeout(() => {
+          idRemarcar = null
+          perguntandoRef.current = false
+          if (sair) {
+            void navigate('/', { replace: true })
+            return
+          }
+          marcar()
+        }, 0)
       })()
     }
 
     window.addEventListener('popstate', aoVoltar)
-    return () => window.removeEventListener('popstate', aoVoltar)
+    return () => {
+      window.removeEventListener('popstate', aoVoltar)
+      if (idRemarcar !== null) window.clearTimeout(idRemarcar)
+    }
   }, [fase, navigate])
 
   /* ── Aviso único cuando el bloque llega a cero ────────────────────────── */

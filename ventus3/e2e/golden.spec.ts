@@ -38,7 +38,9 @@ test.describe('Golden Hour', () => {
     await entrarEmFoco(app)
 
     await expect(app.getByRole('navigation', { name: 'Navegação principal' })).toHaveCount(0)
-    await expect(app.getByRole('banner')).toHaveCount(0)
+    // El header de la app se va. El único <header> que queda es el HUD del
+    // bloque —reloj, toques y «Encerrar»—, que es contenido, no navegación.
+    await expect(app.getByRole('heading', { level: 1 })).toHaveCount(0)
     await expect(app.getByRole('button', { name: /Registrar por voz/ })).toHaveCount(0)
     await expect(app.getByRole('button', { name: 'Perguntar ao Ventus' })).toHaveCount(0)
 
@@ -107,6 +109,9 @@ test.describe('Golden Hour', () => {
   })
 
   test('o fechamento se destrava sozinho aos 60 segundos', async ({ app }) => {
+    // Es una prueba que espera un minuto de reloj a propósito: el número está
+    // escrito en el producto y no se puede simular sin dejar de probarlo.
+    test.setTimeout(120_000)
     await entrarEmFoco(app)
     await app.getByRole('button', { name: /Encerrar|Fechar/ }).click()
     const selo = app.getByRole('button', { name: /Selar a Hora Cheia|Encerrar a hora/ })
