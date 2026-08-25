@@ -120,6 +120,8 @@ function assinarTabela(
   let cancelado = false
   let canal: RealtimeChannel | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
+  // Ya hay una reconexión en camino. Ver el comentario de reagendar().
+  let reagendando = false
 
   const conectar = (): void => {
     if (cancelado || !habilitado) return
@@ -149,8 +151,24 @@ function assinarTabela(
     canaisVivos.add(canal)
   }
 
+  /**
+   * Reconecta con backoff.
+   *
+   * El guard `reagendando` NO es defensivo: es obligatorio. `removeChannel()`
+   * cierra el canal y eso hace que el propio callback de `.subscribe()` se
+   * dispare —de forma síncrona— con estado 'CLOSED', que es una de las tres
+   * condiciones que llaman acá. Sin el guard, cerrar el canal para reconectar
+   * vuelve a entrar en reagendar, que vuelve a cerrar, y así hasta un
+   * RangeError: «Maximum call stack size exceeded».
+   *
+   * No es un caso raro de laboratorio: pasa CADA VEZ que el socket no puede
+   * conectar —sin señal, wifi de hotel, proxy que corta el upgrade—, o sea,
+   * exactamente en el campo. Lo encontró el QA de punta a punta contra un
+   * host de realtime inalcanzable.
+   */
   const reagendar = (): void => {
-    if (cancelado) return
+    if (cancelado || reagendando) return
+    reagendando = true
     if (canal) {
       canaisVivos.delete(canal)
       void supabase.removeChannel(canal)
@@ -158,7 +176,10 @@ function assinarTabela(
     }
     tentativas += 1
     if (timer !== null) clearTimeout(timer)
-    timer = setTimeout(conectar, atrasoReconexao(tentativas))
+    timer = setTimeout(() => {
+      reagendando = false
+      conectar()
+    }, atrasoReconexao(tentativas))
   }
 
   conectar()

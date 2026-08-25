@@ -96,11 +96,23 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
   const [aAdiar, setAAdiar] = useState<PlannedAction | null>(null)
   const [celebrar, setCelebrar] = useState(false)
 
-  // Al desmontar, lo que estaba esperando la ventana de deshacer se manda YA.
-  // Si se perdiera, el vendedor vería mañana una tarjeta que ya resolvió.
+  // Al desmontar —y al irse la pantalla del frente— lo que estaba esperando la
+  // ventana de deshacer se manda YA. Si se perdiera, el vendedor vería mañana
+  // una tarjeta que ya resolvió.
+  //
+  // El desmontaje solo cubre la navegación DENTRO de la app. Cerrar la pestaña,
+  // recargar, o que iOS mate la app en segundo plano no ejecuta ninguna
+  // limpieza de React, y ahí se perdían hasta 5 segundos de resoluciones —el
+  // caso más común es justamente ese: resolver la tarjeta y volver al trabajo.
+  // Por eso también se escucha 'pagehide' y la ida a segundo plano.
+  //
+  // Lo que se paga: quien manda la app al fondo pierde el «Desfazer» de esa
+  // resolución. Es el precio correcto — el botón es una cortesía de 5 segundos
+  // para quien está mirando la pantalla; el registro es el producto.
   useEffect(() => {
     const mapa = pendentes.current
-    return () => {
+
+    const descarregar = (): void => {
       for (const { timer, entrada } of mapa.values()) {
         window.clearTimeout(timer)
         void concluirAcaoDoDia(entrada).catch(() => {
@@ -108,6 +120,19 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
         })
       }
       mapa.clear()
+    }
+
+    const aoEsconder = (): void => {
+      if (document.visibilityState === 'hidden') descarregar()
+    }
+
+    window.addEventListener('pagehide', descarregar)
+    document.addEventListener('visibilitychange', aoEsconder)
+
+    return () => {
+      window.removeEventListener('pagehide', descarregar)
+      document.removeEventListener('visibilitychange', aoEsconder)
+      descarregar()
     }
   }, [])
 

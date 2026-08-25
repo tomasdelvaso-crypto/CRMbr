@@ -44,7 +44,11 @@ const launchOptions = {
 
 export default defineConfig({
   testDir: './e2e',
-  outputDir: './e2e/.resultados',
+  // Los artefactos NO pueden vivir dentro de lo que Vite observa: cada
+  // captura de una prueba fallida disparaba un HMR («page reload …/traces/…»)
+  // que recargaba la página de LAS OTRAS pruebas en pleno gesto. Adentro de
+  // node_modules el watcher de Vite no mira y git tampoco.
+  outputDir: './node_modules/.tmp/playwright',
   // Las pruebas comparten un único dev server y cada una siembra su propio
   // IndexedDB en un contexto aislado, así que corren en paralelo sin pisarse.
   fullyParallel: true,

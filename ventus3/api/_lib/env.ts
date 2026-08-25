@@ -33,6 +33,26 @@ export function optionalEnv(nome: string): string | undefined {
   return valor
 }
 
+/**
+ * Primera env var configurada de una lista de alias. Existe porque la misma
+ * credencial vive con dos nombres distintos según el proyecto: el CRM v2
+ * guarda la key de Anthropic como CLAUDE_API_KEY, y renombrarla en Vercel
+ * rompería el v2, que está en producción.
+ */
+export function requireEnvAlias(...nomes: readonly string[]): string {
+  for (const nome of nomes) {
+    const valor = optionalEnv(nome)
+    if (valor !== undefined) return valor
+  }
+  console.error(`[config] nenhuma de ${nomes.join(' / ')} configurada`)
+  throw new ErroDeConfiguracao(nomes[0] ?? 'env')
+}
+
+/** ¿Alguno de los alias está configurado? */
+export function temEnvAlias(...nomes: readonly string[]): boolean {
+  return nomes.some((nome) => optionalEnv(nome) !== undefined)
+}
+
 /** ¿Está configurada? Se usa en /api/health sin exponer el valor. */
 export function temEnv(nome: string): boolean {
   return optionalEnv(nome) !== undefined

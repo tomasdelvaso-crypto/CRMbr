@@ -37,7 +37,7 @@ import {
   STAGES,
   STAGE_GATES,
 } from '../../src/core/index.js'
-import { requireEnv } from './env.js'
+import { requireEnvAlias } from './env.js'
 import { catalogoDeTools } from './tools.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -94,7 +94,7 @@ let cliente: Anthropic | null = null
 
 export function anthropic(): Anthropic {
   if (cliente) return cliente
-  cliente = new Anthropic({ apiKey: requireEnv('ANTHROPIC_API_KEY') })
+  cliente = new Anthropic({ apiKey: requireEnvAlias('ANTHROPIC_API_KEY', 'CLAUDE_API_KEY') })
   return cliente
 }
 

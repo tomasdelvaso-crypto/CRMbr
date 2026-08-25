@@ -74,6 +74,20 @@ export interface EstadoDoDia {
   fixadoEm: string
   /** Ids de PlannedAction, en orden. Nunca más de 3. */
   ids: string[]
+  /**
+   * Las acciones tal como se congelaron.
+   *
+   * No es redundante con `ids`: el id de una PlannedAction depende del estado
+   * de la entidad, así que en cuanto se registra algo el planner emite OTRA
+   * acción para el mismo negocio, con otro id. Sin este espejo, la tarjeta
+   * resuelta desaparecía de la lista —la de la mañana decía «Suas 3 de hoje»
+   * y la de la tarde decía «As 2 de hoje estão resolvidas»— y, peor, el día
+   * podía darse por cerrado con trabajo pendiente adentro.
+   *
+   * Opcional porque los teléfonos del equipo pueden tener el estado del día
+   * escrito por una versión anterior; ahí se degrada al comportamiento viejo.
+   */
+  acoes?: PlannedAction[]
   resolucoes: ResolucaoDoDia[]
 }
 
@@ -99,7 +113,7 @@ export async function lerEstadoDoDia(
 async function fixarPlano(
   vendor: string,
   dia: IsoDate,
-  ids: readonly string[],
+  acoes: readonly PlannedAction[],
 ): Promise<EstadoDoDia> {
   const existente = await lerEstadoDoDia(vendor, dia)
   if (existente) return existente
@@ -108,7 +122,8 @@ async function fixarPlano(
     vendor,
     dia,
     fixadoEm: new Date().toISOString(),
-    ids: [...ids],
+    ids: acoes.map((a) => a.id),
+    acoes: [...acoes],
     resolucoes: [],
   }
   await gravarMeta(chaveEstadoDoDia(vendor, dia), novo)
@@ -228,10 +243,12 @@ export async function fetchPlanoFixado(
         carteiraVazia: carteira.opportunities.length === 0 && carteira.leads.length === 0,
       }
     }
-    estado = await fixarPlano(vendor, hoje, plano.top.map((a) => a.id))
+    estado = await fixarPlano(vendor, hoje, plano.top)
   }
 
   const porId = new Map(plano.todas.map((a) => [a.id, a]))
+  // El espejo del congelado manda cuando el planner ya no propone esa acción.
+  const congeladas = new Map((estado.acoes ?? []).map((a) => [a.id, a]))
   const resolvidasPorId = new Map(estado.resolucoes.map((r) => [r.acaoId, r]))
   const oppPorId = new Map(carteira.opportunities.map((o) => [o.id, o]))
   const leadPorId = new Map(carteira.leads.map((l) => [l.id, l]))
@@ -259,11 +276,30 @@ export async function fetchPlanoFixado(
     }
   }
 
+  /**
+   * ¿La entidad de una tarjeta congelada sigue viva? Una oportunidad cerrada
+   * o un lead archivado no tienen por qué seguir ocupando una de las 3.
+   */
+  const entidadeViva = (acao: PlannedAction): boolean => {
+    if (acao.entidade.kind === 'opportunity') {
+      const opp = oppPorId.get(acao.entidade.id)
+      return opp !== undefined && opp.outcome === null
+    }
+    const lead = leadPorId.get(acao.entidade.id)
+    return lead !== undefined && lead.status === 'active'
+  }
+
   const fixadas: AcaoDoDia[] = []
   for (const id of estado.ids) {
-    const acao = porId.get(id)
-    // El planner ya no la lista (oportunidad cerrada, lead desactivado): se
-    // da por resuelta en silencio en vez de dejar un hueco sin explicación.
+    // El planner puede dejar de listar una acción por dos motivos muy
+    // distintos: porque el vendedor la trabajó —y entonces sigue siendo una de
+    // las 3 del día, ahora resuelta— o porque la entidad se cerró. El espejo
+    // del congelado cubre el primero; el segundo sigue saliendo de la lista.
+    const viva = porId.get(id)
+    const congelada = congeladas.get(id)
+    const acao =
+      viva ??
+      (congelada && (resolvidasPorId.has(id) || entidadeViva(congelada)) ? congelada : undefined)
     if (!acao) continue
     const resolucao =
       resolvidasPorId.get(id) ?? detectarResolucaoAutomatica(acao, estado.fixadoEm, carteira)

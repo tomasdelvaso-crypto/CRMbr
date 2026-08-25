@@ -231,7 +231,7 @@ export const test = base.extend<Fixtures>({
         // `/src/data/db.ts`; recién ahí el import dinámico devuelve el MISMO
         // módulo que usa React. Después se recarga, y el arranque en frío ya
         // encuentra la cartera en Dexie — que es el caso real.
-        if (!page.url().startsWith('http')) await page.goto('/')
+        if (!page.url().startsWith('http')) await abrir(page, '/')
         await page.evaluate(async (dados) => {
           const mod = (await import('/src/data/db.ts')) as {
             getDb: () => {
@@ -254,7 +254,7 @@ export const test = base.extend<Fixtures>({
         await page.reload()
       },
       async ir(rota: string) {
-        await page.goto(rota)
+        await abrir(page, rota)
       },
     }
 
@@ -262,7 +262,7 @@ export const test = base.extend<Fixtures>({
   },
 
   app: async ({ page, ventus }, usar) => {
-    await page.goto('/')
+    await abrir(page, '/')
     await ventus.semear()
     await esperarPelaTelaHoje(page)
     await usar(page)
@@ -272,6 +272,17 @@ export const test = base.extend<Fixtures>({
 /* ══════════════════════════════════════════════════════════════════════════
    Helpers de interacción
    ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Abre una ruta.
+ *
+ * `domcontentloaded` y no `load` a propósito: la app abre un WebSocket de
+ * realtime que, contra el doble, nunca conecta. Esperar `load` sería esperar a
+ * que ese socket se rinda, en cada navegación de cada prueba.
+ */
+export async function abrir(page: Page, rota: string): Promise<void> {
+  await page.goto(rota, { waitUntil: 'domcontentloaded' })
+}
 
 /** La sección de las 3 tarjetas. Su rótulo es fijo en la pantalla Hoje. */
 export function secaoDoDia(page: Page): Locator {

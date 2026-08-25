@@ -108,15 +108,26 @@ test.describe('Tela Hoje', () => {
     await expect(cartoes).toHaveCount(3)
     await expect(app.getByRole('button', { name: 'Fazer agora' })).toHaveCount(0)
 
+    // La escritura sale recién cuando vence la ventana de deshacer de 5 s: es
+    // lo que hace que «Desfazer» no tenga que compensar nada ya escrito.
+    await app.waitForTimeout(5_500)
+
     // El día está congelado en Dexie, así que recargar no lo reabre.
     await app.reload()
     await esperarPelaTelaHoje(app)
     await expect(app.getByRole('heading', { name: 'Pronto por hoje' })).toBeVisible()
     await expect(cartoesDoDia(app)).toHaveCount(3)
 
-    // Las tres resoluciones se encolaron para subir; ninguna se perdió.
-    const outbox = await ventus.ler<{ tabla: string }>('outbox')
-    expect(outbox.length).toBeGreaterThanOrEqual(3)
+    // Las tres resoluciones se escribieron de verdad: quedaron en el espejo
+    // local y salieron para el servidor. El outbox está vacío justamente
+    // porque subieron — con red, encolar y vaciar es el camino feliz.
+    const atividades = await ventus.ler<{ vendor: string }>('activities')
+    const toques = await ventus.ler<{ lead_id: number }>('touchpoints')
+    expect(atividades.length + toques.length).toBeGreaterThanOrEqual(3)
+    expect(await ventus.pendentesNoOutbox()).toBe(0)
+
+    const escritas = ventus.pedidos.filter((p) => p.metodo === 'POST' || p.metodo === 'PATCH')
+    expect(escritas.length).toBeGreaterThanOrEqual(3)
   })
 
   test('carteira vazia não se confunde com dia tranquilo', async ({ page, ventus }) => {

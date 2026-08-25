@@ -40,6 +40,13 @@ export interface HealthResponse {
   }
 }
 
+/** Basta UMA das variáveis: são nomes alternativos da mesma credencial. */
+function porEnvAlias(...nomes: readonly string[]): Dependencia {
+  return nomes.some((n) => temEnv(n))
+    ? { estado: 'configurado', ms: null, detalhe: null }
+    : { estado: 'ausente', ms: null, detalhe: `configure ${nomes.join(' ou ')}` }
+}
+
 function porEnv(...nomes: readonly string[]): Dependencia {
   const faltando = nomes.filter((n) => !temEnv(n))
   return faltando.length === 0
@@ -75,7 +82,7 @@ const handler: ApiHandler = async (req, res) => {
   const supabase = await sondarSupabase()
   const dependencias: HealthResponse['dependencias'] = {
     supabase,
-    anthropic: porEnv('ANTHROPIC_API_KEY'),
+    anthropic: porEnvAlias('ANTHROPIC_API_KEY', 'CLAUDE_API_KEY'),
     groq: porEnv('GROQ_API_KEY'),
     // Basta con UNA de las dos formas de verificar la firma: JWKS (asimétrica,
     // derivada de SUPABASE_URL) o el secreto HS256 legado.
