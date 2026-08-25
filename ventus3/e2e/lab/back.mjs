@@ -19,6 +19,15 @@ await p.goto('http://localhost:5288/golden',{waitUntil:'domcontentloaded'})
 await p.getByRole('button',{name:'Começar a hora'}).click()
 await p.waitForSelector('[role=group][aria-label*="Contato"]')
 p.on('console', m=>{ if(m.type()==='error') console.log('[err]', m.text().slice(0,200)) })
+await p.evaluate(()=>{
+  window.__log=[]
+  const ps=history.pushState.bind(history), rs=history.replaceState.bind(history), bk=history.back.bind(history), go=history.go.bind(history)
+  history.pushState=(...a)=>{window.__log.push([Date.now(),'pushState',JSON.stringify(a[0])]);return ps(...a)}
+  history.replaceState=(...a)=>{window.__log.push([Date.now(),'replaceState',JSON.stringify(a[0])]);return rs(...a)}
+  history.back=(...a)=>{window.__log.push([Date.now(),'back']);return bk(...a)}
+  history.go=(...a)=>{window.__log.push([Date.now(),'go',String(a[0])]);return go(...a)}
+  window.addEventListener('popstate',(e)=>window.__log.push([Date.now(),'POPSTATE',JSON.stringify(e.state)]),true)
+})
 console.log('historia antes:', await p.evaluate(()=>history.length), p.url())
 await p.goBack({waitUntil:'commit'}).catch(e=>console.log('goBack err', e.message.slice(0,80)))
 for (let i=0;i<6;i++){
@@ -27,4 +36,7 @@ for (let i=0;i<6;i++){
   const cont = await p.getByRole('button',{name:'Continuar'}).count()
   console.log(i, 'dialogs', d, 'continuar', cont, 'url', p.url(), 'hist', await p.evaluate(()=>history.length))
 }
+const log = await p.evaluate(()=>window.__log)
+const t0 = log.length?log[0][0]:0
+for (const l of log) console.log('  +'+(l[0]-t0)+'ms', l.slice(1).join(' '))
 await b.close()
