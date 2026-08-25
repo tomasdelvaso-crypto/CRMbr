@@ -19,16 +19,16 @@ import {
   transportesDe,
   ttlRestante,
   urgenciaDe,
-} from '../_politica'
-import { motivoSemAcaoDireta } from '../_catalogo'
+} from '../_politica.js'
+import { motivoSemAcaoDireta } from '../_catalogo.js'
 import type {
   AvisoNaFila,
   CanaisDisponiveis,
   GastoDoDia,
   PreferenciasDeAviso,
   Prioridade,
-} from '../_tipos'
-import { PREFS_PADRAO } from '../_tipos'
+} from '../_tipos.js'
+import { PREFS_PADRAO } from '../_tipos.js'
 
 /* ── Fixtures ─────────────────────────────────────────────────────────────── */
 

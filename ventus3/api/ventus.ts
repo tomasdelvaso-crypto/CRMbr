@@ -29,13 +29,13 @@
 // existe en buena medida para matar eso.
 
 import type Anthropic from '@anthropic-ai/sdk'
-import type { Confianca, IsoDate } from '../src/core'
-import { getScaleScores, isIsoDate, todayBr } from '../src/core'
-import { MODELOS, anthropic, custoUsd, systemComCache } from './_lib/anthropic'
-import { requireAuth } from './_lib/auth'
-import type { AuthContext } from './_lib/auth'
-import { blocoDeCasos } from './_lib/casos'
-import type { AlvoDaCarteira, CarteiraDoVendedor } from './_lib/carteira'
+import type { Confianca, IsoDate } from '../src/core/index.js'
+import { getScaleScores, isIsoDate, todayBr } from '../src/core/index.js'
+import { MODELOS, anthropic, custoUsd, systemComCache } from './_lib/anthropic.js'
+import { requireAuth } from './_lib/auth.js'
+import type { AuthContext } from './_lib/auth.js'
+import { blocoDeCasos } from './_lib/casos.js'
+import type { AlvoDaCarteira, CarteiraDoVendedor } from './_lib/carteira.js'
 import {
   alvosDaCarteira,
   carregarCarteira,
@@ -43,16 +43,16 @@ import {
   diasSemContato,
   fichaDaOportunidade,
   resolverAlvo,
-} from './_lib/carteira'
-import type { ApiHandler } from './_lib/http'
-import { exigirMetodo, lerJson, rota } from './_lib/http'
-import { responderSemTokens } from './_lib/motor'
-import type { MudancaProposta, PropostaCriada } from './_lib/propose'
-import { proporAcao } from './_lib/propose'
-import { abrirSse } from './_lib/sse'
-import { ErroDeTool, VENTUS_TOOLS, ehVentusTool, erroDataInvalida, toolDefs } from './_lib/tools'
-import type { VentusTool } from './_lib/tools'
-import { checarCota, registrarUso } from './_lib/usage'
+} from './_lib/carteira.js'
+import type { ApiHandler } from './_lib/http.js'
+import { exigirMetodo, lerJson, rota } from './_lib/http.js'
+import { responderSemTokens } from './_lib/motor.js'
+import type { MudancaProposta, PropostaCriada } from './_lib/propose.js'
+import { proporAcao } from './_lib/propose.js'
+import { abrirSse } from './_lib/sse.js'
+import { ErroDeTool, VENTUS_TOOLS, ehVentusTool, erroDataInvalida, toolDefs } from './_lib/tools.js'
+import type { VentusTool } from './_lib/tools.js'
+import { checarCota, registrarUso } from './_lib/usage.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Contrato (espejo de src/screens/Ventus/contrato.ts)

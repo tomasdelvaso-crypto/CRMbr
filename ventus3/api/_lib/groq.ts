@@ -16,8 +16,8 @@
 //    rechaza un archivo perfectamente válido. Por eso el nombre se deriva del
 //    mimeType y se cae a `.ogg` cuando no se reconoce.
 
-import { requireEnv } from './env'
-import { HttpError } from './http'
+import { requireEnv } from './env.js'
+import { HttpError } from './http.js'
 
 const URL_GROQ = 'https://api.groq.com/openai/v1/audio/transcriptions'
 export const MODELO_ASR = 'whisper-large-v3-turbo'

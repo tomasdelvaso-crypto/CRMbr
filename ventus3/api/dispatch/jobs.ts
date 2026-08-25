@@ -19,7 +19,7 @@
 // el cron del v2 escribiendo 4.521 avisos sin preguntarle a nadie.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Activity, Opportunity, RiskSignal, Vendor } from '../../src/core'
+import type { Activity, Opportunity, RiskSignal, Vendor } from '../../src/core/index.js'
 import {
   addDays,
   avaliarRiscos,
@@ -34,14 +34,14 @@ import {
   textosParaAvancar,
   todayBr,
   weekStart,
-} from '../../src/core'
-import type { AuthContext } from '../_lib/auth'
-import { carregarCarteira } from '../_lib/carteira'
-import type { ApiHandler } from '../_lib/http'
-import { exigirMetodo, pedidoInvalido, rota } from '../_lib/http'
-import { exigirCron } from './_cron'
-import type { NovoAviso } from './_tipos'
-import { db, enfileirarVarios, vendedoresAtivos } from './_repo'
+} from '../../src/core/index.js'
+import type { AuthContext } from '../_lib/auth.js'
+import { carregarCarteira } from '../_lib/carteira.js'
+import type { ApiHandler } from '../_lib/http.js'
+import { exigirMetodo, pedidoInvalido, rota } from '../_lib/http.js'
+import { exigirCron } from './_cron.js'
+import type { NovoAviso } from './_tipos.js'
+import { db, enfileirarVarios, vendedoresAtivos } from './_repo.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Utilidades comunes

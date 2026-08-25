@@ -10,8 +10,8 @@
 //   · La descripción de la escala DOR se lee con `getScaleDescription`, que
 //     tolera los tres formatos históricos del jsonb `scales`.
 
-import type { Opportunity, ProductLine } from '../../src/core'
-import { getScale, getScaleDescription } from '../../src/core'
+import type { Opportunity, ProductLine } from '../../src/core/index.js'
+import { getScale, getScaleDescription } from '../../src/core/index.js'
 
 export interface CasoDeExito {
   chave: string

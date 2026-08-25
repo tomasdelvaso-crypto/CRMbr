@@ -15,12 +15,12 @@
 // Todo lo de acá exige sesión (fail-closed). El vendedor sólo puede tocar sus
 // propias filas: el `.eq('vendor', ...)` está en el servidor, no en el cliente.
 
-import type { ApiHandler } from '../_lib/http'
-import { handlePreflight, lerJson, pedidoInvalido, proibido, rota } from '../_lib/http'
-import { requireAuth } from '../_lib/auth'
-import { serviceClient } from '../_lib/supabase'
-import { todayBr } from '../../src/core'
-import { chavePublicaVapid, vapidConfigurado } from './_webpush'
+import type { ApiHandler } from '../_lib/http.js'
+import { handlePreflight, lerJson, pedidoInvalido, proibido, rota } from '../_lib/http.js'
+import { requireAuth } from '../_lib/auth.js'
+import { serviceClient } from '../_lib/supabase.js'
+import { todayBr } from '../../src/core/index.js'
+import { chavePublicaVapid, vapidConfigurado } from './_webpush.js'
 
 interface CorpoDeTrack {
   acao?: string

@@ -16,7 +16,7 @@
 // stream y lo entregue entero al final — con eso, el streaming existe en el
 // servidor y no existe en el teléfono.
 
-import type { ApiResponse } from './http'
+import type { ApiResponse } from './http.js'
 
 export interface CanalSse {
   /** Manda un evento. Devuelve false si la conexión ya se cerró. */

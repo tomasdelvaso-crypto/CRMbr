@@ -12,8 +12,8 @@
 // acá sólo se valida el límite duro de 64 bytes que impone la API de Telegram,
 // porque pasarse hace que el mensaje entero sea rechazado con 400.
 
-import { optionalEnv, requireEnv } from '../_lib/env'
-import type { AcaoDeAviso } from './_tipos'
+import { optionalEnv, requireEnv } from '../_lib/env.js'
+import type { AcaoDeAviso } from './_tipos.js'
 
 /** Límite de la API de Telegram para el texto de un mensaje. */
 export const MAX_CHARS = 4096

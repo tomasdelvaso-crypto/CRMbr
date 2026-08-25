@@ -30,13 +30,13 @@
 // escribió.
 
 import { createHash, randomUUID } from 'node:crypto'
-import type { Confianca, VentusActionKind, VentusEntityKind, VentusSurface } from '../../src/core'
-import type { AuthContext } from './auth'
-import { exigirPropriedade } from './auth'
-import { HttpError } from './http'
-import { serviceClient } from './supabase'
-import { TOOLS_AUTOCOMMIT, TOOLS_LEITURA, TOOL_LABELS } from './tools'
-import type { VentusTool } from './tools'
+import type { Confianca, VentusActionKind, VentusEntityKind, VentusSurface } from '../../src/core/index.js'
+import type { AuthContext } from './auth.js'
+import { exigirPropriedade } from './auth.js'
+import { HttpError } from './http.js'
+import { serviceClient } from './supabase.js'
+import { TOOLS_AUTOCOMMIT, TOOLS_LEITURA, TOOL_LABELS } from './tools.js'
+import type { VentusTool } from './tools.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Mapeo tool → tipo de acción de la tabla

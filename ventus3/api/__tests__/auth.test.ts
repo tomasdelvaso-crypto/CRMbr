@@ -8,7 +8,7 @@
 
 import { createHmac } from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { criarFakeDb } from './fake-supabase'
+import { criarFakeDb } from './fake-supabase.js'
 
 const SEGREDO = 'segredo-de-teste-do-ventus-v3'
 const URL_SUPABASE = 'https://projeto.supabase.co'
@@ -16,9 +16,9 @@ const URL_SUPABASE = 'https://projeto.supabase.co'
 const db = criarFakeDb()
 vi.mock('../_lib/supabase', () => ({ serviceClient: () => db }))
 
-const { limparCacheVendor, podeTocar, requireAuth, verificarJwt } = await import('../_lib/auth')
-const { HttpError } = await import('../_lib/http')
-import type { ApiRequest } from '../_lib/http'
+const { limparCacheVendor, podeTocar, requireAuth, verificarJwt } = await import('../_lib/auth.js')
+const { HttpError } = await import('../_lib/http.js')
+import type { ApiRequest } from '../_lib/http.js'
 
 /* ── Utilidades ─────────────────────────────────────────────────────────── */
 

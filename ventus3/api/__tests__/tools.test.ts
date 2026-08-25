@@ -12,7 +12,7 @@
 //     algo salió mal. Un error opaco quema un turno entero.
 
 import { describe, expect, it } from 'vitest'
-import { ACTIVITY_RESULTS, ACTIVITY_TYPES, SCALE_KEYS } from '../../src/core'
+import { ACTIVITY_RESULTS, ACTIVITY_TYPES, SCALE_KEYS } from '../../src/core/index.js'
 import {
   TOOLS_AUTOCOMMIT,
   TOOLS_LEITURA,
@@ -26,9 +26,9 @@ import {
   erroGateTravado,
   erroSemProva,
   toolDefs,
-} from '../_lib/tools'
-import { normalizar, resolverAlvo } from '../_lib/carteira'
-import type { AlvoDaCarteira } from '../_lib/carteira'
+} from '../_lib/tools.js'
+import { normalizar, resolverAlvo } from '../_lib/carteira.js'
+import type { AlvoDaCarteira } from '../_lib/carteira.js'
 
 /** Las 14 exactas del PLANO (M9) y del contrato de la tela Ventus. */
 const ESPERADAS = [

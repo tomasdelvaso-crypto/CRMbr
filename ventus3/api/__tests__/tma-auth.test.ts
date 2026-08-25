@@ -13,7 +13,7 @@ import {
   TTL_PADRAO_SEG,
   montarDataCheckString,
   validarInitData,
-} from '../_lib/tma'
+} from '../_lib/tma.js'
 
 const TOKEN = '7654321:AAF-fake-bot-token-para-testes-do-ventus'
 const OUTRO_TOKEN = '7654321:AAF-token-de-outro-bot-qualquer'

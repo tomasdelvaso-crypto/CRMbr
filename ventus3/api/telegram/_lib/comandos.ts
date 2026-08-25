@@ -6,10 +6,10 @@
 // dominio que la app: `rankDay()`, `gatesFaltantes()`, `anelDoDia()`,
 // `estadoDaSequencia()`. No hay un segundo motor de priorización en el bot.
 
-import type { IsoDate } from '../../../src/core'
-import { MAX_TOUCHPOINTS, addDays, todayBr } from '../../../src/core'
-import { ErroDeTool } from '../../_lib/tools'
-import type { CanalDoVendedor } from './identidade'
+import type { IsoDate } from '../../../src/core/index.js'
+import { MAX_TOUCHPOINTS, addDays, todayBr } from '../../../src/core/index.js'
+import { ErroDeTool } from '../../_lib/tools.js'
+import type { CanalDoVendedor } from './identidade.js'
 import {
   aneisDeHoje,
   buscarPorNome,
@@ -23,8 +23,8 @@ import {
   placarDaSemana,
   planoDoDia,
   sequenciaDoVendedor,
-} from './dados'
-import { fpLead, fpOportunidade, fingerprint } from './callback'
+} from './dados.js'
+import { fpLead, fpOportunidade, fingerprint } from './callback.js'
 import {
   botaoUrl,
   teclado,
@@ -42,10 +42,10 @@ import {
   textoDoStatus,
   textoDosAneis,
   urlDoApp,
-} from './render'
-import { chaveDeSessao, gravarSessao } from './sessoes'
-import type { ExtraDeMensagem } from './tg'
-import { esc } from './tg'
+} from './render.js'
+import { chaveDeSessao, gravarSessao } from './sessoes.js'
+import type { ExtraDeMensagem } from './tg.js'
+import { esc } from './tg.js'
 
 export interface RespostaDeComando {
   texto: string

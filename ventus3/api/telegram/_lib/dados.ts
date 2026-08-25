@@ -23,7 +23,7 @@ import type {
   PlannedAction,
   Task,
   Touchpoint,
-} from '../../../src/core'
+} from '../../../src/core/index.js'
 import {
   DEFAULT_RING_GOALS,
   MAX_TOUCHPOINTS,
@@ -40,12 +40,12 @@ import {
   rankDay,
   todayBr,
   weekStart,
-} from '../../../src/core'
-import type { AuthContext } from '../../_lib/auth'
-import type { CarteiraDoVendedor } from '../../_lib/carteira'
-import { carregarCarteira, diasSemContato, resolverAlvo, alvosDaCarteira } from '../../_lib/carteira'
-import type { AlvoDaCarteira } from '../../_lib/carteira'
-import { serviceClient } from '../../_lib/supabase'
+} from '../../../src/core/index.js'
+import type { AuthContext } from '../../_lib/auth.js'
+import type { CarteiraDoVendedor } from '../../_lib/carteira.js'
+import { carregarCarteira, diasSemContato, resolverAlvo, alvosDaCarteira } from '../../_lib/carteira.js'
+import type { AlvoDaCarteira } from '../../_lib/carteira.js'
+import { serviceClient } from '../../_lib/supabase.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Memo de cartera

@@ -10,10 +10,10 @@
 //     clasifica de menos, el equipo paga opus para contar filas.
 
 import { describe, expect, it } from 'vitest'
-import { boundaryDoContentType, parseMultipart } from '../_lib/multipart'
-import { extensaoDoMime, nomeSeguro } from '../_lib/groq'
-import { classificar, responderSemTokens } from '../_lib/motor'
-import type { CarteiraDoVendedor } from '../_lib/carteira'
+import { boundaryDoContentType, parseMultipart } from '../_lib/multipart.js'
+import { extensaoDoMime, nomeSeguro } from '../_lib/groq.js'
+import { classificar, responderSemTokens } from '../_lib/motor.js'
+import type { CarteiraDoVendedor } from '../_lib/carteira.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Multipart

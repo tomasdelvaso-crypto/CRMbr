@@ -21,9 +21,9 @@
 // real: si la base no contesta, se deja pasar y se loguea (un vendedor en el
 // galpón sin poder registrar una visita es peor que un dólar de más).
 
-import type { AuthContext } from './auth'
-import { limiteExcedido } from './http'
-import { serviceClient } from './supabase'
+import type { AuthContext } from './auth.js'
+import { limiteExcedido } from './http.js'
+import { serviceClient } from './supabase.js'
 
 const TABELA_USO = 'ventus_audit'
 const EVENTO_USO = 'ventus_uso'

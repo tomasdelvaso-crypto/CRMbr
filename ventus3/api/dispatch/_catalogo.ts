@@ -9,7 +9,7 @@
 //   `agido_em` por tipo. Eso es lo que permite MATAR un tipo que nadie lee sin
 //   discutir de memoria.
 
-import type { AcaoDeAviso, CanalDaFila, Prioridade } from './_tipos'
+import type { AcaoDeAviso, CanalDaFila, Prioridade } from './_tipos.js'
 
 export interface DefinicaoDeTipo {
   prioridade: Prioridade

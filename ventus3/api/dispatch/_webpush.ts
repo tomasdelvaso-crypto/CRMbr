@@ -19,8 +19,8 @@
 
 import { createCipheriv, createECDH, createHmac, createPrivateKey, randomBytes, sign } from 'node:crypto'
 import type { KeyObject } from 'node:crypto'
-import { optionalEnv, requireEnv } from '../_lib/env'
-import type { UrgenciaPush } from './_tipos'
+import { optionalEnv, requireEnv } from '../_lib/env.js'
+import type { UrgenciaPush } from './_tipos.js'
 
 export interface AssinaturaPush {
   id: string

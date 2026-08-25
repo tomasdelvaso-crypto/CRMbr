@@ -6,7 +6,7 @@
 //     rompe el `parse_mode: HTML` y Telegram rechaza el mensaje entero.
 //   · Ningún mensaje termina sin una acción. «Abra o app» no es una acción.
 
-import type { Commitment, IsoDate, Lead, PlannedAction } from '../../../src/core'
+import type { Commitment, IsoDate, Lead, PlannedAction } from '../../../src/core/index.js'
 import {
   CHANNEL_LABELS,
   LEAD_STAGE_LABELS,
@@ -18,14 +18,14 @@ import {
   formatarDataCurta,
   proximoTouchpoint,
   resumirMotivos,
-} from '../../../src/core'
-import { optionalEnv } from '../../_lib/env'
-import type { AcaoDeCallback } from './callback'
-import { montarCallback } from './callback'
-import type { FichaDeStatus, LinhaDePipeline, Parada, Pendencia } from './dados'
-import type { RascunhoDeRegistro } from './sessoes'
-import type { BotaoInline, TecladoInline } from './tg'
-import { esc } from './tg'
+} from '../../../src/core/index.js'
+import { optionalEnv } from '../../_lib/env.js'
+import type { AcaoDeCallback } from './callback.js'
+import { montarCallback } from './callback.js'
+import type { FichaDeStatus, LinhaDePipeline, Parada, Pendencia } from './dados.js'
+import type { RascunhoDeRegistro } from './sessoes.js'
+import type { BotaoInline, TecladoInline } from './tg.js'
+import { esc } from './tg.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Iconografía

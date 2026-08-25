@@ -11,8 +11,8 @@
 // Se trabaja sobre Buffer, no sobre string: convertir el cuerpo a UTF-8 para
 // buscar el boundary corrompe los bytes del audio.
 
-import { HttpError, header } from './http'
-import type { ApiRequest } from './http'
+import { HttpError, header } from './http.js'
+import type { ApiRequest } from './http.js'
 
 export interface ParteMultipart {
   nome: string

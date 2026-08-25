@@ -27,10 +27,10 @@
 // prefijo estable (~2.500 tokens de PPVVCC, gates, cadencia y tono) lleva el
 // breakpoint y la cartera va DESPUÉS, donde no lo invalida.
 
-import type { ActivityResult, ActivityType, Channel, ScaleKey, TouchpointResult } from '../../../src/core'
-import { ACTIVITY_RESULTS, ACTIVITY_TYPES, SCALE_KEYS, isIsoDate, todayBr } from '../../../src/core'
-import { MODELOS, anthropic, custoUsd, systemComCache, textoDaResposta } from '../../_lib/anthropic'
-import { registrarUso } from '../../_lib/usage'
+import type { ActivityResult, ActivityType, Channel, ScaleKey, TouchpointResult } from '../../../src/core/index.js'
+import { ACTIVITY_RESULTS, ACTIVITY_TYPES, SCALE_KEYS, isIsoDate, todayBr } from '../../../src/core/index.js'
+import { MODELOS, anthropic, custoUsd, systemComCache, textoDaResposta } from '../../_lib/anthropic.js'
+import { registrarUso } from '../../_lib/usage.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Schema

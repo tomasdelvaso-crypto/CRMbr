@@ -11,14 +11,14 @@
 //      `idempotente: true` y NO vuelve a ejecutar.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { criarFakeDb } from './fake-supabase'
-import type { AuthContext } from '../_lib/auth'
+import { criarFakeDb } from './fake-supabase.js'
+import type { AuthContext } from '../_lib/auth.js'
 
 const db = criarFakeDb()
 vi.mock('../_lib/supabase', () => ({ serviceClient: () => db }))
 
 const { commitAcao, confiancaEfetiva, descartarAcao, podeAutoCommit, proporAcao, tipoDeAcao } =
-  await import('../_lib/propose')
+  await import('../_lib/propose.js')
 
 const ACTION_ID = '9f1c2b3a-4d5e-4f60-8a71-0b2c3d4e5f60'
 

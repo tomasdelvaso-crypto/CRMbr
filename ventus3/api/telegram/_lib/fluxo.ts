@@ -26,17 +26,17 @@
 // como `service_role` y para Postgres eso es `__service__`, que puede todo.
 
 import { randomUUID } from 'node:crypto'
-import type { Channel, IsoDate, Lead, Opportunity, TouchpointResult } from '../../../src/core'
-import { getScaleScores, todayBr } from '../../../src/core'
-import type { AuthContext } from '../../_lib/auth'
-import { exigirPropriedade } from '../../_lib/auth'
-import { auditar, proporAcao } from '../../_lib/propose'
-import { serviceClient } from '../../_lib/supabase'
-import type { CarteiraDoVendedor } from '../../_lib/carteira'
-import { citacaoVerificada } from './extracao'
-import type { RegistroBruto } from './extracao'
-import { oportunidadeDe, leadDe, rotuloDe } from './dados'
-import type { RascunhoDeRegistro, UltimoRegistro } from './sessoes'
+import type { Channel, IsoDate, Lead, Opportunity, TouchpointResult } from '../../../src/core/index.js'
+import { getScaleScores, todayBr } from '../../../src/core/index.js'
+import type { AuthContext } from '../../_lib/auth.js'
+import { exigirPropriedade } from '../../_lib/auth.js'
+import { auditar, proporAcao } from '../../_lib/propose.js'
+import { serviceClient } from '../../_lib/supabase.js'
+import type { CarteiraDoVendedor } from '../../_lib/carteira.js'
+import { citacaoVerificada } from './extracao.js'
+import type { RegistroBruto } from './extracao.js'
+import { oportunidadeDe, leadDe, rotuloDe } from './dados.js'
+import type { RascunhoDeRegistro, UltimoRegistro } from './sessoes.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Del bruto del modelo al borrador

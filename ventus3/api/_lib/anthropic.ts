@@ -36,9 +36,9 @@ import {
   SCALE_LABELS,
   STAGES,
   STAGE_GATES,
-} from '../../src/core'
-import { requireEnv } from './env'
-import { catalogoDeTools } from './tools'
+} from '../../src/core/index.js'
+import { requireEnv } from './env.js'
+import { catalogoDeTools } from './tools.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Modelos y precios (USD por millón de tokens, precio de lista)

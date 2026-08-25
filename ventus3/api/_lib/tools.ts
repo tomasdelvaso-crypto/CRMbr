@@ -24,14 +24,14 @@
 //    este archivo. Los CHECK de Postgres siguen siendo la última palabra.
 
 import type Anthropic from '@anthropic-ai/sdk'
-import type { ScaleKey, StageId } from '../../src/core'
+import type { ScaleKey, StageId } from '../../src/core/index.js'
 import {
   ACTIVITY_RESULTS,
   ACTIVITY_TYPES,
   SCALE_KEYS,
   SCALE_LABELS,
   SINAIS_DO_COMPRADOR,
-} from '../../src/core'
+} from '../../src/core/index.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Catálogo

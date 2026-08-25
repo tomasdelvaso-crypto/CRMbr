@@ -22,11 +22,11 @@
 
 import { createHmac, createPublicKey, timingSafeEqual, verify as verifySignature } from 'node:crypto'
 import type { KeyObject } from 'node:crypto'
-import type { Vendor } from '../../src/core'
-import { optionalEnv, requireEnv } from './env'
-import { HttpError, header, naoAutorizado, proibido } from './http'
-import type { ApiRequest } from './http'
-import { serviceClient } from './supabase'
+import type { Vendor } from '../../src/core/index.js'
+import { optionalEnv, requireEnv } from './env.js'
+import { HttpError, header, naoAutorizado, proibido } from './http.js'
+import type { ApiRequest } from './http.js'
+import { serviceClient } from './supabase.js'
 
 export interface AuthContext {
   /** sub del JWT de Supabase. */
@@ -357,4 +357,4 @@ export function exigirPropriedade(ctx: AuthContext, dono: string | null | undefi
 }
 
 // Re-export para no romper a quien ya importa checkRateLimit desde acá.
-export { checkRateLimit } from './usage'
+export { checkRateLimit } from './usage.js'

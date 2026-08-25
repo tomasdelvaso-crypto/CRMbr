@@ -9,10 +9,10 @@
 // tasa por causa, y un texto libre no se agrega: 40 comentarios distintos no
 // dicen si el problema es el prompt, el contexto o la ficha.
 
-import { requireAuth } from '../_lib/auth'
-import type { ApiHandler } from '../_lib/http'
-import { exigirMetodo, lerJson, pedidoInvalido, rota } from '../_lib/http'
-import { serviceClient } from '../_lib/supabase'
+import { requireAuth } from '../_lib/auth.js'
+import type { ApiHandler } from '../_lib/http.js'
+import { exigirMetodo, lerJson, pedidoInvalido, rota } from '../_lib/http.js'
+import { serviceClient } from '../_lib/supabase.js'
 
 type FeedbackVoto = 'bom' | 'ruim'
 type FeedbackMotivo = 'errado' | 'generico' | 'fora_de_contexto'

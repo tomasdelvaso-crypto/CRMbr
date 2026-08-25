@@ -24,8 +24,8 @@
 // siempre true. La propiedad se revalida en TypeScript con `exigirPropriedade`
 // del mismo `_lib/auth` que usa la app — un solo Ventus, no dos.
 
-import type { AuthContext } from '../../_lib/auth'
-import { serviceClient } from '../../_lib/supabase'
+import type { AuthContext } from '../../_lib/auth.js'
+import { serviceClient } from '../../_lib/supabase.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Canal

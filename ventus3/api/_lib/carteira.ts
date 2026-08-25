@@ -22,11 +22,11 @@ import type {
   Task,
   Touchpoint,
   Vendor,
-} from '../../src/core'
-import { addDays, getDaysSinceLastContact, getScaleScores, getStageName, todayBr } from '../../src/core'
-import type { AuthContext } from './auth'
-import { erroAlvoAmbiguo, erroAlvoNaoEncontrado } from './tools'
-import { serviceClient } from './supabase'
+} from '../../src/core/index.js'
+import { addDays, getDaysSinceLastContact, getScaleScores, getStageName, todayBr } from '../../src/core/index.js'
+import type { AuthContext } from './auth.js'
+import { erroAlvoAmbiguo, erroAlvoNaoEncontrado } from './tools.js'
+import { serviceClient } from './supabase.js'
 
 /** Códigos de Postgres que significan «eso todavía no existe». */
 const AUSENTE = new Set(['42P01', '42703', 'PGRST205', 'PGRST202'])

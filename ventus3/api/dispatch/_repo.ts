@@ -4,10 +4,10 @@
 // sucio, concentrado y con los nombres de columna de 0005 sin traducir.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Vendor } from '../../src/core'
-import { addDays, todayBr } from '../../src/core'
-import { serviceClient } from '../_lib/supabase'
-import { motivoSemAcaoDireta, definicaoDe, ehTipoConhecido } from './_catalogo'
+import type { Vendor } from '../../src/core/index.js'
+import { addDays, todayBr } from '../../src/core/index.js'
+import { serviceClient } from '../_lib/supabase.js'
+import { motivoSemAcaoDireta, definicaoDe, ehTipoConhecido } from './_catalogo.js'
 import type {
   AvisoNaFila,
   CanaisDisponiveis,
@@ -17,9 +17,9 @@ import type {
   MotivoDeSupressao,
   NovoAviso,
   PreferenciasDeAviso,
-} from './_tipos'
-import { PREFS_PADRAO } from './_tipos'
-import type { AssinaturaPush } from './_webpush'
+} from './_tipos.js'
+import { PREFS_PADRAO } from './_tipos.js'
+import type { AssinaturaPush } from './_webpush.js'
 
 export const db = (): SupabaseClient => serviceClient()
 

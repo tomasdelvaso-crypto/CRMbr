@@ -36,8 +36,8 @@
 // preparo de reunión y Golden Hour. Nadie recibe más de 4; lo urgente nunca
 // se queda afuera por culpa de lo rutinario.
 
-import { addDays, brOffset, minutosDoDiaBRT, todayBr } from '../../src/core'
-import { definicaoDe } from './_catalogo'
+import { addDays, brOffset, minutosDoDiaBRT, todayBr } from '../../src/core/index.js'
+import { definicaoDe } from './_catalogo.js'
 import type {
   AdiamentoPlanejado,
   AvisoNaFila,
@@ -52,7 +52,7 @@ import type {
   SupressaoPlanejada,
   Transporte,
   UrgenciaPush,
-} from './_tipos'
+} from './_tipos.js'
 
 /** Lugares del presupuesto reservados a la prioridad 1. Ver el bloque de arriba. */
 export const RESERVA_PRIORIDADE_1 = 2

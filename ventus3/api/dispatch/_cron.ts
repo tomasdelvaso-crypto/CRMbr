@@ -8,9 +8,9 @@
 // un job que corre para cualquiera.
 
 import { timingSafeEqual } from 'node:crypto'
-import { requireEnv } from '../_lib/env'
-import type { ApiRequest } from '../_lib/http'
-import { header, naoAutorizado } from '../_lib/http'
+import { requireEnv } from '../_lib/env.js'
+import type { ApiRequest } from '../_lib/http.js'
+import { header, naoAutorizado } from '../_lib/http.js'
 
 /** Comparación en tiempo constante, tolerante a longitudes distintas. */
 function igual(a: string, b: string): boolean {

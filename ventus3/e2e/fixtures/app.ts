@@ -90,7 +90,11 @@ export interface PedidoAoServidor {
 }
 
 /** Contesta como PostgREST lo haría, sin base detrás. */
-async function responderComoPostgrest(rota: Route, registro: PedidoAoServidor[]): Promise<void> {
+async function responderComoPostgrest(
+  rota: Route,
+  registro: PedidoAoServidor[],
+  servidor: () => Record<string, unknown[]>,
+): Promise<void> {
   const pedido = rota.request()
   const url = pedido.url()
   registro.push({ metodo: pedido.method(), url, corpo: pedido.postData() })
@@ -138,9 +142,17 @@ async function responderComoPostgrest(rota: Route, registro: PedidoAoServidor[])
     return
   }
 
-  // Lecturas: cartera vacía. Los datos de la prueba están en Dexie y el pull
-  // no tiene por qué pisarlos.
-  await json([])
+  // Lecturas. Por defecto, vacío: los datos de la prueba ya están en Dexie y
+  // el pull incremental no tiene por qué pisarlos.
+  //
+  // La excepción es `vendors`, y no es un capricho: cuando la cartera local
+  // está vacía con sesión viva, `recuperarDePurga()` interpreta —bien— que
+  // iOS purgó el store, borra el espejo (incluido el vendedor) y rehace la
+  // carga desde el servidor. Un doble que devolviera [] también para vendors
+  // dejaría a la app sin identidad para siempre, que no es lo que pasaría en
+  // producción.
+  const tabela = /\/rest\/v1\/([a-z_]+)/.exec(url)?.[1] ?? ''
+  await json(servidor()[tabela] ?? [])
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -169,10 +181,13 @@ interface Fixtures {
 export const test = base.extend<Fixtures>({
   ventus: async ({ context, page }, usar) => {
     const pedidos: PedidoAoServidor[] = []
+    // Lo que «el servidor» sabe. Sólo el vendedor: ver el comentario en
+    // responderComoPostgrest().
+    let servidor: Record<string, unknown[]> = { vendors: sementePadrao().vendors }
 
     // Defensa 1: el doble contesta por el host stub.
     await context.route(`**://${HOST_STUB}/**`, (rota) =>
-      responderComoPostgrest(rota, pedidos),
+      responderComoPostgrest(rota, pedidos, () => servidor),
     )
     // Defensa 2: cualquier cosa que apunte a Supabase de verdad se corta.
     await context.route('**://*.supabase.co/**', (rota) => rota.abort('blockedbyclient'))
@@ -211,6 +226,7 @@ export const test = base.extend<Fixtures>({
         return filas.filter((f) => f.estado !== 'enviado').length
       },
       async semear(semente = sementePadrao()) {
+        servidor = { vendors: semente.vendors as unknown[] }
         // La app tiene que estar montada una vez para que Vite haya servido
         // `/src/data/db.ts`; recién ahí el import dinámico devuelve el MISMO
         // módulo que usa React. Después se recarga, y el arranque en frío ya
@@ -282,11 +298,34 @@ export async function esperarPelaTelaHoje(page: Page): Promise<void> {
  * Pointer Events — que el mouse también emite.
  */
 export async function arrastar(alvo: Locator, dx: number): Promise<void> {
+  const page = alvo.page()
+  await alvo.scrollIntoViewIfNeeded()
   const caixa = await alvo.boundingBox()
   if (!caixa) throw new Error('O elemento a arrastar não está visível')
-  const y = caixa.y + caixa.height / 2
+
   const x0 = caixa.x + Math.min(60, caixa.width / 4)
-  const page = alvo.page()
+
+  // En teléfono, el centro de una tarjeta alta cae DEBAJO de la barra de
+  // comando del Ventus, que es fija. Agarrar ahí no arrastra la tarjeta:
+  // arrastra la barra. Se prueban varias alturas y se agarra la primera en la
+  // que el punto pertenece de verdad a la tarjeta.
+  const alturas = [0.12, 0.25, 0.4, 0.5, 0.06]
+  let y: number | null = null
+  for (const fracao of alturas) {
+    const candidato = caixa.y + caixa.height * fracao
+    const dentro = await alvo.evaluate(
+      (el, [px, py]) => {
+        const alvoDoPonto = document.elementFromPoint(px as number, py as number)
+        return alvoDoPonto !== null && el.contains(alvoDoPonto)
+      },
+      [x0, candidato] as const,
+    )
+    if (dentro) {
+      y = candidato
+      break
+    }
+  }
+  if (y === null) throw new Error('Nenhum ponto da linha está livre para o gesto')
 
   await page.mouse.move(x0, y)
   await page.mouse.down()

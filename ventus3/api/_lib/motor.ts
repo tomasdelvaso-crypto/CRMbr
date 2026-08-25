@@ -13,7 +13,7 @@
 // PRIORIDADES; la capa LLM redacta, explica y coachea. Si la pregunta no cae
 // en ninguno de los cinco moldes, esto devuelve null y el turno sigue al chat.
 
-import type { Opportunity } from '../../src/core'
+import type { Opportunity } from '../../src/core/index.js'
 import {
   analisarCarteira,
   calculateHealthScore,
@@ -23,10 +23,10 @@ import {
   getScaleScores,
   getStageName,
   rankDay,
-} from '../../src/core'
-import type { CarteiraDoVendedor } from './carteira'
-import { diasSemContato, normalizar, resolverAlvo } from './carteira'
-import { alvosDaCarteira } from './carteira'
+} from '../../src/core/index.js'
+import type { CarteiraDoVendedor } from './carteira.js'
+import { diasSemContato, normalizar, resolverAlvo } from './carteira.js'
+import { alvosDaCarteira } from './carteira.js'
 
 export type IntencaoDeLeitura =
   | 'pendentes'

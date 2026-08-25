@@ -11,10 +11,10 @@
 // dos tiene un endpoint gratis que confirme la clave. Se reporta 'configurado'
 // o 'ausente', que es la falla que de verdad ocurre en un deploy.
 
-import type { ApiHandler } from './_lib/http'
-import { exigirMetodo, rota } from './_lib/http'
-import { temEnv } from './_lib/env'
-import { serviceClient } from './_lib/supabase'
+import type { ApiHandler } from './_lib/http.js'
+import { exigirMetodo, rota } from './_lib/http.js'
+import { temEnv } from './_lib/env.js'
+import { serviceClient } from './_lib/supabase.js'
 
 type EstadoDep = 'ok' | 'configurado' | 'ausente' | 'falha'
 

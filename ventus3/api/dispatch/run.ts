@@ -16,11 +16,11 @@
 // Entonces: pg_cron agenda, pg_net hace el POST, y el dominio corre una sola
 // vez, acá, en el mismo código que ve el vendedor. Ver 0011_cron.sql.
 
-import type { ApiHandler } from '../_lib/http'
-import { exigirMetodo, rota } from '../_lib/http'
-import { exigirCron } from './_cron'
-import { planejarDespacho } from './_politica'
-import type { EnvioPlanejado } from './_tipos'
+import type { ApiHandler } from '../_lib/http.js'
+import { exigirMetodo, rota } from '../_lib/http.js'
+import { exigirCron } from './_cron.js'
+import { planejarDespacho } from './_politica.js'
+import type { EnvioPlanejado } from './_tipos.js'
 import {
   chavesEnviadasHoje,
   db,
@@ -36,10 +36,10 @@ import {
   desativarChat,
   preferencias,
   vendedoresAtivos,
-} from './_repo'
-import type { DestinosDoVendedor } from './_repo'
-import { enviarTelegram, telegramConfigurado } from './_telegram'
-import { enviarPush, vapidConfigurado } from './_webpush'
+} from './_repo.js'
+import type { DestinosDoVendedor } from './_repo.js'
+import { enviarTelegram, telegramConfigurado } from './_telegram.js'
+import { enviarPush, vapidConfigurado } from './_webpush.js'
 
 export interface RunResponse {
   ok: boolean

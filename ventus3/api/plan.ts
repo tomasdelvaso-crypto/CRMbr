@@ -18,14 +18,14 @@
 // ETag para que el bot y los rituais no repitan la consulta entera.
 
 import { createHash } from 'node:crypto'
-import type { IsoDate, PlannedAction, SaudeDaCarteira } from '../src/core'
-import { analisarCarteira, avaliarRiscos, rankDay, todayBr } from '../src/core'
-import { MODELOS, anthropic, custoUsd, systemComCache, textoDaResposta } from './_lib/anthropic'
-import { requireAuth } from './_lib/auth'
-import { carregarCarteira } from './_lib/carteira'
-import type { ApiHandler } from './_lib/http'
-import { exigirMetodo, header, lerJson, rota } from './_lib/http'
-import { checarCota, registrarUso } from './_lib/usage'
+import type { IsoDate, PlannedAction, SaudeDaCarteira } from '../src/core/index.js'
+import { analisarCarteira, avaliarRiscos, rankDay, todayBr } from '../src/core/index.js'
+import { MODELOS, anthropic, custoUsd, systemComCache, textoDaResposta } from './_lib/anthropic.js'
+import { requireAuth } from './_lib/auth.js'
+import { carregarCarteira } from './_lib/carteira.js'
+import type { ApiHandler } from './_lib/http.js'
+import { exigirMetodo, header, lerJson, rota } from './_lib/http.js'
+import { checarCota, registrarUso } from './_lib/usage.js'
 
 export interface PlanoRequest {
   /** Hoje em BRT. Si no viene, lo pone el servidor. */

@@ -33,7 +33,7 @@
 // que el atacante no supiera ya.
 
 import { randomUUID, createHmac } from 'node:crypto'
-import { optionalEnv, requireEnv } from './_lib/env'
+import { optionalEnv, requireEnv } from './_lib/env.js'
 import {
   HttpError,
   exigirMetodo,
@@ -42,10 +42,10 @@ import {
   proibido,
   rota,
   type ApiHandler,
-} from './_lib/http'
-import { serviceClient } from './_lib/supabase'
-import { TTL_PADRAO_SEG, validarInitData, type InitDataValido } from './_lib/tma'
-import { canalDoTelegram } from './telegram/_lib/identidade'
+} from './_lib/http.js'
+import { serviceClient } from './_lib/supabase.js'
+import { TTL_PADRAO_SEG, validarInitData, type InitDataValido } from './_lib/tma.js'
+import { canalDoTelegram } from './telegram/_lib/identidade.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Contrato

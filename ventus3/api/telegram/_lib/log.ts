@@ -29,8 +29,8 @@
 // service_role acá es legítimo: `bot_log` y `bot_sessions` son las dos únicas
 // tablas donde el v3 sigue escribiendo con la llave de servicio (§E del plano).
 
-import { serviceClient } from '../../_lib/supabase'
-import type { TelegramUpdate } from './tg'
+import { serviceClient } from '../../_lib/supabase.js'
+import type { TelegramUpdate } from './tg.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Estados

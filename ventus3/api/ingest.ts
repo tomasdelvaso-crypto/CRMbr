@@ -35,7 +35,7 @@ import type {
   IsoDateTime,
   ScaleKey,
   StageId,
-} from '../src/core'
+} from '../src/core/index.js'
 import {
   ACTIVITY_RESULTS,
   ACTIVITY_TYPES,
@@ -44,15 +44,15 @@ import {
   isIsoDate,
   resolveShortcut,
   todayBr,
-} from '../src/core'
-import { MODELOS, anthropic, custoUsd, systemComCache, textoDaResposta } from './_lib/anthropic'
-import { requireAuth } from './_lib/auth'
-import { carregarCarteira, normalizar } from './_lib/carteira'
-import { transcrever } from './_lib/groq'
-import type { ApiHandler } from './_lib/http'
-import { HttpError, exigirMetodo, lerCorpoBruto, pedidoInvalido, rota } from './_lib/http'
-import { lerFormulario } from './_lib/multipart'
-import { checarCota, registrarUso } from './_lib/usage'
+} from '../src/core/index.js'
+import { MODELOS, anthropic, custoUsd, systemComCache, textoDaResposta } from './_lib/anthropic.js'
+import { requireAuth } from './_lib/auth.js'
+import { carregarCarteira, normalizar } from './_lib/carteira.js'
+import { transcrever } from './_lib/groq.js'
+import type { ApiHandler } from './_lib/http.js'
+import { HttpError, exigirMetodo, lerCorpoBruto, pedidoInvalido, rota } from './_lib/http.js'
+import { lerFormulario } from './_lib/multipart.js'
+import { checarCota, registrarUso } from './_lib/usage.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    El contrato (espejo de src/screens/Registrar/contrato.ts)

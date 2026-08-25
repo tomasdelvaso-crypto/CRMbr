@@ -13,7 +13,7 @@ import {
   prefixoEstavel,
   systemComCache,
   temBreakpoint,
-} from '../_lib/anthropic'
+} from '../_lib/anthropic.js'
 
 describe('prefixoEstavel', () => {
   it('é idêntico byte a byte entre chamadas', () => {

@@ -16,7 +16,7 @@
 //    `esc()`: un nombre de cliente con `&` o `<` rompe el `parse_mode: HTML`
 //    y Telegram rechaza el mensaje entero.
 
-import { requireEnv } from '../../_lib/env'
+import { requireEnv } from '../../_lib/env.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    Tipos del subconjunto de la Bot API que el bot usa

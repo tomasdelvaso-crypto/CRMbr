@@ -20,11 +20,11 @@
 // Y devuelve el resultado VERIFICADO: lo que la base contestó, no lo que el
 // cliente pidió.
 
-import type { ApiHandler } from './_lib/http'
-import { exigirMetodo, header, lerJson, pedidoInvalido, rota } from './_lib/http'
-import { requireAuth } from './_lib/auth'
-import { commitAcao, descartarAcao } from './_lib/propose'
-import { checarCota } from './_lib/usage'
+import type { ApiHandler } from './_lib/http.js'
+import { exigirMetodo, header, lerJson, pedidoInvalido, rota } from './_lib/http.js'
+import { requireAuth } from './_lib/auth.js'
+import { commitAcao, descartarAcao } from './_lib/propose.js'
+import { checarCota } from './_lib/usage.js'
 
 type MotivoDescarte = 'dado_errado' | 'ja_fiz' | 'nao_e_prioridade' | 'outro'
 

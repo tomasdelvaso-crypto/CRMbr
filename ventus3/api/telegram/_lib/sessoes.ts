@@ -11,8 +11,8 @@
 // confirmación, la agenda y la Golden Hour vivan en un mensaje que se reescribe
 // en vez de llenar el chat.
 
-import { serviceClient } from '../../_lib/supabase'
-import type { ActivityResult, ActivityType, Channel, IsoDate, ScaleKey, TouchpointResult } from '../../../src/core'
+import { serviceClient } from '../../_lib/supabase.js'
+import type { ActivityResult, ActivityType, Channel, IsoDate, ScaleKey, TouchpointResult } from '../../../src/core/index.js'
 
 export const TTL_SESSAO_MS = 2 * 60 * 60 * 1000
 

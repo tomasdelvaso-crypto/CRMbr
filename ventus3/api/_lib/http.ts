@@ -4,7 +4,7 @@
 // dependencia entera solo por dos interfaces — y además así los tests pueden
 // construir un request/response falso sin levantar un servidor.
 
-import { ErroDeConfiguracao, origensPermitidas } from './env'
+import { ErroDeConfiguracao, origensPermitidas } from './env.js'
 
 export interface ApiRequest {
   method?: string | undefined
