@@ -32,3 +32,6 @@ coverage
 .vitest
 *.log
 npm-debug.log*
+
+# Rascunhos de depuração do Playwright
+e2e/_tmp/

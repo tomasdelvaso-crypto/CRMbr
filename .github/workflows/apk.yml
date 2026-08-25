@@ -1,0 +1,248 @@
+# .github/workflows/apk.yml
+# Gera o APK (TWA) do Ventus v3 e publica como GitHub Release ao empurrar uma tag v*.
+#
+# ══════════════════════════════════════════════════════════════════════════
+# POR QUE ESTE WORKFLOW EXISTE
+# ══════════════════════════════════════════════════════════════════════════
+# Compilar o APK exige o Android SDK, que baixa de dl.google.com. Muitas
+# redes corporativas (e o contêiner onde este projeto foi desenvolvido)
+# bloqueiam esse host. O runner do GitHub já vem com o SDK — então a máquina
+# de compilar é esta, não a notebook de ninguém.
+#
+# Também é aqui que mora a única cópia utilizável do keystore de release, em
+# base64 num secret. O arquivo .keystore NUNCA entra no repositório.
+#
+# ══════════════════════════════════════════════════════════════════════════
+# O QUE PRECISA ESTAR CONFIGURADO ANTES DO PRIMEIRO USO
+# ══════════════════════════════════════════════════════════════════════════
+# Settings → Secrets and variables → Actions
+#
+#   Secrets:
+#     ANDROID_KEYSTORE_BASE64    base64 -w0 android/ventapel-ventus.keystore
+#     ANDROID_KEYSTORE_PASSWORD  a senha (a mesma do keystore e da chave)
+#
+#   Variables:
+#     VENTUS_URL                 ex.: https://ventus.ventapel.com.br
+#                                (a URL que o APK vai abrir; sem barra no fim)
+#
+# Passo a passo com os comandos exatos: ventus3/docs/ANDROID.md
+#
+# ══════════════════════════════════════════════════════════════════════════
+# COMO SE USA
+# ══════════════════════════════════════════════════════════════════════════
+#   git tag v1.0.0 && git push origin v1.0.0      → compila e publica a Release
+#   Actions → "APK (TWA)" → Run workflow          → compila sem publicar
+#
+# LEMBRETE QUE VALE UMA TARDE: só é preciso rodar isto quando muda a URL, o
+# ícone, os atalhos ou o package. Mudança de CONTEÚDO do app não precisa de
+# APK novo — o TWA carrega a web, então basta o deploy.
+
+name: APK (TWA)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL que o APK vai abrir (vazio = usa a variable VENTUS_URL)'
+        required: false
+        type: string
+      publicar:
+        description: 'Publicar como GitHub Release (só faz sentido com uma tag)'
+        required: false
+        default: false
+        type: boolean
+
+# Só leitura por padrão; o job pede a escrita que precisa.
+permissions:
+  contents: read
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BUBBLEWRAP_VERSION: '1.25.0'
+  DIR_APP: ventus3
+
+jobs:
+  apk:
+    name: Compilar e assinar
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # necessário para criar a Release
+    timeout-minutes: 30
+
+    steps:
+      # fetch-depth: 0 porque o build-apk.sh deriva o versionCode de
+      # `git rev-list --count HEAD`, e um clone raso conta 1 commit.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # O bubblewrap exige JDK 17. Com o 21 as command line tools do Android
+      # não compilam — não é preciosismo, é um erro de compilação.
+      - name: JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'tools platform-tools'
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar Bubblewrap
+        run: npm install -g "@bubblewrap/cli@${BUBBLEWRAP_VERSION}"
+
+      # Decide a URL: input manual > variable do repositório. Sem URL não há
+      # APK possível, então falhamos cedo e com a instrução exata.
+      - name: Resolver a URL do app
+        id: url
+        env:
+          URL_INPUT: ${{ inputs.url }}
+          URL_VAR: ${{ vars.VENTUS_URL }}
+        run: |
+          set -euo pipefail
+          URL="${URL_INPUT:-$URL_VAR}"
+          if [ -z "$URL" ]; then
+            echo "::error::Falta a URL. Defina a variable VENTUS_URL em Settings → Secrets and variables → Actions → Variables, ou passe 'url' no Run workflow."
+            exit 1
+          fi
+          case "$URL" in
+            https://*) ;;
+            *) echo "::error::VENTUS_URL precisa começar com https://. Recebi: $URL"; exit 1 ;;
+          esac
+          echo "url=${URL%/}" >> "$GITHUB_OUTPUT"
+          echo "URL do app: ${URL%/}"
+
+      # O keystore chega em base64 e vive só no disco efêmero do runner.
+      # Sem ele o build assinaria com uma chave de debug — e um APK com
+      # fingerprint diferente não atualiza o que está instalado nos telefones
+      # e não bate com o assetlinks.json publicado.
+      - name: Restaurar o keystore de release
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_B64:-}" ]; then
+            echo "::error::Falta o secret ANDROID_KEYSTORE_BASE64. Gere-o com: base64 -w0 ventus3/android/ventapel-ventus.keystore"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "${DIR_APP}/android/ventapel-ventus.keystore"
+          chmod 600 "${DIR_APP}/android/ventapel-ventus.keystore"
+          # Um base64 truncado gera um arquivo que só falha lá na assinatura,
+          # com uma mensagem que não ajuda. Checamos aqui.
+          if ! keytool -list -keystore "${DIR_APP}/android/ventapel-ventus.keystore" \
+                 -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >/dev/null 2>&1; then
+            echo "::error::O keystore restaurado não abre. Confira ANDROID_KEYSTORE_BASE64 (use base64 -w0, sem quebras de linha) e ANDROID_KEYSTORE_PASSWORD."
+            exit 1
+          fi
+          echo "Keystore restaurado e verificado."
+
+      # Guarda-corpo: se o fingerprint do keystore do CI não for o mesmo que
+      # está em public/.well-known/assetlinks.json, o APK sairia com a barra
+      # do Chrome em cima. Melhor falhar aqui do que descobrir no telefone.
+      - name: Conferir que o assetlinks.json bate com este keystore
+        working-directory: ${{ env.DIR_APP }}
+        env:
+          VENTUS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: node scripts/gerar-assetlinks.mjs --check
+
+      - name: Versão
+        id: versao
+        run: |
+          set -euo pipefail
+          REF="${GITHUB_REF_NAME}"
+          case "${GITHUB_REF}" in
+            refs/tags/*) NOME="${REF#v}" ;;
+            *)           NOME="0.0.0-$(git rev-parse --short HEAD)" ;;
+          esac
+          CODIGO="$(git rev-list --count HEAD)"
+          echo "nome=$NOME"     >> "$GITHUB_OUTPUT"
+          echo "codigo=$CODIGO" >> "$GITHUB_OUTPUT"
+          echo "versionName=$NOME  versionCode=$CODIGO"
+
+      - name: Compilar o APK
+        working-directory: ${{ env.DIR_APP }}
+        env:
+          VENTUS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          APK_VERSION_CODE: ${{ steps.versao.outputs.codigo }}
+          APK_VERSION_NAME: ${{ steps.versao.outputs.nome }}
+        run: |
+          set -euo pipefail
+          ./scripts/build-apk.sh "${{ steps.url.outputs.url }}" --limpar
+
+      - name: Provar que o APK existe
+        working-directory: ${{ env.DIR_APP }}
+        run: |
+          set -euo pipefail
+          ls -la android/dist
+          file android/dist/*.apk
+          # Um APK é um zip: se não abrir, algo saiu muito errado.
+          unzip -l android/dist/ventus.apk | head -20
+
+      - name: Guardar o APK como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: ventus-apk-${{ steps.versao.outputs.nome }}
+          path: |
+            ${{ env.DIR_APP }}/android/dist/*.apk
+            ${{ env.DIR_APP }}/android/dist/*.aab
+          if-no-files-found: error
+          retention-days: 90
+
+      # A Release é a forma de o time baixar o APK pelo celular: a página da
+      # release abre no Chrome do telefone e o link do .apk instala direto.
+      - name: Publicar a Release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          URL_APP: ${{ steps.url.outputs.url }}
+          VERSAO: ${{ steps.versao.outputs.nome }}
+          CODIGO: ${{ steps.versao.outputs.codigo }}
+        working-directory: ${{ env.DIR_APP }}
+        run: |
+          set -euo pipefail
+          NOTAS="$(mktemp)"
+          cat > "$NOTAS" <<EOF
+          ## Ventus $VERSAO (versionCode $CODIGO)
+
+          APK assinado da app Android (TWA). Abre **$URL_APP**.
+
+          - \`package\`: \`br.com.ventapel.ventus\`
+          - Só é preciso reinstalar quando muda a URL, o ícone ou os atalhos.
+            Mudanças no app chegam sozinhas pelo deploy do site.
+
+          ### Como instalar no telefone
+          1. Abra esta página no **Chrome do celular** e toque em \`ventus.apk\`.
+          2. Se aparecer "Por segurança, seu telefone não pode instalar apps
+             desconhecidos desta fonte", toque em **Configurações** e ative a
+             permissão para o Chrome. É uma vez só.
+          3. O Play Protect vai avisar **"App não verificada"** —
+             toque em **Instalar mesmo assim**.
+          4. Ao abrir, **não pode** aparecer a barra de endereço do Chrome.
+             Se aparecer, o assetlinks.json não validou: veja \`docs/ANDROID.md\`.
+
+          Passo a passo completo e plano B (\`adb install -r\`): \`ventus3/docs/ANDROID.md\`
+          EOF
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" android/dist/*.apk android/dist/*.aab --clobber
+          else
+            gh release create "$TAG" \
+              android/dist/*.apk android/dist/*.aab \
+              --title "Ventus $VERSAO" \
+              --notes-file "$NOTAS"
+          fi
+          echo "Release publicada: $TAG"
