@@ -13,6 +13,201 @@ todos los días.
 
 ---
 
+## ESTADO DE APLICACIÓN — actualizado 2026-08-25
+
+**`0001`–`0010` están APLICADAS en producción (`wtrbvgqxgcfjacqcndmb`).**
+Aplicadas el **2026-08-25**, entre las 12:08 y las 12:16 UTC, vía
+`mcp__Supabase__apply_migration`, una llamada por archivo y en orden numérico.
+Ninguna falló ni necesitó reintento.
+
+`0100_seguranca_PENDENTE_APROVACAO.sql` **NO se aplicó** y sigue pendiente de
+aprobación humana.
+
+| Archivo | Nombre en `supabase_migrations.schema_migrations` | Estado |
+|---|---|---|
+| `0001_tasks.sql` | `20260825120838_ventus3_0001_tasks` | ✅ aplicada |
+| `0002_evidencia.sql` | `20260825120916_ventus3_0002_evidencia` | ✅ aplicada |
+| `0003_ventus_actions.sql` | `20260825120950_ventus3_0003_ventus_actions` | ✅ aplicada |
+| `0004_gamificacao.sql` | `20260825121057_ventus3_0004_gamificacao` | ✅ aplicada |
+| `0005_notificacoes.sql` | `20260825121132_ventus3_0005_notificacoes` | ✅ aplicada |
+| `0006_telegram.sql` | `20260825121151_ventus3_0006_telegram` | ✅ aplicada |
+| `0007_indices.sql` | `20260825121217_ventus3_0007_indices` | ✅ aplicada |
+| `0008_vistas.sql` | `20260825121314_ventus3_0008_vistas` | ✅ aplicada |
+| `0009_rpcs.sql` | `20260825121510_ventus3_0009_rpcs` | ✅ aplicada |
+| `0010_contrato_app.sql` | `20260825121553_ventus3_0010_contrato_app` | ✅ aplicada |
+| — (corrección de `0001`) | `ventus3_0011_revoke_trigger_fn_anon` | ✅ aplicada |
+| `0100_seguranca_PENDENTE_APROVACAO.sql` | — | ⛔ **NO aplicada, requiere aprobación** |
+
+### Detalles de la aplicación
+
+* **`begin;` / `commit;` se quitaron del texto enviado.** `apply_migration` ya
+  envuelve cada llamada en su propia transacción; un `commit` anidado la cerraría
+  antes de tiempo. Los archivos del repo conservan sus `begin/commit` para que
+  `psql -f` siga siendo atómico. Es la única diferencia entre el archivo y lo
+  ejecutado.
+* **`0007` NO necesitó `CONCURRENTLY`.** El archivo usa `CREATE INDEX` normal y
+  entró entero en una transacción, como dice su propio encabezado: con 65
+  oportunidades y 169 touchpoints el `ACCESS EXCLUSIVE` dura milisegundos. Los
+  ocho `ANALYZE` del pie se corrieron aparte, con `execute_sql`.
+* **Corrección `0011`**: el advisor detectó que `ventus_tasks_after_change()`
+  —`SECURITY DEFINER`, creada por `0001`— había quedado con `EXECUTE` para
+  `anon`, expuesta en `/rest/v1/rpc/`. No era explotable (una función de trigger
+  llamada directo levanta `0A000`), pero se revocó igual. **`0001_tasks.sql` ya
+  trae el `revoke`**: correr el archivo de cero hoy no reproduce el problema.
+
+### Verificado después de aplicar
+
+* Las **23 policies del v2** son idénticas a la foto previa: ni una agregada,
+  quitada ni modificada.
+* `opportunities` = 65 y `commitments` = 3, sin cambios. `vendors` = 6.
+* Las 20 tablas nuevas existen y están **vacías**, salvo las tres semilla:
+  `cadence_schedule` (7), `stage_gates` (6), `scoring_rules` (10).
+* Las 4 vistas nuevas tienen `security_invoker=on` y devuelven filas coherentes.
+* Las 6 RPC existen, todas `SECURITY DEFINER` con `search_path` fijo y
+  **ninguna ejecutable por `anon`**.
+* `opportunities.scales_updated_at` = `{}` en las 65 filas; `activities.client_uuid`
+  nulo en todas, con el índice UNIQUE **parcial** creado.
+* El v2 sigue leyendo: `select id,name,client,stage,scales from opportunities` OK.
+* Smoke test del trigger de `0001` sobre la opp 84 (que tenía `next_action` nulo):
+  al insertar la task se proyectó el título y la fecha; al borrarla, ambos campos
+  volvieron a `NULL`. Round-trip limpio, `tasks` otra vez en 0 filas.
+
+> **Nota sobre `leads` y `activities`.** Durante la ventana de aplicación, otra
+> persona (`tripoll@ventapel.com`) aplicó su propia migración
+> `20260825121500_add_origin_snapshot_to_leads` y rebajó 15 oportunidades del
+> pipeline a leads. Por eso `leads` pasó de 63 a 78 y `activities` de 151 a 166
+> **entre la foto previa y la posterior**. No lo causó ninguna migración de este
+> directorio: las filas nuevas traen `source='pipeline'` (y `promote_sweep_to_lead()`
+> escribe `source='market_sweep'`, `stage='1a'`), comparten un único timestamp de
+> INSERT masivo, y `ventus_audit` quedó en **0 filas**, lo que prueba que ninguna
+> RPC del v3 llegó a ejecutarse. Su migración es aditiva (`add column if not
+> exists origin_snapshot jsonb`) y no colisiona con nada de acá.
+
+### Qué falta (además de `0100`)
+
+Lo de la sección «Lo que este directorio **no** hace» sigue vigente, y además:
+
+1. **Backfill inicial**: `notification_prefs` y `streaks` por vendedor, el
+   `cookbook` de la primera semana, y promover con `promote_sweep_to_lead()` las
+   empresas del mapa que siguen con `crm_lead_id` nulo. Hoy esas tablas están
+   vacías, así que la gamificación no tiene de dónde arrancar.
+2. **24 FK sin índice** en las tablas nuevas (`points_ledger` 7,
+   `notification_queue` 4, el resto `vendor_id` sueltos). Son INFO del advisor y
+   las tablas tienen 0 filas: conviene indexarlas cuando se sepa qué consultas
+   corren de verdad, no antes.
+3. **`supabase_realtime` sigue con cero tablas**: el realtime del v3 se suscribe
+   y no le llega nada (sin romper).
+
+### Cómo revertir cada una
+
+Todas las tablas nuevas están **vacías**, así que revertir `0002`–`0006` y
+`0008`–`0010` es dropear objetos, sin pérdida de datos del negocio. El orden
+importa: es el inverso al de aplicación, por las dependencias.
+
+```sql
+-- 0011 + 0001 · tasks. OJO: el trigger escribió en opportunities.next_action.
+-- Antes de dropear, limpiar lo proyectado (sólo lo que escribimos nosotros):
+--   update opportunities o set next_action = null, next_action_date = null
+--   from tasks t where t.opportunity_id = o.id and o.next_action = t.titulo;
+drop trigger if exists trg_tasks_sync_next_action on public.tasks;
+drop trigger if exists trg_tasks_before_write    on public.tasks;
+drop table if exists public.tasks cascade;        -- cascade: FK desde notification_queue
+drop function if exists public.ventus_tasks_after_change();
+drop function if exists public.ventus_sync_next_action(bigint, text, date);
+drop function if exists public.ventus_tasks_before_write();
+drop function if exists public.ventus_current_vendor_id();
+
+-- 0010 · contrato de la app. Las DOS columnas son del v2: dropearlas es
+-- destructivo si algo ya escribió en ellas. Verificar primero:
+--   select count(*) from activities where client_uuid is not null;
+--   select count(*) from opportunities where scales_updated_at <> '{}'::jsonb;
+drop function if exists public.converter_lead(bigint, text, numeric, text, uuid);
+drop function if exists public.atualizar_escala(bigint, text, smallint, text, text, text, text, uuid);
+drop index  if exists public.uq_activities_client_uuid;
+alter table public.activities    drop column if exists client_uuid;
+alter table public.opportunities drop column if exists scales_updated_at;
+
+-- 0009 · RPCs
+drop function if exists public.ventus_commit_action(uuid);
+drop function if exists public.ventus_precondition_hash(text, text);
+drop function if exists public.promote_sweep_to_lead(bigint);
+drop function if exists public.registrar_touchpoint(bigint, text, text, text, uuid);
+drop function if exists public.avancar_etapa(bigint, integer, text);
+drop function if exists public.ventus_autorizado(text);
+drop function if exists public.ventus_actor();
+drop table    if exists public.stage_gates;
+
+-- 0008 · vistas (orden inverso de dependencia)
+drop view  if exists public.v_golden_queue;
+drop view  if exists public.v_fila_cadencia;
+drop view  if exists public.v_carteira_do_vendedor;
+drop table if exists public.cadence_schedule;
+
+-- 0007 · índices. Revertir es OPCIONAL: un índice no cambia resultados, sólo
+-- planes. Si hace falta, en producción usar `drop index concurrently`.
+drop index if exists public.idx_opp_next_action_aberta;
+drop index if exists public.idx_opp_board;
+drop index if exists public.idx_opp_expected_close;
+drop index if exists public.idx_opp_frescura;
+drop index if exists public.idx_act_timeline;
+drop index if exists public.idx_act_gamificacao;
+drop index if exists public.idx_act_humanas;
+drop index if exists public.idx_tp_executado;
+drop index if exists public.idx_tp_metricas;
+drop index if exists public.idx_tp_sequencia;
+drop index if exists public.idx_leads_fila_cadencia;
+drop index if exists public.idx_ms_por_promover;
+drop index if exists public.idx_notifications_opportunity;
+drop index if exists public.idx_leads_opportunity;
+drop index if exists public.idx_commitments_lead;
+drop index if exists public.idx_bot_sessions_vendor;
+drop index if exists public.idx_bot_log_created;
+
+-- 0006 · telegram
+drop table if exists public.pairing_codes;
+drop table if exists public.vendor_channels;
+
+-- 0005 · notificaciones
+drop table if exists public.push_subscriptions;
+drop table if exists public.notification_prefs;
+drop table if exists public.notification_queue;
+
+-- 0004 · gamificación
+drop table if exists public.cookbook;
+drop table if exists public.trophies;
+drop table if exists public.kudos;
+drop function if exists public.ventus_kudos_orcamento();
+drop table if exists public.golden_sessions;
+drop table if exists public.streaks;
+drop table if exists public.daily_rings;
+drop table if exists public.points_ledger cascade;   -- FK autorreferente reverte_id
+drop function if exists public.ventus_points_ledger_append_only();
+drop table if exists public.scoring_rules;
+drop function if exists public.ventus_scoring_rules_no_retro();
+
+-- 0003 · propose-then-commit
+drop table if exists public.ventus_idempotency;
+drop table if exists public.ventus_audit cascade;
+drop function if exists public.ventus_audit_append_only();
+drop table if exists public.ventus_actions cascade;
+drop function if exists public.ventus_actions_before_write();
+
+-- 0002 · evidencia
+drop view  if exists public.opportunity_health cascade;
+drop table if exists public.scale_evidence cascade;
+drop function if exists public.ventus_scale_evidence_before_write();
+drop function if exists public.ventus_scale_score(jsonb, text);
+```
+
+Para que Supabase deje de considerarlas aplicadas, además:
+
+```sql
+delete from supabase_migrations.schema_migrations
+where name like 'ventus3_%';
+```
+
+---
+
 ## Orden de aplicación
 
 | # | Archivo | Qué crea | Depende de |

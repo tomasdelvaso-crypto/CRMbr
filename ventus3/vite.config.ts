@@ -74,14 +74,15 @@ export default defineConfig({
   },
   test: {
     // Vitest cubre el dominio puro (src/core), la capa de datos offline
-    // (src/data) y el smoke test del router (src/app).
+    // (src/data), el smoke test del router (src/app) y las funciones
+    // serverless (api/): auth, cache breakpoint, tools y propose→commit.
     //
     // El entorno por defecto es Node: el dominio no renderiza nada y la capa
     // de datos corre con fake-indexeddb (ver setup.ts). Los tests que SÍ
     // montan React piden jsdom con el docblock `@vitest-environment jsdom`,
     // para no pagar el arranque de un DOM en los 251 tests que no lo usan.
     environment: 'node',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'api/**/*.test.ts'],
     setupFiles: ['src/data/__tests__/setup.ts'],
     globals: false,
   },

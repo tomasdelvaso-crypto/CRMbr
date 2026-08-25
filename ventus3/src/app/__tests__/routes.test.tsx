@@ -11,6 +11,7 @@ import './setup-jsdom'
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ThemeProvider } from '../ThemeProvider'
 import { routes } from '../routes'
@@ -39,18 +40,46 @@ let root: Root | null = null
 let host: HTMLDivElement | null = null
 
 /**
- * Monta con la MISMA composición que App.tsx. El ThemeProvider no es
- * decorativo: KitchenSink usa useTheme() y sin el provider la ruta cae en el
- * errorElement — este test lo detectó.
+ * Monta con la MISMA composición que App.tsx. Ni el ThemeProvider ni el
+ * QueryClientProvider son decorativos:
+ *  · KitchenSink usa useTheme() y sin el provider la ruta cae en el
+ *    errorElement — este test lo detectó.
+ *  · toda pantalla enganchada a @/data usa hooks de TanStack Query y sin
+ *    cliente lanza «No QueryClient set» contra el errorElement. El cliente es
+ *    uno por montaje (nunca compartido) para que una ruta no herede el cache
+ *    de otra, y sin persister: acá no se prueba Dexie.
  */
-function montar(children: ReactNode): string {
+async function montar(children: ReactNode): Promise<string> {
   host = document.createElement('div')
   document.body.appendChild(host)
   const criado = createRoot(host)
   root = criado
-  act(() => {
-    criado.render(<ThemeProvider>{children}</ThemeProvider>)
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, networkMode: 'offlineFirst' },
+      mutations: { retry: false, networkMode: 'offlineFirst' },
+    },
   })
+  await act(async () => {
+    criado.render(
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </ThemeProvider>,
+    )
+  })
+  // Las pantallas son lazy(): el primer render devuelve el fallback de
+  // Suspense y el módulo llega uno o más microtasks después. Sin esta espera
+  // el test estaría mirando el esqueleto del chunk, o sea: nada. El fallback
+  // de routes.tsx se marca con `data-rota-carregando`, que es SÓLO suyo (un
+  // Skeleton normal dentro de una pantalla ya montada no lo lleva).
+  // Se cede el turno con un macrotask, no con un microtask: resolver un
+  // import() dinámico pasa por el loader de módulos y no alcanza con vaciar
+  // la cola de promesas.
+  for (let i = 0; i < 100 && host.innerHTML.includes('data-rota-carregando'); i++) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    })
+  }
   return host.innerHTML
 }
 
@@ -78,25 +107,27 @@ describe('router', () => {
   })
 
   for (const caminho of caminhos()) {
-    it(`monta ${caminho} sin activar el errorElement`, () => {
+    it(`monta ${caminho} sin activar el errorElement`, async () => {
       const router = createMemoryRouter(routes, { initialEntries: [caminho] })
-      const html = montar(<RouterProvider router={router} />)
+      const html = await montar(<RouterProvider router={router} />)
 
       // El errorElement es RouteError: se reconoce por su role=alert.
       expect(html).not.toContain('role="alert"')
       expect(html).not.toContain('Algo deu errado')
       // Algo se pintó de verdad, no un contenedor vacío.
       expect(html.length).toBeGreaterThan(50)
+      // Y es la pantalla de verdad, no el esqueleto esperando el chunk.
+      expect(html).not.toContain('data-rota-carregando')
     })
   }
 
-  it('las rutas del Shell traen la navegação principal; a Golden Hour não', () => {
+  it('las rutas del Shell traen la navegação principal; a Golden Hour não', async () => {
     const comNav = createMemoryRouter(routes, { initialEntries: ['/carteira'] })
-    expect(montar(<RouterProvider router={comNav} />)).toContain('Navegação principal')
+    expect(await montar(<RouterProvider router={comNav} />)).toContain('Navegação principal')
   })
 
-  it('a Golden Hour é modo foco: sem bottom nav', () => {
+  it('a Golden Hour é modo foco: sem bottom nav', async () => {
     const foco = createMemoryRouter(routes, { initialEntries: ['/golden'] })
-    expect(montar(<RouterProvider router={foco} />)).not.toContain('Navegação principal')
+    expect(await montar(<RouterProvider router={foco} />)).not.toContain('Navegação principal')
   })
 })

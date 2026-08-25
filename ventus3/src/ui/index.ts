@@ -17,6 +17,17 @@ export type { Tone, Size } from './tokens'
 export { haptic, hapticDisponivel, hapticCancelar } from './haptic'
 export type { HapticPattern } from './haptic'
 
+export { useMediaQuery, useTelaLarga, useDebouncedValue, CONSULTA_TELA_LARGA } from './hooks'
+
+// Dictado en vivo (Web Speech). Vivía en Dossie/ y lo importaba también el
+// compositor del Ventus por ruta cruzada: es una primitiva, vive acá.
+export { useDitado } from './useDitado'
+export type { Ditado } from './useDitado'
+
+// Cuánto del viewport se come el teclado (visualViewport). La necesita toda
+// barra de acción fija: Registrar hoy, el Sheet con inputs mañana.
+export { useAlturaDoTeclado } from './useTeclado'
+
 export {
   runViewTransition,
   pushTransition,
@@ -48,6 +59,12 @@ export type { ButtonProps, ButtonVariant, IconButtonProps } from './Button'
 export { SegmentedControl } from './SegmentedControl'
 export type { SegmentedControlProps, SegmentedOption } from './SegmentedControl'
 
+export { Switch } from './Switch'
+export type { SwitchProps } from './Switch'
+
+export { NumberField } from './NumberField'
+export type { NumberFieldProps } from './NumberField'
+
 export { Stepper } from './Stepper'
 export type { StepperProps } from './Stepper'
 
@@ -72,8 +89,22 @@ export type { AvatarProps, AvatarSize } from './Avatar'
 export { Skeleton, SkeletonBlock } from './Skeleton'
 export type { SkeletonProps, SkeletonVariant } from './Skeleton'
 
+export { TextField, TextArea } from './Field'
+export type { TextFieldProps, TextAreaProps } from './Field'
+
 export { EmptyState } from './EmptyState'
 export type { EmptyStateProps } from './EmptyState'
+
+export { ProgressDots } from './ProgressDots'
+export type { ProgressDotsProps } from './ProgressDots'
+
+export { QRCode } from './QRCode'
+export type { QRCodeProps } from './QRCode'
+export { encodeQr } from './qr'
+export type { MatrizQr } from './qr'
+
+export { Logotipo, Marca } from './Logotipo'
+export type { LogotipoProps } from './Logotipo'
 
 export { Ring, RingTrio } from './Ring'
 export type { RingProps, RingKind, RingTrioProps } from './Ring'

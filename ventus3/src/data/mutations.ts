@@ -25,6 +25,7 @@ import {
   type Channel,
   type EntityRef,
   type IsoDate,
+  type Opportunity,
   type ScaleKey,
   type StageId,
   type TaskKind,
@@ -605,6 +606,184 @@ export async function registrarSessaoGolden(entrada: EntradaSessaoGolden): Promi
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   11 · atualizarContatos — SOLO rellena huecos, nunca pisa
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Los cuatro papeles de contacto que `public.opportunities` guarda en texto. */
+export const PAPEIS_CONTATO = [
+  'power_sponsor',
+  'sponsor',
+  'influencer',
+  'support_contact',
+] as const
+
+export type PapelContato = (typeof PAPEIS_CONTATO)[number]
+
+export const PAPEL_CONTATO_LABELS: Readonly<Record<PapelContato, string>> = {
+  power_sponsor: 'Power sponsor',
+  sponsor: 'Sponsor',
+  influencer: 'Influenciador',
+  support_contact: 'Contato de apoio',
+}
+
+export interface EntradaContatos {
+  opportunityId: number
+  vendor: string
+  /** Papel → nombre (y cargo, si vino). Se ignora todo lo que ya tenga valor. */
+  contatos: Partial<Record<PapelContato, string>>
+}
+
+/** Un texto cuenta como «hueco» si es null, vacío o solo espacios. */
+function ehVazio(valor: string | null | undefined): boolean {
+  return valor === null || valor === undefined || valor.trim() === ''
+}
+
+/**
+ * Rellena los contactos POR PAPEL que estén vacíos, y nada más.
+ *
+ * La regla no es una cortesía: la extracción de una nota de voz acierta el
+ * nombre pero se equivoca de papel con facilidad («falei com o Marcelo» no
+ * dice si Marcelo es el power sponsor o el comprador). Pisar un contacto que
+ * el vendedor cargó a mano por lo que dedujo un modelo es exactamente cómo un
+ * CRM pierde la confianza del equipo, y recuperarla cuesta meses.
+ *
+ * Devuelve los papeles efectivamente escritos: la UI avisa cuáles ignoró.
+ */
+export async function atualizarContatos(entrada: EntradaContatos): Promise<PapelContato[]> {
+  const db = getDb()
+  const opp = await db.opportunities.get(entrada.opportunityId)
+  if (!opp) return []
+
+  const ts = agora()
+  const mudancas: Record<string, string> = {}
+  const escritos: PapelContato[] = []
+
+  for (const papel of PAPEIS_CONTATO) {
+    const proposto = entrada.contatos[papel]
+    if (proposto === undefined || proposto.trim() === '') continue
+    if (!ehVazio(opp[papel])) continue
+    mudancas[papel] = proposto.trim()
+    escritos.push(papel)
+  }
+
+  if (escritos.length === 0) return []
+
+  await db.opportunities.put({ ...opp, ...mudancas, last_update: ts })
+
+  await encolarEDisparar({
+    id: novoClientUuid(),
+    tabla: 'opportunities',
+    op: 'update',
+    row_id: entrada.opportunityId,
+    campos_tocados: escritos,
+    ts_por_campo: Object.fromEntries(escritos.map((c) => [c, ts])),
+    payload: mudancas,
+  })
+
+  return escritos
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   12 · agendarProximaAcao — darle fecha a lo que no la tiene
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface EntradaProximaAcao {
+  opportunityId: number
+  /** Nueva fecha de la próxima acción. Obligatoria: sin fecha no existe. */
+  ate: IsoDate
+  /** Texto de la acción. Si no viene y la oportunidad no tiene ninguno, se pone uno. */
+  acao?: string | null
+}
+
+/** Lo que se escribe cuando el vendedor adia sin decir qué va a hacer. */
+const ACAO_PADRAO = 'Retomar contato'
+
+/**
+ * Pone (o corre) la fecha de la próxima acción de una oportunidad.
+ *
+ * Es lo que hace el swipe «Adiar» de la Carteira, y no es cosmético: 51 de 54
+ * oportunidades vivas del v2 no tienen `next_action_date`, así que la mitad de
+ * la cartera es invisible para cualquier motor que ordene por urgencia. Adiar
+ * desde la lista es el camino más barato que existe para darle fecha a una.
+ *
+ * `next_action_date` no dispara el trigger `enforce_stage_gates` (verificado:
+ * ese trigger tiene `when (new.stage is distinct from old.stage)`), así que
+ * este update nunca puede ser rechazado por el gate documental del v2.
+ */
+export async function agendarProximaAcao(entrada: EntradaProximaAcao): Promise<void> {
+  const db = getDb()
+  const opp = await db.opportunities.get(entrada.opportunityId)
+  const ts = agora()
+
+  const textoAtual = opp?.next_action ?? null
+  const texto =
+    entrada.acao !== undefined && entrada.acao !== null && entrada.acao.trim() !== ''
+      ? entrada.acao.trim()
+      : textoAtual !== null && textoAtual.trim() !== ''
+        ? textoAtual
+        : ACAO_PADRAO
+
+  const campos = ['next_action', 'next_action_date']
+
+  if (opp) {
+    await db.opportunities.put({
+      ...opp,
+      next_action: texto,
+      next_action_date: entrada.ate,
+      updated_at: ts,
+    })
+  }
+
+  await encolarEDisparar({
+    id: novoClientUuid(),
+    tabla: 'opportunities',
+    op: 'update',
+    row_id: entrada.opportunityId,
+    campos_tocados: campos,
+    ts_por_campo: Object.fromEntries(campos.map((c) => [c, ts])),
+    payload: { next_action: texto, next_action_date: entrada.ate },
+  })
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   13 · assumirOportunidade — sacar del pool y ponerlo en la propia cartera
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface EntradaAssumir {
+  /** La fila completa: viene del pool, que NO está espejado en Dexie. */
+  oportunidade: Opportunity
+  vendor: string
+}
+
+/**
+ * Asume una oportunidad sin dueño.
+ *
+ * La copia optimista se escribe entera en Dexie porque la fila no estaba: el
+ * pool se lee de la red y vive solo en el cache de TanStack. Escribirla con el
+ * vendedor puesto es lo que hace que aparezca en la Carteira en el mismo frame
+ * del tap, incluso antes de que el update llegue al servidor.
+ */
+export async function assumirOportunidade(entrada: EntradaAssumir): Promise<void> {
+  const ts = agora()
+
+  await getDb().opportunities.put({
+    ...entrada.oportunidade,
+    vendor: entrada.vendor,
+    updated_at: ts,
+  })
+
+  await encolarEDisparar({
+    id: novoClientUuid(),
+    tabla: 'opportunities',
+    op: 'update',
+    row_id: entrada.oportunidade.id,
+    campos_tocados: ['vendor'],
+    ts_por_campo: { vendor: ts },
+    payload: { vendor: entrada.vendor },
+  })
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    Claves de mutación y defaults
    ══════════════════════════════════════════════════════════════════════════ */
 
@@ -625,6 +804,9 @@ export const MUTATION_KEYS = {
   converterLead: ['converterLead'] as const,
   promoverDoSweep: ['promoverDoSweep'] as const,
   registrarSessaoGolden: ['registrarSessaoGolden'] as const,
+  atualizarContatos: ['atualizarContatos'] as const,
+  agendarProximaAcao: ['agendarProximaAcao'] as const,
+  assumirOportunidade: ['assumirOportunidade'] as const,
 } as const
 
 /** Claves de query que invalida cada mutación al terminar. */
@@ -639,6 +821,10 @@ const INVALIDA: Readonly<Record<keyof typeof MUTATION_KEYS, readonly string[]>> 
   converterLead: ['cadencia', 'carteira', 'golden'],
   promoverDoSweep: ['cadencia', 'golden'],
   registrarSessaoGolden: ['rings', 'placar'],
+  atualizarContatos: ['dossie', 'carteira'],
+  agendarProximaAcao: ['carteira', 'plano', 'dossie'],
+  // 'pool' además de 'carteira': la fila sale de una lista y entra en la otra.
+  assumirOportunidade: ['carteira', 'pool', 'plano'],
 }
 
 /**
@@ -672,6 +858,13 @@ export function registrarMutationDefaults(queryClient: QueryClient): void {
     MUTATION_KEYS.registrarSessaoGolden,
     registrarSessaoGolden,
     INVALIDA.registrarSessaoGolden,
+  )
+  registrar(MUTATION_KEYS.atualizarContatos, atualizarContatos, INVALIDA.atualizarContatos)
+  registrar(MUTATION_KEYS.agendarProximaAcao, agendarProximaAcao, INVALIDA.agendarProximaAcao)
+  registrar(
+    MUTATION_KEYS.assumirOportunidade,
+    assumirOportunidade,
+    INVALIDA.assumirOportunidade,
   )
 }
 
@@ -726,5 +919,27 @@ export function usePromoverDoSweep(): UseMutationResult<void, Error, EntradaProm
 export function useRegistrarSessaoGolden(): UseMutationResult<string, Error, EntradaSessaoGolden> {
   return useMutation<string, Error, EntradaSessaoGolden>({
     mutationKey: MUTATION_KEYS.registrarSessaoGolden,
+  })
+}
+
+export function useAtualizarContatos(): UseMutationResult<
+  PapelContato[],
+  Error,
+  EntradaContatos
+> {
+  return useMutation<PapelContato[], Error, EntradaContatos>({
+    mutationKey: MUTATION_KEYS.atualizarContatos,
+  })
+}
+
+export function useAgendarProximaAcao(): UseMutationResult<void, Error, EntradaProximaAcao> {
+  return useMutation<void, Error, EntradaProximaAcao>({
+    mutationKey: MUTATION_KEYS.agendarProximaAcao,
+  })
+}
+
+export function useAssumirOportunidade(): UseMutationResult<void, Error, EntradaAssumir> {
+  return useMutation<void, Error, EntradaAssumir>({
+    mutationKey: MUTATION_KEYS.assumirOportunidade,
   })
 }

@@ -26,8 +26,10 @@ import {
   buildGoldenQueue,
   calculateHealthScore,
   computeRings,
+  daysBetween,
   detectRisks,
   getDaysSinceLastContact,
+  getStageName,
   rankDay,
   todayBr,
   touchpointDelayDays,
@@ -71,11 +73,23 @@ export const queryKeys = {
   dossie: (opportunityId: number) => ['dossie', opportunityId] as const,
   cadencia: (vendor: string) => ['cadencia', vendor] as const,
   goldenQueue: (vendor: string, date: IsoDate) => ['golden', vendor, date] as const,
+  /** Cuelgan de ['golden'] a propósito: registrar un toque las invalida solas. */
+  goldenToques: (vendor: string, date: IsoDate, ids: string) =>
+    ['golden', vendor, date, 'toques', ids] as const,
+  goldenLeads: (ids: string) => ['golden', 'leads', ids] as const,
   rings: (vendor: string, date: IsoDate) => ['rings', vendor, date] as const,
   revisao: (vendor: string) => ['revisao', vendor] as const,
   placar: (vendor: string, week: IsoDate) => ['placar', vendor, week] as const,
   gestor: (week: IsoDate) => ['gestor', week] as const,
   notifications: (vendor: string) => ['notifications', vendor] as const,
+  /** Oportunidades + leads vivos del vendedor, para el matcheo de Registrar. */
+  alvosRegistro: (vendor: string) => ['carteira', vendor, 'alvos'] as const,
+  /** Pool de oportunidades sem dono. NO cuelga de ['carteira']: no es de nadie. */
+  pool: ['pool'] as const,
+  /** Empresas del mapa de mercado asignadas y todavía sin lead. */
+  mapa: (vendor: string) => ['cadencia', vendor, 'mapa'] as const,
+  /** Aviso de colisión de empresa. Cuelga aparte: es efímero y por texto. */
+  colisao: (vendor: string, nome: string) => ['colisao', vendor, nome] as const,
 } as const
 
 /** Qué claves invalida cada tabla cuando el pull trae filas nuevas. */
@@ -188,10 +202,22 @@ export interface CarteiraRow {
   nextActionDate: IsoDate | null
   healthScore: number
   risks: DealRisk[]
+  /**
+   * Compromisos ya vencidos que siguen en 'pending': la Smart View
+   * «Compromisso sem veredicto». Se cuenta acá, en la MISMA pasada que arma la
+   * fila, para que el tile no dispare una query por oportunidad.
+   */
+  compromissosSemVeredicto: number
+  /**
+   * Texto normalizado (minúsculas, sin acentos) sobre el que filtra el
+   * buscador. Se calcula UNA vez por fila, no una vez por tecla: normalizar 65
+   * cadenas en cada pulsación traba el teclado en un Android de gama media.
+   */
+  busca: string
 }
 
 export async function fetchCarteira(vendor: string, hoje: IsoDate = todayBr()): Promise<CarteiraRow[]> {
-  const { opportunities, activities } = await carregarCarteira(vendor)
+  const { opportunities, activities, commitments } = await carregarCarteira(vendor)
 
   // Una sola pasada de indexación: nada de una query por oportunidad.
   const porOportunidade = new Map<number, Activity[]>()
@@ -201,10 +227,22 @@ export async function fetchCarteira(vendor: string, hoje: IsoDate = todayBr()): 
     else porOportunidade.set(a.opportunity_id, [a])
   }
 
+  // Compromisos vencidos y sin veredicto, contados en la misma pasada.
+  const semVeredicto = new Map<number, number>()
+  for (const c of commitments) {
+    if (c.opportunity_id === null) continue
+    if (c.status !== 'pending') continue
+    const prazo = c.due_date ?? c.week_of
+    if (prazo >= hoje) continue
+    semVeredicto.set(c.opportunity_id, (semVeredicto.get(c.opportunity_id) ?? 0) + 1)
+  }
+
   return opportunities
     .filter((o) => !o.outcome)
     .map((o) => {
       const suas = porOportunidade.get(o.id) ?? []
+      const nome = o.name ?? ''
+      const cliente = o.client ?? ''
       return {
         opportunity: o,
         daysSinceContact: getDaysSinceLastContact(o.last_update, suas),
@@ -212,6 +250,10 @@ export async function fetchCarteira(vendor: string, hoje: IsoDate = todayBr()): 
         nextActionDate: o.next_action_date,
         healthScore: calculateHealthScore(o.scales),
         risks: detectRisks(o, suas, hoje),
+        compromissosSemVeredicto: semVeredicto.get(o.id) ?? 0,
+        busca: normalizarBusca(
+          `${nome} ${cliente} ${o.power_sponsor ?? ''} ${o.sponsor ?? ''} ${o.industry ?? ''}`,
+        ),
       }
     })
     .sort((a, b) => (b.opportunity.value ?? 0) - (a.opportunity.value ?? 0))
@@ -567,4 +609,413 @@ export async function resolverVendorDaSessao(authUserId: string): Promise<Vendor
 /** Timeline de un lead, para el Dossiê de cadencia. */
 export async function fetchTouchpointsDoLead(leadId: number): Promise<Touchpoint[]> {
   return touchpointsDoLead(leadId)
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Último toque por lead — el contexto que la Golden Hour muestra en el card
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * El último touchpoint de cada lead, en UNA pasada por el store.
+ *
+ * El modo foco necesita, para cada contacto de la fila, qué se hizo la última
+ * vez y con qué resultado. Pedirlo lead por lead serían 12 queries al abrir la
+ * hora; acá es una sola consulta por rango de `lead_id` y una reducción en
+ * memoria. Devuelve un objeto plano (no un Map) porque el persister de Dexie
+ * serializa el cache y un Record sobrevive mejor a las idas y vueltas.
+ */
+export async function fetchUltimosToques(
+  leadIds: readonly number[],
+): Promise<Record<number, Touchpoint>> {
+  if (leadIds.length === 0) return {}
+  const linhas = await getDb()
+    .touchpoints.where('lead_id')
+    .anyOf(leadIds as number[])
+    .toArray()
+
+  const porLead: Record<number, Touchpoint> = {}
+  for (const tp of linhas) {
+    const atual = porLead[tp.lead_id]
+    if (!atual || tp.executed_at > atual.executed_at) porLead[tp.lead_id] = tp
+  }
+  return porLead
+}
+
+export function useUltimosToques(
+  vendor: string | null,
+  leadIds: readonly number[],
+  day: IsoDate = todayBr(),
+): UseQueryResult<Record<number, Touchpoint>> {
+  // Los ids entran en la clave: la fila se conoce después del primer render y
+  // sin esto la query quedaría pegada al resultado vacío del arranque.
+  const assinatura = leadIds.join(',')
+  return useQuery({
+    queryKey: queryKeys.goldenToques(vendor ?? '', day, assinatura),
+    enabled: vendor !== null && leadIds.length > 0,
+    queryFn: () => fetchUltimosToques(leadIds),
+  })
+}
+
+/**
+ * Los leads de una fila ya decidida, en el orden pedido.
+ *
+ * La Golden Hour congela su fila al arrancar y desde ahí lee por id: si
+ * releyera la fila derivada, cada toque registrado movería el
+ * `next_touchpoint_date` del lead y `buildGoldenQueue` reordenaría el carrusel
+ * bajo el dedo del vendedor.
+ */
+export async function fetchLeadsPorIds(ids: readonly number[]): Promise<Lead[]> {
+  if (ids.length === 0) return []
+  const linhas = await getDb().leads.bulkGet(ids as number[])
+  const encontrados: Lead[] = []
+  for (const l of linhas) {
+    if (l) encontrados.push(l)
+  }
+  return encontrados
+}
+
+export function useLeadsPorIds(ids: readonly number[]): UseQueryResult<Lead[]> {
+  const assinatura = ids.join(',')
+  return useQuery({
+    queryKey: queryKeys.goldenLeads(assinatura),
+    enabled: ids.length > 0,
+    queryFn: () => fetchLeadsPorIds(ids),
+  })
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Alvos de registro (tela Registrar)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Una cosa sobre la que se puede registrar: una oportunidad o un lead.
+ *
+ * La tela Registrar necesita las DOS listas en un solo array —el vendedor
+ * dicta «falei com o Marcelo» y no sabe (ni le importa) si eso es un lead del
+ * funil o una oportunidad. El matcheo del servidor devuelve candidatos con
+ * `kind`, y la desambiguación manual busca sobre este mismo array.
+ *
+ * `busca` viene pre-normalizado (minúsculas, sin acentos) porque filtrar 300
+ * filas en cada tecla con normalize() por fila hace que el teclado se trabe en
+ * un Android de gama media.
+ */
+export interface AlvoRegistro {
+  kind: 'opportunity' | 'lead'
+  id: number
+  /** Nombre del negocio (oportunidad) o de la empresa (lead). */
+  nome: string
+  /** Empresa / cliente. Puede coincidir con `nome` en los leads. */
+  cliente: string
+  /** Etapa en PT-BR (oportunidad) o estado del funil (lead). */
+  detalhe: string
+  valor: number | null
+  /** Días desde el último contacto. -1 cuando nunca hubo. */
+  diasSemContato: number
+  /** Toques ya ejecutados de la cadencia de 7. 0 en las oportunidades. */
+  toques: number
+  /** Texto normalizado sobre el que se filtra. */
+  busca: string
+}
+
+/** Minúsculas y sin acentos: 'Tetra Pak Ltda.' → 'tetra pak ltda.'. */
+export function normalizarBusca(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+export async function fetchAlvosDeRegistro(
+  vendor: string,
+  hoje: IsoDate = todayBr(),
+): Promise<AlvoRegistro[]> {
+  const db = getDb()
+  const { opportunities, activities } = await carregarCarteira(vendor)
+
+  const ultimaAtividade = new Map<number, Activity[]>()
+  for (const a of activities) {
+    const lista = ultimaAtividade.get(a.opportunity_id)
+    if (lista) lista.push(a)
+    else ultimaAtividade.set(a.opportunity_id, [a])
+  }
+
+  const alvos: AlvoRegistro[] = []
+
+  for (const o of opportunities) {
+    if (o.outcome) continue
+    const nome = o.name ?? o.client ?? `Oportunidade ${String(o.id)}`
+    const cliente = o.client ?? nome
+    alvos.push({
+      kind: 'opportunity',
+      id: o.id,
+      nome,
+      cliente,
+      detalhe: getStageName(o.stage) || 'Sem etapa',
+      valor: o.value,
+      diasSemContato: getDaysSinceLastContact(o.last_update, ultimaAtividade.get(o.id) ?? []),
+      toques: 0,
+      busca: normalizarBusca(`${nome} ${cliente} ${o.power_sponsor ?? ''} ${o.sponsor ?? ''}`),
+    })
+  }
+
+  // Leads vivos: los archivados no son un destino válido de registro.
+  const leads = await db.leads.where('vendor').equals(vendor).toArray()
+  for (const l of leads) {
+    if (l.archived_at !== null || l.status === 'converted' || l.status === 'archived') continue
+    const contato = l.contact_name ?? ''
+    alvos.push({
+      kind: 'lead',
+      id: l.id,
+      nome: l.company_name,
+      cliente: l.company_name,
+      detalhe: `Funil · toque ${String(l.touchpoints_count)}/7`,
+      valor: null,
+      diasSemContato:
+        l.last_touchpoint_date === null
+          ? -1
+          : Math.max(0, daysBetween(l.last_touchpoint_date as IsoDate, hoje)),
+      toques: l.touchpoints_count,
+      busca: normalizarBusca(`${l.company_name} ${contato} ${l.contact_email ?? ''}`),
+    })
+  }
+
+  return alvos
+}
+
+export function useAlvosDeRegistro(vendor: string | null): UseQueryResult<AlvoRegistro[]> {
+  return useQuery({
+    queryKey: queryKeys.alvosRegistro(vendor ?? ''),
+    enabled: vendor !== null,
+    queryFn: async () => {
+      const linhas = await fetchAlvosDeRegistro(vendor as string)
+      revalidar(vendor)
+      return linhas
+    },
+  })
+}
+
+/**
+ * Filtra por texto. Puro y síncrono: se llama en cada tecla del buscador.
+ * Prioriza el prefijo sobre el substring — quien escribe 'tet' espera
+ * 'Tetra Pak' arriba, no 'Cartetec'.
+ */
+export function filtrarAlvos(
+  alvos: readonly AlvoRegistro[],
+  termo: string,
+  limite = 24,
+): AlvoRegistro[] {
+  const q = normalizarBusca(termo)
+  if (q === '') return alvos.slice(0, limite)
+  const pontuados: Array<{ alvo: AlvoRegistro; peso: number }> = []
+  for (const alvo of alvos) {
+    const pos = alvo.busca.indexOf(q)
+    if (pos < 0) continue
+    pontuados.push({ alvo, peso: pos === 0 ? 0 : 1 })
+  }
+  pontuados.sort((a, b) => a.peso - b.peso || a.alvo.nome.localeCompare(b.alvo.nome, 'pt-BR'))
+  return pontuados.slice(0, limite).map((p) => p.alvo)
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Pool de oportunidades sem dono
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Oportunidades vivas que no tienen vendedor asignado.
+ *
+ * NO se guardan en Dexie a propósito. `conflicts.aplicarRemoto` es la única
+ * puerta de entrada de datos del servidor, y estas filas no pasan por el pull
+ * (que filtra por vendedor): meterlas a mano con un `put` abriría una segunda
+ * puerta para el mismo tipo de dato. Como el resultado sí vive en el cache de
+ * TanStack —y ese cache se persiste en Dexie—, el pool igual se ve offline
+ * después de la primera vez que se abrió la Carteira con señal.
+ *
+ * Hoy en producción son CERO: la pantalla tiene que verse bien igual, así que
+ * el pool es una sección plegable que no ocupa nada cuando está vacía.
+ */
+export async function fetchPoolSemDono(limite = 50): Promise<Opportunity[]> {
+  if (!talvezOnline()) return []
+  const { data, error } = await supabase
+    .from('opportunities')
+    .select('*')
+    .is('vendor', null)
+    .is('outcome', null)
+    .order('value', { ascending: false, nullsFirst: false })
+    .limit(limite)
+  if (error) return []
+  return (data ?? []) as Opportunity[]
+}
+
+export function usePoolSemDono(): UseQueryResult<Opportunity[]> {
+  return useQuery({
+    queryKey: queryKeys.pool,
+    queryFn: () => fetchPoolSemDono(),
+    // El pool cambia cuando alguien asume algo, no cada minuto.
+    staleTime: 5 * 60_000,
+  })
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Mapa de mercado — las empresas listas para volverse lead
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Empresa del mapa de mercado, con lo mínimo para decidir si vale un toque. */
+export interface EmpresaDoMapa {
+  id: number
+  company_name: string
+  city: string | null
+  uf: string | null
+  sector: string | null
+  target_line: string | null
+  size_employees: number | null
+  status: string
+}
+
+/** Por qué el mapa vino vacío. La pantalla dice cosas distintas en cada caso. */
+export type MotivoMapaVazio = 'ok' | 'offline' | 'sem_acesso'
+
+export interface MapaDeMercado {
+  empresas: EmpresaDoMapa[]
+  motivo: MotivoMapaVazio
+}
+
+/** Estados del barrido en los que la empresa todavía puede entrar como lead. */
+const STATUS_PROMOVIVEIS = ['asignada', 'pool', 'en_barrido'] as const
+
+/**
+ * Empresas asignadas al vendedor que nunca entraron al CRM (`crm_lead_id`
+ * null). Son 174 en producción y explican por qué tres vendedores tienen CERO
+ * leads: nadie las trajo nunca a la cadencia.
+ *
+ * OJO — `market_sweep` tiene RLS habilitado y CERO policies, así que con el
+ * JWT de un vendedor esta consulta devuelve 0 filas hasta que se apruebe la
+ * policy `ms_select` de `0100_seguranca_PENDENTE_APROVACAO.sql`. Por eso el
+ * resultado trae `motivo`: la pantalla distingue «no tenés empresas pendientes»
+ * de «el mapa todavía no está liberado», que son mensajes muy distintos.
+ */
+export async function fetchMapaDeMercado(vendor: string, limite = 200): Promise<MapaDeMercado> {
+  if (!talvezOnline()) return { empresas: [], motivo: 'offline' }
+
+  const { data, error } = await supabase
+    .from('market_sweep')
+    .select('id, company_name, city, uf, sector, target_line, size_employees, status')
+    .eq('vendor', vendor)
+    .is('crm_lead_id', null)
+    .in('status', STATUS_PROMOVIVEIS as unknown as string[])
+    .order('company_name', { ascending: true })
+    .limit(limite)
+
+  if (error) return { empresas: [], motivo: 'sem_acesso' }
+  const empresas = (data ?? []) as EmpresaDoMapa[]
+  // Cero filas sin error es indistinguible de «RLS las escondió»: PostgREST
+  // no devuelve error cuando una policy filtra todo. Se informa como falta de
+  // acceso porque en producción hay 174 esperando, no cero.
+  return { empresas, motivo: empresas.length === 0 ? 'sem_acesso' : 'ok' }
+}
+
+export function useMapaDeMercado(vendor: string | null): UseQueryResult<MapaDeMercado> {
+  return useQuery({
+    queryKey: queryKeys.mapa(vendor ?? ''),
+    enabled: vendor !== null,
+    queryFn: () => fetchMapaDeMercado(vendor as string),
+    staleTime: 5 * 60_000,
+  })
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Colisão de empresa — advierte, no bloquea
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface ColisaoEmpresa {
+  colide: boolean
+  /** Vendedor que ya tiene la empresa. null cuando no hay colisión. */
+  dono: string | null
+  /** De dónde salió la respuesta: Dexie funciona sin señal. */
+  origem: 'local' | 'servidor'
+}
+
+const SEM_COLISAO: ColisaoEmpresa = { colide: false, dono: null, origem: 'local' }
+
+/**
+ * ¿Otro vendedor ya trabaja esta empresa?
+ *
+ * Primero mira la copia local (funciona en modo avión y responde en el mismo
+ * frame), y solo si ahí está limpio pregunta a `check_company_collision`, que
+ * ve la cartera de TODOS —incluido lo que este teléfono nunca sincronizó.
+ *
+ * Nunca lanza: un aviso que rompe el formulario es peor que no avisar. Y NUNCA
+ * bloquea: dos vendedores en la misma planta es un problema de coordinación
+ * humana, no algo que un CRM deba prohibir por su cuenta.
+ */
+export async function verificarColisaoEmpresa(
+  nome: string,
+  vendor: string,
+): Promise<ColisaoEmpresa> {
+  const alvo = normalizarBusca(nome)
+  if (alvo.length < 3) return SEM_COLISAO
+
+  const db = getDb()
+
+  const lead = await db.leads
+    .filter(
+      (l) =>
+        l.vendor !== vendor &&
+        (l.status === 'active' || l.status === 'converted') &&
+        normalizarBusca(l.company_name) === alvo,
+    )
+    .first()
+  if (lead) return { colide: true, dono: lead.vendor, origem: 'local' }
+
+  const opp = await db.opportunities
+    .filter(
+      (o) =>
+        o.vendor !== null &&
+        o.vendor !== vendor &&
+        o.outcome !== 'lost' &&
+        o.outcome !== 'abandoned' &&
+        normalizarBusca(o.client ?? '') === alvo,
+    )
+    .first()
+  if (opp) return { colide: true, dono: opp.vendor, origem: 'local' }
+
+  if (!talvezOnline()) return SEM_COLISAO
+
+  try {
+    const { data, error } = await supabase.rpc('check_company_collision', {
+      p_company_name: nome.trim(),
+      p_vendor: vendor,
+    })
+    if (error) return SEM_COLISAO
+    // La función devuelve TABLE(is_taken boolean, taken_by text): PostgREST la
+    // entrega como array de una fila.
+    const linhas = (Array.isArray(data) ? data : [data]) as Array<{
+      is_taken: boolean | null
+      taken_by: string | null
+    } | null>
+    const primeira = linhas[0]
+    if (!primeira || primeira.is_taken !== true) return SEM_COLISAO
+    return { colide: true, dono: primeira.taken_by, origem: 'servidor' }
+  } catch {
+    return SEM_COLISAO
+  }
+}
+
+/**
+ * Hook del aviso de colisión. `nome` tiene que llegar ya debounceado: cada
+ * cambio de valor puede costar un round-trip.
+ */
+export function useColisaoEmpresa(
+  nome: string,
+  vendor: string | null,
+): UseQueryResult<ColisaoEmpresa> {
+  const limpo = nome.trim()
+  return useQuery({
+    queryKey: queryKeys.colisao(vendor ?? '', normalizarBusca(limpo)),
+    enabled: vendor !== null && limpo.length >= 3,
+    queryFn: () => verificarColisaoEmpresa(limpo, vendor as string),
+    staleTime: 60_000,
+    // Es un aviso, no un gate: si falla, la respuesta correcta es el silencio.
+    retry: false,
+  })
 }

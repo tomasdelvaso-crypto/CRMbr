@@ -387,3 +387,22 @@ export async function apagarAudio(id: string): Promise<void> {
 export function agora(): IsoDateTime {
   return new Date().toISOString()
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Estado de la fila de la Golden Hour
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Marca una entrada de la fila como hecha o saltada.
+ *
+ * Es estado LOCAL a propósito: si el teléfono se queda sin batería a los 20
+ * minutos, al reabrir la app la hora retoma donde estaba en vez de volver a
+ * ofrecer los contactos ya tocados. La fila del día la arma el job de la
+ * víspera; el servidor no necesita enterarse de por dónde va el dedo.
+ */
+export async function marcarEntradaGolden(
+  uid: string,
+  estado: GoldenQueueEntry['estado'],
+): Promise<void> {
+  await getDb().goldenQueue.update(uid, { estado })
+}

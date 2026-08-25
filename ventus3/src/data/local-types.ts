@@ -270,6 +270,20 @@ export interface AudioBlobRecord {
   estado: 'gravado' | 'enviando' | 'transcrito' | 'erro'
   ultimo_error: string | null
   criado_em: IsoDateTime
+  /**
+   * uid de la actividad que YA se registró con esta nota.
+   *
+   * Existe para el caso que define el producto: el vendedor dicta en el galpão
+   * sin señal, confirma el registro igual (cliente, resumo y próxima acción a
+   * dedo) y el audio queda esperando. Con este campo se distingue «nota que
+   * nunca se confirmó» —hay que retomarla— de «nota ya registrada a la que
+   * solo le falta la transcripción», que al subir se agrega como una actividad
+   * de tipo `note` en la misma oportunidad en vez de abrir otro formulario.
+   *
+   * Opcional: las filas escritas antes de que existiera el campo son `gravado`
+   * sin confirmar, que es exactamente lo que `undefined` significa acá.
+   */
+  atividade_uid?: string | null
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

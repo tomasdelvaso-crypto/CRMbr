@@ -23,10 +23,16 @@ export function SkeletonBlock({ className }: { className?: string }) {
 export type SkeletonVariant =
   | 'card-acao'
   | 'linha-carteira'
+  | 'linha-cadencia'
+  | 'tiles-carteira'
   | 'dossie'
   | 'lista'
   | 'aneis'
+  | 'placar'
+  | 'rituais'
+  | 'revisao'
   | 'chat'
+  | 'golden'
 
 export interface SkeletonProps {
   /** Forma exacta del contenido que reemplaza. */
@@ -82,6 +88,35 @@ function Forma({ variant }: { variant: SkeletonVariant }) {
         </div>
       )
 
+    // Fila de Cadência: 80px exactos. Empresa, contacto, 7 puntitos y atraso.
+    case 'linha-cadencia':
+      return (
+        <div className="flex h-20 items-center gap-3 border-b border-border px-1">
+          <div className="min-w-0 flex-1">
+            <SkeletonBlock className="h-4 w-2/5" />
+            <SkeletonBlock className="mt-2 h-3 w-1/3" />
+            <SkeletonBlock className="mt-2.5 h-2 w-20 rounded-pill" />
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <SkeletonBlock className="h-5 w-16 rounded-pill" />
+            <SkeletonBlock className="h-3 w-10" />
+          </div>
+        </div>
+      )
+
+    // Los 6 tiles de Smart View de la Carteira, en dos columnas.
+    case 'tiles-carteira':
+      return (
+        <div className="grid grid-cols-2 gap-2">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="rounded-card border border-border bg-surface p-3">
+              <SkeletonBlock className="h-7 w-10" />
+              <SkeletonBlock className="mt-2 h-3 w-4/5" />
+            </div>
+          ))}
+        </div>
+      )
+
     // Dossiê: header pegajoso + acciones + hexágono PPVVCC.
     case 'dossie':
       return (
@@ -101,6 +136,54 @@ function Forma({ variant }: { variant: SkeletonVariant }) {
         </div>
       )
 
+    // Placar da Semana: os cards horizontais de «eu vs eu» e os 4 carris.
+    // A forma copia o card real — 15,5rem de largura, número grande, barra.
+    case 'placar':
+      return (
+        <div>
+          <div className="flex gap-3 overflow-hidden">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="w-[15.5rem] shrink-0 rounded-card border border-border bg-surface p-4">
+                <SkeletonBlock className="h-3 w-20" />
+                <SkeletonBlock className="mt-2 h-9 w-16" />
+                <SkeletonBlock className="mt-2 h-4 w-24 rounded-pill" />
+                <SkeletonBlock className="mt-3 h-3 w-full" />
+                <SkeletonBlock className="mt-4 h-1.5 w-full rounded-pill" />
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 space-y-2.5">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3 rounded-card border border-border bg-surface px-3 py-2.5">
+                <SkeletonBlock className="size-8 rounded-pill" />
+                <div className="min-w-0 flex-1">
+                  <SkeletonBlock className="h-3 w-16" />
+                  <SkeletonBlock className="mt-1.5 h-2 w-full rounded-pill" />
+                </div>
+                <SkeletonBlock className="h-3 w-8" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+
+    // Rituais: a linha do tempo dos quatro momentos do dia.
+    case 'rituais':
+      return (
+        <div className="space-y-2.5">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-3 rounded-card border border-border bg-surface p-3.5">
+              <SkeletonBlock className="size-10 rounded-pill" />
+              <div className="min-w-0 flex-1">
+                <SkeletonBlock className="h-4 w-2/5" />
+                <SkeletonBlock className="mt-2 h-3 w-3/5" />
+              </div>
+              <SkeletonBlock className="h-5 w-14 rounded-pill" />
+            </div>
+          ))}
+        </div>
+      )
+
     case 'aneis':
       return (
         <div className="flex items-center justify-around py-2">
@@ -110,6 +193,70 @@ function Forma({ variant }: { variant: SkeletonVariant }) {
               <SkeletonBlock className="h-3 w-14" />
             </div>
           ))}
+        </div>
+      )
+
+    // Modo foco da Golden Hour: HUD, card do contato a tela cheia e os 4
+    // botões. Ocupa a tela inteira porque a tela real também ocupa.
+    case 'golden':
+      return (
+        <div className="flex h-full flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <SkeletonBlock className="h-10 w-28 rounded-lg" />
+            <SkeletonBlock className="h-6 w-24 rounded-pill" />
+          </div>
+          <div className="flex-1 rounded-card border border-border bg-surface p-5">
+            <SkeletonBlock className="h-5 w-24 rounded-pill" />
+            <SkeletonBlock className="mt-4 h-7 w-4/5" />
+            <SkeletonBlock className="mt-3 h-5 w-3/5" />
+            <SkeletonBlock className="mt-2 h-4 w-2/5" />
+            <SkeletonBlock className="mt-6 h-24 w-full rounded-lg" />
+            <div className="mt-5 flex gap-2">
+              <SkeletonBlock className="h-touch flex-1 rounded-lg" />
+              <SkeletonBlock className="h-touch flex-1 rounded-lg" />
+              <SkeletonBlock className="h-touch flex-1 rounded-lg" />
+              <SkeletonBlock className="h-touch flex-1 rounded-lg" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <SkeletonBlock className="h-touch-lg rounded-xl" />
+            <SkeletonBlock className="h-touch-lg rounded-xl" />
+            <SkeletonBlock className="h-touch-lg rounded-xl" />
+            <SkeletonBlock className="h-touch-lg rounded-xl" />
+          </div>
+        </div>
+      )
+
+    // Tarjeta da Revisão: cabeçalho com cliente, 2 linhas de campo
+    // (antigo → novo), a citação e a barra de ações.
+    case 'revisao':
+      return (
+        <div className="rounded-card border border-border bg-surface p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-2">
+              <SkeletonBlock className="h-4 w-1/2" />
+              <SkeletonBlock className="h-3 w-1/3" />
+            </div>
+            <SkeletonBlock className="h-6 w-20 rounded-pill" />
+          </div>
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <SkeletonBlock className="h-3 w-14" />
+              <SkeletonBlock className="h-3 w-10" />
+              <SkeletonBlock className="h-3 w-16" />
+            </div>
+            <div className="flex items-center gap-2">
+              <SkeletonBlock className="h-3 w-20" />
+              <SkeletonBlock className="h-3 w-10" />
+              <SkeletonBlock className="h-3 w-24" />
+            </div>
+          </div>
+          <SkeletonBlock className="mt-4 h-10 w-full rounded-lg" />
+          <div className="mt-3 flex gap-2">
+            <SkeletonBlock className="h-11 flex-1 rounded-lg" />
+            <SkeletonBlock className="h-11 w-11 rounded-lg" />
+            <SkeletonBlock className="h-11 w-11 rounded-lg" />
+          </div>
         </div>
       )
 

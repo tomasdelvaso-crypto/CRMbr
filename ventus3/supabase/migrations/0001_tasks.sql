@@ -240,6 +240,12 @@ begin
 end;
 $fn$;
 
+-- ventus_tasks_after_change() es SECURITY DEFINER: si no se revoca, Supabase la
+-- ofrece en /rest/v1/rpc/ y el advisor la marca (WARN 0028). Revocar NO afecta al
+-- trigger: Postgres verifica EXECUTE al CREAR el trigger, no al dispararlo.
+revoke all on function public.ventus_tasks_after_change() from public, anon;
+grant execute on function public.ventus_tasks_after_change() to service_role;
+
 drop trigger if exists trg_tasks_sync_next_action on public.tasks;
 create trigger trg_tasks_sync_next_action
   after insert or update or delete on public.tasks
