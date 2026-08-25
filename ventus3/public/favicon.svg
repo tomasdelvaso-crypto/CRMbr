@@ -1,5 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ventus">
-  <rect width="64" height="64" rx="14" fill="#2563eb"/>
-  <path d="M16 20 L32 46 L48 20" fill="none" stroke="#fff" stroke-width="7"
-        stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Ventus">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="0.55" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <clipPath id="c"><rect width="64" height="64" rx="14.4" ry="14.4"/></clipPath>
+  </defs>
+  <rect width="64" height="64" rx="14.4" ry="14.4" fill="url(#g)"/>
+  <g clip-path="url(#c)">
+    <path d="M -6.4 49.92 L 39.68 -3.84 L 52.48 -3.84 L 6.4 49.92 Z" fill="#ffffff" opacity="0.1"/>
+  </g>
+  <path d="M 15.36 20.019199999999998 L 32 43.9808 L 48.64 20.019199999999998" fill="none" stroke="#ffffff" stroke-width="7.8208" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

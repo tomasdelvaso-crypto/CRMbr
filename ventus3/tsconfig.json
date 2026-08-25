@@ -37,5 +37,5 @@
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["src/sw.ts", "node_modules", "dist"]
+  "exclude": ["src/sw.ts", "src/sw-push.ts", "node_modules", "dist"]
 }

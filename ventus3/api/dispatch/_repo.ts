@@ -258,12 +258,21 @@ export async function marcarAdiado(
   if (error) console.error(`[dispatch/repo] marcarAdiado(${motivo}): ${error.message}`)
 }
 
-/** Marca una suscripción push como muerta para no gastar envíos en ella. */
+/**
+ * Borra una suscripción push muerta (404/410 del push service).
+ *
+ * Se BORRA la fila y no se marca `failed_at`: un 404/410 significa que el
+ * navegador revocó esa suscripción para siempre —desinstalación, limpieza de
+ * datos, rotación del endpoint—, y nunca va a volver a servir. Marcarla
+ * dejaría una fila muerta ocupando el UNIQUE de `endpoint`, y el día que el
+ * mismo aparato se vuelva a suscribir el upsert tendría que revivirla; borrar
+ * hace que ese caso sea un insert limpio.
+ *
+ * Los fallos transitorios (429, 5xx, red) NO llegan acá: `enviarPush` solo
+ * devuelve `morto: true` para 404 y 410.
+ */
 export async function matarAssinatura(id: string, cli: SupabaseClient = db()): Promise<void> {
-  const { error } = await cli
-    .from('push_subscriptions')
-    .update({ failed_at: new Date().toISOString() })
-    .eq('id', id)
+  const { error } = await cli.from('push_subscriptions').delete().eq('id', id)
   if (error) console.error(`[dispatch/repo] matarAssinatura: ${error.message}`)
 }
 

@@ -33,6 +33,7 @@ import { resumir, textoDeSaida } from './sessao'
 import { useNotaDeVoz } from './useNotaDeVoz'
 import { useRelogio, useSessaoGolden } from './useSessaoGolden'
 import { useVendorDaSessao } from '@/app/useVendorDaSessao'
+import { useTelaCheia } from '@/host'
 import { useWakeLock } from './useWakeLock'
 
 export default function GoldenHourScreen() {
@@ -75,6 +76,12 @@ export default function GoldenHourScreen() {
 
   // Pantalla encendida durante el bloque y solo durante el bloque.
   const wake = useWakeLock(emFoco)
+
+  // Dentro do Telegram, tela cheia durante o bloco: sem isso sobra o header do
+  // cliente com o botão de fechar — uma saída lateral a um toque de distância,
+  // que é a forma mais barata de a Golden Hour não acontecer. Fora do Mini App
+  // não faz nada. A limpeza devolve o header ao sair.
+  useTelaCheia(emFoco)
 
   const [festa, setFesta] = useState(false)
   const indice = sessao?.indice ?? 0

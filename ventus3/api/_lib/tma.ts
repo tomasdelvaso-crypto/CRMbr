@@ -114,18 +114,22 @@ export const MAX_START_PARAM = 64
  * Arma el data-check-string: todos los pares menos `hash`, ordenados
  * alfabéticamente por clave, unidos con '\n'.
  *
- * Se ordena con `<` sobre el string y no con `localeCompare`: Telegram compara
- * bytes, y `localeCompare` en un locale con reglas propias reordenaría claves
- * que empiezan igual. Un orden distinto = otro hash = 401 para todo el equipo.
+ * Se compara con `<` y no con `localeCompare`: Telegram ordena por bytes, y
+ * `localeCompare` en un locale con reglas propias reordenaría claves que
+ * empiezan igual. Un orden distinto = otro hash = 401 para todo el equipo.
  */
 export function montarDataCheckString(pares: Iterable<readonly [string, string]>): string {
-  const linhas: string[] = []
+  const linhas: Array<{ chave: string; linha: string }> = []
   for (const [chave, valor] of pares) {
     if (chave === 'hash') continue
-    linhas.push(`${chave}=${valor}`)
+    linhas.push({ chave, linha: `${chave}=${valor}` })
   }
-  linhas.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-  return linhas.join('\n')
+  // Se ordena por CLAVE, no por la línea entera. Con el alfabeto de claves de
+  // Telegram las dos formas dan el mismo orden, pero ordenar por la línea hace
+  // que el resultado dependa del VALOR cuando dos claves comparten prefijo —
+  // y un orden distinto es otro hash, o sea 401 para todo el equipo.
+  linhas.sort((a, b) => (a.chave < b.chave ? -1 : a.chave > b.chave ? 1 : 0))
+  return linhas.map((l) => l.linha).join('\n')
 }
 
 /** secret_key = HMAC-SHA256(key: "WebAppData", msg: botToken). */

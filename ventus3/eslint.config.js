@@ -35,7 +35,7 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
-    files: ['src/sw.ts'],
+    files: ['src/sw.ts', 'src/sw-push.ts'],
     languageOptions: { globals: globals.serviceworker },
   },
 )

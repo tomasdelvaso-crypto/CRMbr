@@ -9,9 +9,12 @@ dist-ssr
 .env.*
 !.env.example
 
-# Android / TWA — o projeto Bubblewrap se gera; o keystore NUNCA entra no repo
+# Android / TWA — o projeto Bubblewrap se gera; o keystore NUNCA entra no repo.
+# `android/*` ignora tudo e as exceções abaixo devolvem só o que é código-fonte.
 android/*
 !android/.gitkeep
+!android/twa-manifest.json
+!android/README.md
 *.keystore
 *.jks
 *.apk

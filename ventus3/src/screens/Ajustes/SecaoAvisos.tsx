@@ -33,6 +33,7 @@ import {
   type CanalDeAviso,
   type TipoDeAviso,
 } from '@/data'
+import { BlocoDePush } from '@/push/BlocoDePush'
 import { Button, Chip, NumberField, Skeleton, Switch, toast } from '@/ui'
 import { useState } from 'react'
 import { Divisor, Secao } from './Secao'
@@ -79,6 +80,12 @@ export function SecaoAvisos({ vendorName }: { vendorName: string | null }) {
       proposito="Quantos empurrões por dia, quando, por onde e de que tipo."
     >
       <BlocoDePermissao permissao={permissao} aoPedir={setPermissao} />
+
+      {/* Registro deste aparelho no Web Push. Sempre a partir de um toque:
+          num useEffect o iOS recusa em silêncio e queima a permissão. */}
+      <div className="mt-3">
+        <BlocoDePush />
+      </div>
 
       <Divisor />
 

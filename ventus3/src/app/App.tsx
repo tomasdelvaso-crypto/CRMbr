@@ -9,8 +9,12 @@
 //     mutationKey, esas mutaciones NO se reanudan nunca y el vendedor pierde
 //     lo que escribió offline. Por eso van en el inicializador del useState,
 //     que corre antes del primer efecto.
-//  3. SessionProvider resuelve QUIÉN es el vendedor.
-//  4. CamadaDeDados enciende sync/outbox/realtime, y solo entonces.
+//  3. HostProvider decide si esto es la PWA o el Telegram Mini App y, en el
+//     Mini App, abre la sesión con el initData ANTES de montar el router: si
+//     el router montara primero, la guardia del Shell mandaría a /login — la
+//     única pantalla que el Mini App existe para no mostrar.
+//  4. SessionProvider resuelve QUIÉN es el vendedor.
+//  5. CamadaDeDados enciende sync/outbox/realtime, y solo entonces.
 
 import { useState } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
@@ -22,6 +26,8 @@ import {
   criarQueryClient,
   registrarMutationDefaults,
 } from '@/data'
+import { HostProvider } from '@/host'
+import { CamadaPWA } from '@/install'
 import { ThemeProvider } from './ThemeProvider'
 import { SessionProvider } from './SessionProvider'
 import { CamadaDeDados } from './CamadaDeDados'
@@ -53,21 +59,26 @@ export function App() {
 
   return (
     <ThemeProvider>
-      <PersistQueryClientProvider
-        client={queryClient}
-        persistOptions={{ persister, buster: CACHE_BUSTER, maxAge: CACHE_MAX_AGE }}
-        onSuccess={() => {
-          // Hidratado el cache: las mutaciones que quedaron pausadas por falta
-          // de red ya tienen su mutationFn y pueden reanudarse.
-          void queryClient.resumePausedMutations()
-        }}
-      >
-        <SessionProvider>
-          <CamadaDeDados>
-            <RouterProvider router={router} />
-          </CamadaDeDados>
-        </SessionProvider>
-      </PersistQueryClientProvider>
+      <HostProvider>
+        <PersistQueryClientProvider
+          client={queryClient}
+          persistOptions={{ persister, buster: CACHE_BUSTER, maxAge: CACHE_MAX_AGE }}
+          onSuccess={() => {
+            // Hidratado el cache: las mutaciones que quedaron pausadas por falta
+            // de red ya tienen su mutationFn y pueden reanudarse.
+            void queryClient.resumePausedMutations()
+          }}
+        >
+          <SessionProvider>
+            <CamadaDeDados>
+              <RouterProvider router={router} />
+              {/* Instalación y actualización. Fuera del router a propósito:
+                  no navega, y así no se re-monta en cada cambio de pantalla. */}
+              <CamadaPWA />
+            </CamadaDeDados>
+          </SessionProvider>
+        </PersistQueryClientProvider>
+      </HostProvider>
     </ThemeProvider>
   )
 }

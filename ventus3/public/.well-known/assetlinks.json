@@ -1,11 +1,13 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "br.com.ventapel.ventus",
       "sha256_cert_fingerprints": [
-        "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
+        "D4:83:EA:71:41:8E:2E:30:D4:56:87:48:67:8C:15:FD:79:D3:9D:A1:1D:99:A3:75:3C:86:43:0D:D6:74:EE:9F"
       ]
     }
   }

@@ -1,5 +1,11 @@
 // src/main.tsx — punto de entrada del bundle.
 
+// PRIMER import a propósito: `@/host/arranque` resuelve el deep link del
+// Mini App (`?startapp=opp_1842_log`) reescribiendo la URL ANTES de que
+// `./app/App` cree el router — que lee window.location al evaluarse. Los
+// módulos ES se evalúan en el orden en que aparecen los imports.
+import '@/host/arranque'
+
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'

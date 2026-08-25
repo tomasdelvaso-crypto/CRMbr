@@ -1,0 +1,8 @@
+# Testes nunca viram função serverless. Vercel já ignora caminhos com "_",
+# mas o glob de `functions` no vercel.json os alcançaria.
+**/__tests__/**
+e2e/
+playwright.config.ts
+docs/
+android/
+scripts/

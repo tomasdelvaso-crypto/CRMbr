@@ -18,8 +18,27 @@
     <meta name="format-detection" content="telephone=no" />
     <meta name="description" content="Ventus — CRM de campo da Ventapel Brasil. Metodologia PPVVCC." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- El .ico es para el Windows del escritório y para los lectores de RSS
+         viejos que ignoran el SVG; los navegadores modernos usan el de arriba. -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="32x32" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Open Graph: el link de /instalar se manda por WhatsApp y por el bot.
+         Sin esto llega como texto pelado y parece spam. La URL absoluta es
+         obligatoria: WhatsApp no resuelve rutas relativas. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Ventus" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:title" content="Ventus — CRM de campo da Ventapel Brasil" />
+    <meta
+      property="og:description"
+      content="A próxima melhor ação, decidida antes de sair para a rua. Funciona sem sinal."
+    />
+    <meta property="og:image" content="https://ventus.ventapel.com.br/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Ventus — CRM de campo da Ventapel Brasil" />
+    <meta name="twitter:card" content="summary_large_image" />
     <title>Ventus — Ventapel Brasil</title>
     <script>
       // Tema aplicado antes del primer paint para evitar el flash de tema claro.
