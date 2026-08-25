@@ -1,0 +1,497 @@
+@import 'tailwindcss';
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Ventus v3 — capa de tokens.
+   Regla dura: ningún componente escribe un color literal. Todo sale de acá.
+   La paleta COMPLETA vive en :root (vía @theme, que Tailwind emite en :root)
+   y se REDEFINE entera en el bloque oscuro. Nunca un color existe solamente
+   dentro de un media query.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Dark mode por clase (no solo por prefers-color-scheme): el usuario puede
+   elegir claro / escuro / sistema en Ajustes. Ver src/app/ThemeProvider.tsx.
+   El script inline de index.html ya pone la clase antes del primer paint. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* ── Superficies y texto (tema claro) ─────────────────────────────────── */
+  --color-bg: oklch(98.4% 0.003 247.9);
+  --color-surface: oklch(100% 0 0);
+  --color-surface-2: oklch(96.8% 0.007 247.9);
+  --color-surface-3: oklch(93.8% 0.011 247.9);
+  --color-border: oklch(92.9% 0.013 255.5);
+  --color-border-strong: oklch(86.9% 0.019 255.5);
+  --color-fg: oklch(21% 0.034 264.7);
+  --color-fg-muted: oklch(51.1% 0.023 264.4);
+  --color-fg-subtle: oklch(64.7% 0.022 261.3);
+  --color-fg-inverse: oklch(100% 0 0);
+
+  /* ── Marca Ventapel ───────────────────────────────────────────────────── */
+  /* Azul refinado respecto del #2563eb del v2: mismo hue, un punto más de
+     croma para que sobreviva al filtro de la pantalla al sol. */
+  --color-brand: oklch(54.6% 0.219 262.9);
+  --color-brand-strong: oklch(47.4% 0.211 263.4);
+  --color-brand-fg: oklch(100% 0 0);
+  --color-brand-soft: oklch(94.6% 0.03 255.6);
+  --color-brand-soft-fg: oklch(38.2% 0.178 263.4);
+
+  /* ── Semánticos: salud, riesgo, avance ────────────────────────────────── */
+  --color-ok: oklch(58.2% 0.163 149.2);
+  --color-ok-fg: oklch(100% 0 0);
+  --color-ok-soft: oklch(94.5% 0.045 152.5);
+  --color-ok-soft-fg: oklch(41.5% 0.129 149.2);
+
+  --color-warn: oklch(69.4% 0.161 62.5);
+  --color-warn-fg: oklch(21% 0.034 264.7);
+  --color-warn-soft: oklch(95.4% 0.049 82.5);
+  --color-warn-soft-fg: oklch(45.8% 0.126 55.6);
+
+  --color-danger: oklch(55.8% 0.221 27.3);
+  --color-danger-fg: oklch(100% 0 0);
+  --color-danger-soft: oklch(94.6% 0.04 20.4);
+  --color-danger-soft-fg: oklch(44.4% 0.187 26.5);
+
+  --color-info: oklch(58.5% 0.135 240.2);
+  --color-info-fg: oklch(100% 0 0);
+  --color-info-soft: oklch(94.8% 0.034 232.5);
+  --color-info-soft-fg: oklch(42.8% 0.115 240.2);
+
+  /* ── Acento de gamificación (troféus, racha, confetti) ────────────────── */
+  --color-accent: oklch(58.5% 0.221 301.5);
+  --color-accent-fg: oklch(100% 0 0);
+  --color-accent-soft: oklch(95% 0.035 305.5);
+  --color-accent-soft-fg: oklch(45.2% 0.196 301.5);
+  /* Llama de la racha. */
+  --color-streak: oklch(66.8% 0.201 39.5);
+
+  /* ── Anillos diarios: Contato / Conversa / Avanço ─────────────────────── */
+  --color-ring-contato: oklch(62.5% 0.161 243.6);
+  --color-ring-conversa: oklch(69.4% 0.161 62.5);
+  --color-ring-avanco: oklch(58.2% 0.163 149.2);
+  /* Canal vacío del anillo. */
+  --color-ring-track: oklch(91.5% 0.012 255.5);
+
+  /* ── Overlays y esqueletos ────────────────────────────────────────────── */
+  --color-overlay: oklch(21% 0.034 264.7 / 45%);
+  --color-skeleton: oklch(93.5% 0.009 255.5);
+  --color-skeleton-shine: oklch(97.5% 0.005 255.5);
+
+  /* ── Tipografía ───────────────────────────────────────────────────────── */
+  --font-sans:
+    'Inter var', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Escala tipográfica. Nada por debajo de 16px en inputs (ver @layer base). */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.0625rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.625rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 1.875rem;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 2.125rem;
+  --text-4xl: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+  --text-5xl: 3rem;
+  --text-5xl--line-height: 3.125rem;
+  /* Números de HUD y timers: tabulares y apretados. */
+  --text-hud: 3.5rem;
+  --text-hud--line-height: 3.5rem;
+
+  /* ── Radios ───────────────────────────────────────────────────────────── */
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --radius-card: 1rem;
+  --radius-sheet: 1.5rem;
+  --radius-pill: 9999px;
+
+  /* ── Sombras ──────────────────────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px oklch(21% 0.034 264.7 / 6%);
+  --shadow-card: 0 1px 2px oklch(21% 0.034 264.7 / 5%), 0 1px 3px oklch(21% 0.034 264.7 / 6%);
+  --shadow-raised: 0 2px 6px oklch(21% 0.034 264.7 / 8%), 0 8px 20px oklch(21% 0.034 264.7 / 8%);
+  --shadow-sheet: 0 -2px 12px oklch(21% 0.034 264.7 / 10%), 0 -18px 48px oklch(21% 0.034 264.7 / 14%);
+  --shadow-fab: 0 4px 12px oklch(21% 0.034 264.7 / 18%), 0 12px 28px oklch(21% 0.034 264.7 / 14%);
+  --shadow-toast: 0 6px 18px oklch(21% 0.034 264.7 / 16%);
+
+  /* ── Espaciado ────────────────────────────────────────────────────────── */
+  /* Unidad base de la escala numérica de Tailwind: p-4 = 1rem. */
+  --spacing: 0.25rem;
+  /* Objetivo mínimo de toque (HIG): 44px. Usar h-touch / min-h-touch. */
+  --spacing-touch: 2.75rem;
+  /* Objetivo cómodo para acciones primarias en la zona del pulgar. */
+  --spacing-touch-lg: 3.25rem;
+  /* Altura de la bottom nav, sin la safe area. */
+  --spacing-nav: 4rem;
+  /* Altura del header pegajoso. */
+  --spacing-header: 3.5rem;
+  --spacing-fab: 3.5rem;
+  --spacing-gutter: 1rem;
+  /* Ancho máximo de la columna de contenido en móvil.
+     Duplicado como --container-col porque en Tailwind v4 `max-w-col` resuelve
+     contra la escala de contenedores, no contra la de espaciado. */
+  --spacing-col: 32rem;
+  --container-col: 32rem;
+
+  /* ── Curvas y duraciones ──────────────────────────────────────────────── */
+  /* La curva de iOS: arranca rápido y frena largo. Es la que hace que un
+     bottom sheet «se sienta» nativo. */
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-soft: cubic-bezier(0.55, 0, 1, 0.45);
+
+  --animate-shimmer: ventus-shimmer 1.6s linear infinite;
+  --animate-ring-pop: ventus-ring-pop 480ms var(--ease-out-soft);
+  --animate-toast-in: ventus-toast-in 260ms var(--ease-ios);
+  --animate-pulse-soft: ventus-pulse-soft 1.8s ease-in-out infinite;
+}
+
+/* Keyframes al tope del archivo: se emiten siempre, no dependen del purge. */
+@keyframes ventus-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@keyframes ventus-ring-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes ventus-toast-in {
+  from {
+    transform: translate3d(0, 24px, 0);
+    opacity: 0;
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+@keyframes ventus-pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Tema oscuro: se redefinen SOLO los tokens, nunca los componentes.
+   ────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  .dark {
+    --color-bg: oklch(17.6% 0.021 264.4);
+    --color-surface: oklch(22.1% 0.024 264.4);
+    --color-surface-2: oklch(26.5% 0.027 264.4);
+    --color-surface-3: oklch(30.8% 0.029 264.4);
+    --color-border: oklch(32.7% 0.028 264.4);
+    --color-border-strong: oklch(41.5% 0.03 264.4);
+    --color-fg: oklch(96.7% 0.003 264.5);
+    --color-fg-muted: oklch(74.4% 0.019 261.3);
+    --color-fg-subtle: oklch(58.1% 0.023 264.4);
+    --color-fg-inverse: oklch(17.6% 0.021 264.4);
+
+    --color-brand: oklch(68.5% 0.176 262.9);
+    --color-brand-strong: oklch(76.2% 0.148 262.9);
+    --color-brand-fg: oklch(15.5% 0.032 264.4);
+    --color-brand-soft: oklch(30.5% 0.086 261.9);
+    --color-brand-soft-fg: oklch(85.5% 0.075 258.5);
+
+    --color-ok: oklch(72.3% 0.157 149.2);
+    --color-ok-fg: oklch(15.5% 0.032 264.4);
+    --color-ok-soft: oklch(30.2% 0.075 152.5);
+    --color-ok-soft-fg: oklch(86.5% 0.104 150.5);
+
+    --color-warn: oklch(80.5% 0.153 74.5);
+    --color-warn-fg: oklch(15.5% 0.032 264.4);
+    --color-warn-soft: oklch(31.5% 0.073 62.5);
+    --color-warn-soft-fg: oklch(89.2% 0.096 78.5);
+
+    --color-danger: oklch(70.4% 0.191 22.2);
+    --color-danger-fg: oklch(15.5% 0.032 264.4);
+    --color-danger-soft: oklch(30.8% 0.096 22.2);
+    --color-danger-soft-fg: oklch(88.5% 0.072 19.5);
+
+    --color-info: oklch(71.4% 0.129 240.2);
+    --color-info-fg: oklch(15.5% 0.032 264.4);
+    --color-info-soft: oklch(30.5% 0.068 240.2);
+    --color-info-soft-fg: oklch(87.5% 0.062 235.5);
+
+    --color-accent: oklch(72.5% 0.174 301.5);
+    --color-accent-fg: oklch(15.5% 0.032 264.4);
+    --color-accent-soft: oklch(31.8% 0.09 301.5);
+    --color-accent-soft-fg: oklch(89.2% 0.068 305.5);
+    --color-streak: oklch(75.5% 0.166 45.5);
+
+    --color-ring-contato: oklch(70.5% 0.152 243.6);
+    --color-ring-conversa: oklch(80.5% 0.153 74.5);
+    --color-ring-avanco: oklch(72.3% 0.157 149.2);
+    --color-ring-track: oklch(30.5% 0.027 264.4);
+
+    --color-overlay: oklch(8% 0.015 264.7 / 62%);
+    --color-skeleton: oklch(27.5% 0.026 264.4);
+    --color-skeleton-shine: oklch(33.5% 0.028 264.4);
+
+    --shadow-xs: 0 1px 2px oklch(0% 0 0 / 40%);
+    --shadow-card: 0 1px 2px oklch(0% 0 0 / 32%), 0 1px 3px oklch(0% 0 0 / 28%);
+    --shadow-raised: 0 2px 6px oklch(0% 0 0 / 44%), 0 8px 20px oklch(0% 0 0 / 38%);
+    --shadow-sheet: 0 -2px 12px oklch(0% 0 0 / 46%), 0 -18px 48px oklch(0% 0 0 / 52%);
+    --shadow-fab: 0 4px 12px oklch(0% 0 0 / 52%), 0 12px 28px oklch(0% 0 0 / 42%);
+    --shadow-toast: 0 6px 18px oklch(0% 0 0 / 50%);
+  }
+
+  /* ── Safe areas: un solo lugar de verdad ────────────────────────────────
+     env() no se puede usar dentro de @theme, así que las safe areas viven en
+     :root como variables planas. Todo el resto de la app las consume desde
+     acá y nunca vuelve a escribir env(). */
+  :root {
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    /* Altura máxima de un bottom sheet: nunca tapa la status bar. */
+    --sheet-max-h: calc(100svh - var(--safe-top) - 2.5rem);
+    /* Dónde apoya el toast: encima de la bottom nav y del home indicator. */
+    --toast-bottom: calc(var(--spacing-nav) + var(--safe-bottom) + 0.75rem);
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  html {
+    /* 100svh y NO 100dvh: el dvh hace saltar el layout cuando la barra del
+       navegador se retrae en medio de un scroll. */
+    height: 100svh;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    min-height: 100svh;
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    /* Evita el rubber-band que dispara pull-to-refresh en medio de una lista. */
+    overscroll-behavior-y: contain;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Todos los inputs a >=16px: por debajo, iOS hace zoom al enfocar. */
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1rem);
+  }
+
+  button,
+  [role='button'] {
+    touch-action: manipulation;
+  }
+
+  /* Los números de HUD, timers y contadores no tienen que bailar. */
+  :where(.tnum) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  /* El scroll del body queda congelado mientras hay un sheet abierto. */
+  body[data-ventus-scroll-lock='1'] {
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Utilidades — safe areas y ergonomía móvil.
+   ────────────────────────────────────────────────────────────────────────── */
+@utility pt-safe {
+  padding-top: var(--safe-top);
+}
+@utility pb-safe {
+  padding-bottom: var(--safe-bottom);
+}
+@utility pl-safe {
+  padding-left: var(--safe-left);
+}
+@utility pr-safe {
+  padding-right: var(--safe-right);
+}
+@utility px-safe {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+@utility mt-safe {
+  margin-top: var(--safe-top);
+}
+@utility mb-safe {
+  margin-bottom: var(--safe-bottom);
+}
+/* Espacio para que el contenido no quede debajo de la bottom nav + home indicator. */
+@utility pb-nav-safe {
+  padding-bottom: calc(var(--spacing-nav) + var(--safe-bottom));
+}
+
+/* Alto de pantalla ÚTIL: 100svh menos las dos safe areas. */
+@utility h-screen-safe {
+  height: calc(100svh - var(--safe-top) - var(--safe-bottom));
+}
+@utility min-h-screen-safe {
+  min-height: calc(100svh - var(--safe-top) - var(--safe-bottom));
+}
+@utility h-screen-svh {
+  height: 100svh;
+}
+@utility min-h-screen-svh {
+  min-height: 100svh;
+}
+
+/* Corta el rubber-band: obligatorio en carruseles y en listas anidadas
+   (bug conocido de Safari con overscroll dentro de scroll horizontal). */
+@utility no-overscroll {
+  overscroll-behavior: contain;
+}
+@utility tap-highlight-none {
+  -webkit-tap-highlight-color: transparent;
+}
+/* Scroll con inercia de iOS. */
+@utility scroll-momentum {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+/* Alias histórico: se mantiene porque Shell y BottomNav ya lo usan. */
+@utility scroll-contained {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+/* Fila arrastrable: el navegador no debe robarnos el gesto horizontal. */
+@utility touch-pan-y-only {
+  touch-action: pan-y;
+}
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   View Transitions — navegación tipo stack y morph de elemento compartido.
+   Ver src/ui/transitions.ts, que fija el data-attribute en <html>.
+   ────────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 220ms;
+    animation-timing-function: var(--ease-ios);
+  }
+
+  /* push: la pantalla nueva entra desde la derecha y empuja a la vieja. */
+  html[data-vt='push']::view-transition-old(root) {
+    animation-name: ventus-slide-out-left;
+  }
+  html[data-vt='push']::view-transition-new(root) {
+    animation-name: ventus-slide-in-right;
+  }
+
+  /* pop: exactamente al revés. */
+  html[data-vt='pop']::view-transition-old(root) {
+    animation-name: ventus-slide-out-right;
+    z-index: 2;
+  }
+  html[data-vt='pop']::view-transition-new(root) {
+    animation-name: ventus-slide-in-left;
+    z-index: 1;
+  }
+
+  /* morph: el elemento compartido interpola solo; el resto hace cross-fade. */
+  html[data-vt='morph']::view-transition-old(root),
+  html[data-vt='morph']::view-transition-new(root) {
+    animation-duration: 260ms;
+  }
+}
+
+@keyframes ventus-slide-in-right {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes ventus-slide-out-left {
+  from {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+  to {
+    transform: translate3d(-24%, 0, 0);
+    opacity: 0.6;
+  }
+}
+@keyframes ventus-slide-in-left {
+  from {
+    transform: translate3d(-24%, 0, 0);
+    opacity: 0.6;
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+@keyframes ventus-slide-out-right {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(100%, 0, 0);
+  }
+}

@@ -1,0 +1,730 @@
+// src/data/mutations.ts
+// Las mutaciones de dominio. TODAS son optimistas y TODAS pasan por el outbox.
+//
+// Regla dura de la app: ningún componente llama a supabase. Escribe acá, o no
+// escribe. El camino es siempre el mismo:
+//
+//     1. validar en el cliente lo que se pueda (la validación real es del
+//        servidor: los gates se revalidan SIEMPRE en Postgres)
+//     2. aplicar el cambio en Dexie  → la UI ya lo muestra
+//     3. encolar en el outbox        → el envío es problema del motor de sync
+//     4. pedir un flush sin esperarlo → si no hay red, no pasa nada
+//
+// El paso 2 antes del 3 no es un detalle: si encoláramos primero y un flush
+// instantáneo ganara la carrera, el pull podría traer la fila del servidor
+// antes de que exista la copia local y el vendedor vería su nota parpadear.
+
+import { useMutation, type QueryClient, type UseMutationResult } from '@tanstack/react-query'
+import {
+  advanceLeadStage,
+  calcNextTouchpointDate,
+  EVIDENCE_REQUIRED_ABOVE,
+  todayBr,
+  type ActivitySource,
+  type ActivityType,
+  type Channel,
+  type EntityRef,
+  type IsoDate,
+  type ScaleKey,
+  type StageId,
+  type TaskKind,
+  type TouchpointResult,
+  type TouchpointSeq,
+} from '@/core'
+import { agora, getDb } from './db'
+import { enqueue, flush, novoClientUuid } from './outbox'
+import type { LocalActivity, LocalTouchpoint } from './local-types'
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Nombres de las RPC de dominio
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Las funciones SECURITY DEFINER que validan del lado del servidor.
+ * TODO(F2-F4): definirlas en supabase/migrations. Mientras no existan, la
+ * mutación se encola igual y queda en 'erro' con un mensaje claro — nunca se
+ * pierde lo que el vendedor escribió.
+ */
+export const RPC = {
+  atualizarEscala: 'atualizar_escala',
+  avancarEtapa: 'avancar_etapa',
+  registrarTouchpoint: 'registrar_touchpoint',
+  converterLead: 'converter_lead',
+  promoverDoSweep: 'promote_sweep_to_lead',
+} as const
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Ids provisorios
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let contadorProvisorio = 0
+
+/**
+ * Id local para una fila append-only que todavía no tiene id del servidor.
+ * Negativo a propósito: nunca puede chocar con un bigserial y se distingue de
+ * un vistazo en el depurador. La clave real de la fila es `uid`.
+ */
+function idProvisorio(): number {
+  contadorProvisorio += 1
+  return -contadorProvisorio
+}
+
+/** Encola y pide el flush sin bloquear al que llamó. */
+async function encolarEDisparar(
+  entrada: Parameters<typeof enqueue>[0],
+): Promise<string> {
+  const id = await enqueue(entrada)
+  void flush().catch(() => undefined)
+  return id
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1 · registrarAtividade — append-only, el 80 % del tráfico
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface EntradaAtividade {
+  vendor: string
+  opportunityId: number
+  tipo: ActivityType
+  descricao: string
+  resultado?: string | null
+  /** Fecha del hecho, no la de carga. Default: hoy en BRT. */
+  data?: IsoDate
+  /** Código del cookbook, ej. '3B'. */
+  codigoMetodologia?: string | null
+  proximaAcao?: string | null
+  proximaAcaoData?: IsoDate | null
+  origem?: ActivitySource
+  /** Para atar la actividad a un audio ya guardado en audioBlobs. */
+  clientUuid?: string
+}
+
+/**
+ * Registra una actividad. Es append-only con client_uuid: reintentarla es
+ * inofensivo y dos dispositivos nunca la duplican.
+ */
+export async function registrarAtividade(entrada: EntradaAtividade): Promise<string> {
+  const uuid = entrada.clientUuid ?? novoClientUuid()
+  const data = entrada.data ?? todayBr()
+  const criadoEm = agora()
+
+  const linha: LocalActivity = {
+    uid: uuid,
+    client_uuid: uuid,
+    pendente: 1,
+    id: idProvisorio(),
+    opportunity_id: entrada.opportunityId,
+    vendor: entrada.vendor,
+    created_at: criadoEm,
+    activity_date: data,
+    activity_type: entrada.tipo,
+    description: entrada.descricao,
+    result: entrada.resultado ?? null,
+    stage_at_time: null,
+    methodology_code: entrada.codigoMetodologia ?? null,
+    ai_suggested_action: null,
+    ai_suggested_scales: null,
+    ai_confidence: null,
+    next_action: entrada.proximaAcao ?? null,
+    next_action_date: entrada.proximaAcaoData ?? null,
+    next_action_done: false,
+    source: entrada.origem ?? 'manual',
+  }
+
+  const db = getDb()
+  await db.activities.put(linha)
+
+  // Reflejo local del trigger touch_last_activity(): la Carteira tiene que
+  // dejar de decir "9 dias sem contato" en el mismo instante.
+  const opp = await db.opportunities.get(entrada.opportunityId)
+  if (opp) {
+    await db.opportunities.put({ ...opp, last_activity_date: data, last_update: criadoEm })
+  }
+
+  await encolarEDisparar({
+    id: uuid,
+    tabla: 'activities',
+    op: 'insert',
+    row_id: null,
+    campos_tocados: [],
+    payload: {
+      opportunity_id: linha.opportunity_id,
+      vendor: linha.vendor,
+      activity_date: linha.activity_date,
+      activity_type: linha.activity_type,
+      description: linha.description,
+      result: linha.result,
+      methodology_code: linha.methodology_code,
+      next_action: linha.next_action,
+      next_action_date: linha.next_action_date,
+      source: linha.source,
+    },
+  })
+  return uuid
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   2-4 · Tarefas
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface EntradaTask {
+  vendor: string
+  kind: TaskKind
+  target: EntityRef
+  /** Texto imperativo en PT-BR: 'Ligar para o Marcelo da Tetra'. */
+  title: string
+  /** Fecha obligatoria: una tarea sin fecha no existe (51 de 54 en el v2). */
+  dueDate: IsoDate
+}
+
+export async function criarTask(entrada: EntradaTask): Promise<string> {
+  const id = novoClientUuid()
+  const criadoEm = agora()
+
+  await getDb().tasks.put({
+    id,
+    vendor: entrada.vendor,
+    kind: entrada.kind,
+    target: entrada.target,
+    title: entrada.title,
+    due_date: entrada.dueDate,
+    status: 'pending',
+    snoozed_until: null,
+    created_at: criadoEm,
+  })
+
+  await encolarEDisparar({
+    id,
+    tabla: 'tasks',
+    op: 'insert',
+    row_id: id,
+    campos_tocados: [],
+    payload: {
+      id,
+      vendor: entrada.vendor,
+      kind: entrada.kind,
+      opportunity_id: entrada.target.kind === 'opportunity' ? entrada.target.id : null,
+      lead_id: entrada.target.kind === 'lead' ? entrada.target.id : null,
+      title: entrada.title,
+      due_date: entrada.dueDate,
+      status: 'pending',
+    },
+  })
+  return id
+}
+
+export interface EntradaConcluirTask {
+  taskId: string
+  /** Actividad que la cierra. Si viene, se registra en el mismo gesto. */
+  atividade?: EntradaAtividade
+}
+
+export async function concluirTask(entrada: EntradaConcluirTask): Promise<void> {
+  const db = getDb()
+  const task = await db.tasks.get(entrada.taskId)
+  if (task) await db.tasks.put({ ...task, status: 'done' })
+
+  if (entrada.atividade) await registrarAtividade(entrada.atividade)
+
+  await encolarEDisparar({
+    tabla: 'tasks',
+    op: 'update',
+    row_id: entrada.taskId,
+    campos_tocados: ['status'],
+    payload: { status: 'done' },
+  })
+}
+
+export interface EntradaAdiarTask {
+  taskId: string
+  /** Nueva fecha. La UI ofrece amanhã / 3 dias / próxima semana. */
+  ate: IsoDate
+}
+
+export async function adiarTask(entrada: EntradaAdiarTask): Promise<void> {
+  const db = getDb()
+  const task = await db.tasks.get(entrada.taskId)
+  if (task) {
+    await db.tasks.put({
+      ...task,
+      status: 'snoozed',
+      snoozed_until: entrada.ate,
+      due_date: entrada.ate,
+    })
+  }
+
+  await encolarEDisparar({
+    tabla: 'tasks',
+    op: 'update',
+    row_id: entrada.taskId,
+    campos_tocados: ['status', 'snoozed_until', 'due_date'],
+    payload: { status: 'snoozed', snoozed_until: entrada.ate, due_date: entrada.ate },
+  })
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   5 · atualizarEscala — con evidencia y LWW por campo
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface EntradaEscala {
+  opportunityId: number
+  escala: ScaleKey
+  nivel: number
+  /** Cita textual del cliente. OBLIGATORIA por encima del nivel 5. */
+  citacao?: string | null
+  /** Quién lo dijo: nombre y cargo. Sin fuente no es prueba, es opinión. */
+  fonte?: string | null
+  vendor: string
+}
+
+/** Se lanza cuando falta la prueba. La UI la muestra como sheet, nunca alert(). */
+export class ErroRegraDaProva extends Error {
+  constructor(escala: ScaleKey, nivel: number) {
+    super(
+      `Para colocar ${escala.toUpperCase()} em ${String(nivel)} é preciso uma citação do cliente.`,
+    )
+    this.name = 'ErroRegraDaProva'
+  }
+}
+
+/**
+ * Mueve UNA escala. Va por RPC y no por update directo a propósito: el jsonb
+ * `scales` se actualiza con jsonb_set del lado del servidor, junto con el
+ * timestamp de ESA escala en `scales_updated_at`. Un update del jsonb entero
+ * pisaría las otras cinco escalas — que es exactamente el conflicto que este
+ * diseño existe para evitar.
+ */
+export async function atualizarEscala(entrada: EntradaEscala): Promise<void> {
+  if (entrada.nivel > EVIDENCE_REQUIRED_ABOVE && !entrada.citacao) {
+    throw new ErroRegraDaProva(entrada.escala, entrada.nivel)
+  }
+
+  const uuid = novoClientUuid()
+  const ts = agora()
+  const campo = `scales.${entrada.escala}`
+  const db = getDb()
+
+  const opp = await db.opportunities.get(entrada.opportunityId)
+  if (opp) {
+    const scales = { ...(opp.scales ?? {}) }
+    scales[entrada.escala] = {
+      score: entrada.nivel,
+      ...(entrada.citacao ? { evidence: entrada.citacao } : {}),
+      ...(entrada.fonte ? { evidence_source: entrada.fonte } : {}),
+      evidence_at: ts,
+      updated_by: entrada.vendor,
+      updated_at: ts,
+    }
+    await db.opportunities.put({ ...opp, scales })
+  }
+
+  await encolarEDisparar({
+    id: uuid,
+    tabla: 'opportunities',
+    op: 'rpc',
+    rpc: RPC.atualizarEscala,
+    row_id: entrada.opportunityId,
+    campos_tocados: [campo],
+    ts_por_campo: { [campo]: ts },
+    // Firma real: public.atualizar_escala(p_opportunity_id, p_escala, p_nivel,
+    // p_citacao, p_fonte, p_autor, p_cargo, p_client_uuid). El instante NO se
+    // manda: lo pone el servidor con now(), que es el único reloj en el que
+    // dos teléfonos coinciden. p_client_uuid es la idempotencia.
+    payload: {
+      p_opportunity_id: entrada.opportunityId,
+      p_escala: entrada.escala,
+      p_nivel: entrada.nivel,
+      p_citacao: entrada.citacao ?? null,
+      p_fonte: entrada.fonte ?? null,
+      p_client_uuid: uuid,
+    },
+  })
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   6 · avancarEtapa — el gate se revalida SIEMPRE en Postgres
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface EntradaEtapa {
+  opportunityId: number
+  para: StageId
+  /** Motivo del override cuando el gate no está cumplido. Queda auditado. */
+  motivoOverride?: string | null
+  vendor: string
+}
+
+export async function avancarEtapa(entrada: EntradaEtapa): Promise<void> {
+  const ts = agora()
+  const db = getDb()
+
+  const opp = await db.opportunities.get(entrada.opportunityId)
+  if (opp) await db.opportunities.put({ ...opp, stage: entrada.para, last_update: ts })
+
+  await encolarEDisparar({
+    tabla: 'opportunities',
+    op: 'rpc',
+    rpc: RPC.avancarEtapa,
+    row_id: entrada.opportunityId,
+    campos_tocados: ['stage'],
+    ts_por_campo: { stage: ts },
+    // Los nombres son los de public.avancar_etapa(p_opp_id, p_nova_etapa,
+    // p_override_motivo) en 0009_rpcs.sql. PostgREST resuelve la función por el
+    // conjunto exacto de nombres: `p_vendor` y `p_ts` sobraban y hacían
+    // fallar la llamada entera con PGRST202. El vendedor lo deduce el servidor
+    // con ventus_actor() y el instante lo pone now().
+    payload: {
+      p_opp_id: entrada.opportunityId,
+      p_nova_etapa: entrada.para,
+      p_override_motivo: entrada.motivoOverride ?? null,
+    },
+  })
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   7 · registrarTouchpoint — append-only + avance de la cadencia
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface EntradaTouchpoint {
+  leadId: number
+  sequencia: TouchpointSeq
+  canal: Channel
+  resultado: TouchpointResult
+  notas?: string | null
+  /**
+   * Lo que efectivamente se mandó, para que el toque siguiente no se repita.
+   *
+   * `public.touchpoints` NO tiene columna para esto (verificado contra
+   * producción), así que se guarda dentro de `notes` con una etiqueta en vez de
+   * perderse en silencio. Si el equipo la quiere consultable, hace falta una
+   * migración que agregue touchpoints.sent_message.
+   */
+  mensagemEnviada?: string | null
+  vendor: string
+}
+
+/** Junta notas y mensaje enviada en el único campo de texto que la tabla tiene. */
+function notasComMensagem(entrada: EntradaTouchpoint): string | null {
+  const notas = entrada.notas?.trim() ?? ''
+  const enviada = entrada.mensagemEnviada?.trim() ?? ''
+  if (enviada === '') return notas === '' ? null : notas
+  const bloco = `Mensagem enviada: ${enviada}`
+  return notas === '' ? bloco : `${notas}\n\n${bloco}`
+}
+
+/**
+ * Registra un toque de la cadencia. El touchpoint es append-only; el avance
+ * del lead (contador, próxima fecha, etapa 1a→1d) lo calcula el MISMO core que
+ * corre en el servidor, así que la UI optimista y la RPC coinciden.
+ */
+export async function registrarTouchpoint(entrada: EntradaTouchpoint): Promise<string> {
+  const uuid = novoClientUuid()
+  const ts = agora()
+  const db = getDb()
+
+  const linha: LocalTouchpoint = {
+    uid: uuid,
+    client_uuid: uuid,
+    pendente: 1,
+    vendor: entrada.vendor,
+    id: idProvisorio(),
+    lead_id: entrada.leadId,
+    sequence_number: entrada.sequencia,
+    channel: entrada.canal,
+    result: entrada.resultado,
+    notes: entrada.notas ?? null,
+    executed_at: ts,
+  }
+  await db.touchpoints.put(linha)
+
+  const lead = await db.leads.get(entrada.leadId)
+  const camposLead = ['touchpoints_count', 'last_touchpoint_date', 'next_touchpoint_date', 'stage']
+
+  if (lead) {
+    const contagem = lead.touchpoints_count + 1
+    await db.leads.put({
+      ...lead,
+      touchpoints_count: contagem,
+      last_touchpoint_date: ts.slice(0, 10),
+      next_touchpoint_date: calcNextTouchpointDate(contagem, ts.slice(0, 10)),
+      stage: advanceLeadStage(lead, entrada.resultado),
+      updated_at: ts,
+    })
+  }
+
+  await encolarEDisparar({
+    id: uuid,
+    tabla: 'leads',
+    op: 'rpc',
+    rpc: RPC.registrarTouchpoint,
+    row_id: entrada.leadId,
+    campos_tocados: camposLead,
+    ts_por_campo: Object.fromEntries(camposLead.map((c) => [c, ts])),
+    // Firma real: public.registrar_touchpoint(p_lead_id, p_canal, p_resultado,
+    // p_notas, p_client_uuid). El número de secuencia NO se manda: lo calcula
+    // el servidor con `for update` sobre el lead, que es la única forma de que
+    // dos teléfonos registrando a la vez no escriban el mismo TP. p_client_uuid
+    // es la idempotencia de esta función (tabla ventus_idempotency).
+    payload: {
+      p_lead_id: entrada.leadId,
+      p_canal: entrada.canal,
+      p_resultado: entrada.resultado,
+      p_notas: notasComMensagem(entrada),
+      p_client_uuid: uuid,
+    },
+  })
+  return uuid
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   8 · converterLead — el lead se vuelve oportunidad
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface EntradaConversao {
+  leadId: number
+  /** Nombre del negocio. Default: el de la empresa del lead. */
+  nome?: string | null
+  valor?: number | null
+  linhaProduto?: string | null
+  vendor: string
+}
+
+/**
+ * Convierte un lead en oportunidad.
+ * La oportunidad la crea la RPC (necesita un bigserial y valida duplicados
+ * contra los índices únicos de cnpj_raiz/domain), así que localmente sólo se
+ * marca el lead como convertido. La oportunidad aparece en el próximo pull:
+ * es el único punto de la app donde el optimismo tiene un límite honesto.
+ */
+export async function converterLead(entrada: EntradaConversao): Promise<void> {
+  const uuid = novoClientUuid()
+  const ts = agora()
+  const db = getDb()
+
+  const lead = await db.leads.get(entrada.leadId)
+  if (lead) await db.leads.put({ ...lead, status: 'converted', updated_at: ts })
+
+  await encolarEDisparar({
+    id: uuid,
+    tabla: 'leads',
+    op: 'rpc',
+    rpc: RPC.converterLead,
+    row_id: entrada.leadId,
+    campos_tocados: ['status', 'opportunity_id'],
+    ts_por_campo: { status: ts, opportunity_id: ts },
+    // Firma real: public.converter_lead(p_lead_id, p_name, p_value,
+    // p_product_line, p_client_uuid). El vendedor sale de leads.vendor del
+    // lado del servidor; mandarlo rompía la resolución de la función.
+    payload: {
+      p_lead_id: entrada.leadId,
+      p_name: entrada.nome ?? lead?.company_name ?? null,
+      p_value: entrada.valor ?? null,
+      p_product_line: entrada.linhaProduto ?? null,
+      p_client_uuid: uuid,
+    },
+  })
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   9 · promoverDoSweep — del mapa de mercado a la cadencia
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface EntradaPromocao {
+  /** market_sweep.id es bigint en producción, no uuid. */
+  sweepId: number
+  vendor: string
+}
+
+/**
+ * Promueve una empresa del mapa de mercado a lead con la cadencia arrancada.
+ * En producción hay 83 empresas 'asignada' con crm_lead_id NULL: por eso
+ * Victor Hugo, Renata y Paulo tienen CERO leads. La RPC es la que valida el
+ * anti-duplicado, así que acá no hay copia optimista: hay una promesa encolada.
+ */
+export async function promoverDoSweep(entrada: EntradaPromocao): Promise<void> {
+  await encolarEDisparar({
+    tabla: 'market_sweep',
+    op: 'rpc',
+    rpc: RPC.promoverDoSweep,
+    row_id: entrada.sweepId,
+    campos_tocados: ['crm_lead_id', 'promoted_at'],
+    // Firma real: public.promote_sweep_to_lead(p_sweep_id bigint). No recibe
+    // vendedor: la función lee market_sweep.assigned_to y verifica permiso con
+    // ventus_autorizado(). Mandarle p_vendor rompía la resolución de la función.
+    payload: { p_sweep_id: entrada.sweepId },
+  })
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   10 · registrarSessaoGolden — la Hora Cheia
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export interface EntradaSessaoGolden {
+  vendor: string
+  day: IsoDate
+  iniciadaEm: string
+  terminadaEm: string
+  duracaoSegundos: number
+  toques: number
+  conversas: number
+  reunioes: number
+  puladas: number
+  metaToques: number
+  horaCheia: boolean
+  /** {melhor_conversa, objecao_frequente, o_que_muda}. */
+  debrief?: Record<string, string> | null
+  superficie?: 'app' | 'telegram' | 'tma'
+}
+
+/** Cierra la sesión de Golden Hour. Append-only: una fila por vendedor y día. */
+export async function registrarSessaoGolden(entrada: EntradaSessaoGolden): Promise<string> {
+  const uuid = novoClientUuid()
+
+  await encolarEDisparar({
+    id: uuid,
+    tabla: 'golden_hour_sessions',
+    op: 'insert',
+    row_id: null,
+    campos_tocados: [],
+    payload: {
+      vendor: entrada.vendor,
+      day: entrada.day,
+      started_at: entrada.iniciadaEm,
+      ended_at: entrada.terminadaEm,
+      duration_seconds: entrada.duracaoSegundos,
+      touches: entrada.toques,
+      conversas: entrada.conversas,
+      meetings: entrada.reunioes,
+      skipped: entrada.puladas,
+      goal_touches: entrada.metaToques,
+      hora_cheia: entrada.horaCheia,
+      debrief: entrada.debrief ?? null,
+      surface: entrada.superficie ?? 'app',
+    },
+  })
+  return uuid
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Claves de mutación y defaults
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Las claves son parte del contrato: setMutationDefaults las usa para volver a
+ * atar la mutationFn después de un reload. SIN ESTO, una mutación pausada
+ * (offline) nunca se reanuda al reabrir la app — y ese es exactamente el caso
+ * de uso central del producto.
+ */
+export const MUTATION_KEYS = {
+  registrarAtividade: ['registrarAtividade'] as const,
+  criarTask: ['criarTask'] as const,
+  concluirTask: ['concluirTask'] as const,
+  adiarTask: ['adiarTask'] as const,
+  atualizarEscala: ['atualizarEscala'] as const,
+  avancarEtapa: ['avancarEtapa'] as const,
+  registrarTouchpoint: ['registrarTouchpoint'] as const,
+  converterLead: ['converterLead'] as const,
+  promoverDoSweep: ['promoverDoSweep'] as const,
+  registrarSessaoGolden: ['registrarSessaoGolden'] as const,
+} as const
+
+/** Claves de query que invalida cada mutación al terminar. */
+const INVALIDA: Readonly<Record<keyof typeof MUTATION_KEYS, readonly string[]>> = {
+  registrarAtividade: ['dossie', 'carteira', 'plano', 'rings'],
+  criarTask: ['plano', 'carteira', 'dossie'],
+  concluirTask: ['plano', 'carteira', 'dossie', 'rings'],
+  adiarTask: ['plano', 'carteira'],
+  atualizarEscala: ['dossie', 'carteira', 'plano'],
+  avancarEtapa: ['dossie', 'carteira', 'plano', 'rings'],
+  registrarTouchpoint: ['cadencia', 'golden', 'rings', 'plano'],
+  converterLead: ['cadencia', 'carteira', 'golden'],
+  promoverDoSweep: ['cadencia', 'golden'],
+  registrarSessaoGolden: ['rings', 'placar'],
+}
+
+/**
+ * Registra la mutationFn de cada clave en el QueryClient.
+ * Llamarla UNA vez, antes de hidratar el cache persistido.
+ */
+export function registrarMutationDefaults(queryClient: QueryClient): void {
+  const registrar = <TVars>(
+    chave: readonly string[],
+    fn: (vars: TVars) => Promise<unknown>,
+    invalida: readonly string[],
+  ): void => {
+    queryClient.setMutationDefaults(chave, {
+      mutationFn: (vars: TVars) => fn(vars),
+      onSettled: () => {
+        for (const raiz of invalida) void queryClient.invalidateQueries({ queryKey: [raiz] })
+      },
+    })
+  }
+
+  registrar(MUTATION_KEYS.registrarAtividade, registrarAtividade, INVALIDA.registrarAtividade)
+  registrar(MUTATION_KEYS.criarTask, criarTask, INVALIDA.criarTask)
+  registrar(MUTATION_KEYS.concluirTask, concluirTask, INVALIDA.concluirTask)
+  registrar(MUTATION_KEYS.adiarTask, adiarTask, INVALIDA.adiarTask)
+  registrar(MUTATION_KEYS.atualizarEscala, atualizarEscala, INVALIDA.atualizarEscala)
+  registrar(MUTATION_KEYS.avancarEtapa, avancarEtapa, INVALIDA.avancarEtapa)
+  registrar(MUTATION_KEYS.registrarTouchpoint, registrarTouchpoint, INVALIDA.registrarTouchpoint)
+  registrar(MUTATION_KEYS.converterLead, converterLead, INVALIDA.converterLead)
+  registrar(MUTATION_KEYS.promoverDoSweep, promoverDoSweep, INVALIDA.promoverDoSweep)
+  registrar(
+    MUTATION_KEYS.registrarSessaoGolden,
+    registrarSessaoGolden,
+    INVALIDA.registrarSessaoGolden,
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Hooks
+   ══════════════════════════════════════════════════════════════════════════ */
+
+// Los hooks NO declaran mutationFn: la toman de los defaults por mutationKey.
+// Es lo que permite que una mutación encolada offline se reanude sola tras un
+// reload de la app.
+
+export function useRegistrarAtividade(): UseMutationResult<string, Error, EntradaAtividade> {
+  return useMutation<string, Error, EntradaAtividade>({
+    mutationKey: MUTATION_KEYS.registrarAtividade,
+  })
+}
+
+export function useCriarTask(): UseMutationResult<string, Error, EntradaTask> {
+  return useMutation<string, Error, EntradaTask>({ mutationKey: MUTATION_KEYS.criarTask })
+}
+
+export function useConcluirTask(): UseMutationResult<void, Error, EntradaConcluirTask> {
+  return useMutation<void, Error, EntradaConcluirTask>({ mutationKey: MUTATION_KEYS.concluirTask })
+}
+
+export function useAdiarTask(): UseMutationResult<void, Error, EntradaAdiarTask> {
+  return useMutation<void, Error, EntradaAdiarTask>({ mutationKey: MUTATION_KEYS.adiarTask })
+}
+
+export function useAtualizarEscala(): UseMutationResult<void, Error, EntradaEscala> {
+  return useMutation<void, Error, EntradaEscala>({ mutationKey: MUTATION_KEYS.atualizarEscala })
+}
+
+export function useAvancarEtapa(): UseMutationResult<void, Error, EntradaEtapa> {
+  return useMutation<void, Error, EntradaEtapa>({ mutationKey: MUTATION_KEYS.avancarEtapa })
+}
+
+export function useRegistrarTouchpoint(): UseMutationResult<string, Error, EntradaTouchpoint> {
+  return useMutation<string, Error, EntradaTouchpoint>({
+    mutationKey: MUTATION_KEYS.registrarTouchpoint,
+  })
+}
+
+export function useConverterLead(): UseMutationResult<void, Error, EntradaConversao> {
+  return useMutation<void, Error, EntradaConversao>({ mutationKey: MUTATION_KEYS.converterLead })
+}
+
+export function usePromoverDoSweep(): UseMutationResult<void, Error, EntradaPromocao> {
+  return useMutation<void, Error, EntradaPromocao>({ mutationKey: MUTATION_KEYS.promoverDoSweep })
+}
+
+export function useRegistrarSessaoGolden(): UseMutationResult<string, Error, EntradaSessaoGolden> {
+  return useMutation<string, Error, EntradaSessaoGolden>({
+    mutationKey: MUTATION_KEYS.registrarSessaoGolden,
+  })
+}

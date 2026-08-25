@@ -1,0 +1,525 @@
+-- ############################################################################
+-- ############################################################################
+-- ##                                                                        ##
+-- ##      ⛔⛔⛔  NÃO APLIQUE ESTE ARQUIVO  ⛔⛔⛔                            ##
+-- ##                                                                        ##
+-- ##      ESTA MIGRAÇÃO **NÃO É ADITIVA**. ELA ALTERA AS POLICIES DE RLS     ##
+-- ##      E OS GRANTS DO BANCO DE PRODUÇÃO QUE O CRM v2 USA TODOS OS DIAS.   ##
+-- ##                                                                        ##
+-- ##      APLICAR SEM APROVAÇÃO HUMANA EXPLÍCITA PODE DEIXAR OS 4           ##
+-- ##      VENDEDORES SEM VER O PRÓPRIO PIPELINE NO MEIO DO EXPEDIENTE.      ##
+-- ##                                                                        ##
+-- ##      NENHUM AGENTE, SCRIPT DE CI, `supabase db push` OU CHAMADA DE      ##
+-- ##      apply_migration DEVE RODAR ESTE ARQUIVO. Ele fica fora da série    ##
+-- ##      0001-0009 de propósito, com o número 0100, para que nenhuma        ##
+-- ##      execução em lote o pegue por acidente.                             ##
+-- ##                                                                        ##
+-- ##      PRÉ-REQUISITOS OBRIGATÓRIOS ANTES DE SEQUER CONSIDERAR RODAR:      ##
+-- ##        1. Rodar o BLOCO DE VERIFICAÇÃO PRÉVIA (seção A) e ler cada      ##
+-- ##           resultado. Se qualquer um contradiz o esperado, PARE.         ##
+-- ##        2. Confirmar que os 6 vendors têm vendors.auth_id preenchido.    ##
+-- ##        3. Janela fora do horário comercial (o time trabalha 9h-18h BRT) ##
+-- ##           e com Tomás ou Jordi disponível para testar e reverter.       ##
+-- ##        4. Backup / PITR confirmado no painel do Supabase.               ##
+-- ##        5. Aprovação escrita de um humano nomeado, nesta ordem:          ##
+-- ##           Tomás (dono do dado) e Jordi (Diretor Comercial).             ##
+-- ##                                                                        ##
+-- ##      O ROLLBACK EXATO ESTÁ NA SEÇÃO D. LEIA-O ANTES DE COMEÇAR.         ##
+-- ##                                                                        ##
+-- ############################################################################
+-- ############################################################################
+--
+-- ----------------------------------------------------------------------------
+-- O QUE ESTE ARQUIVO CONSERTA (e por que é urgente, mesmo sendo perigoso)
+-- ----------------------------------------------------------------------------
+-- Auditoria de produção sobre wtrbvgqxgcfjacqcndmb:
+--
+--   1. A policy 'Enable all for development' (cmd=ALL, role=public, USING true,
+--      WITH CHECK true) existe em opportunities, leads e touchpoints. Como as
+--      policies permissivas se combinam com OR, ela ANULA por completo
+--      vendor_own_opportunities / vendor_own_leads / vendor_own_touchpoints.
+--      HOJE NÃO HÁ NENHUMA SEPARAÇÃO POR VENDEDOR no pipeline.
+--
+--   2. anon e authenticated têm SELECT, INSERT, UPDATE, DELETE, TRUNCATE,
+--      REFERENCES e TRIGGER sobre as 12 tabelas de public. A anon key viaja no
+--      bundle do front. Qualquer pessoa com ela lê e escreve os R$ 2,1 milhões
+--      de pipeline e os dados de contato de 54 leads — sem fazer login.
+--
+--   3. vendors tem leitura totalmente aberta ('all_read_vendors' USING true):
+--      nome, email corporativo, cargo e telegram_id dos 6, para qualquer anônimo.
+--
+--   4. Cinco views são SECURITY DEFINER (pending_actions, vendor_notifications,
+--      vendor_activity_summary, opportunity_timeline, stale_opportunities) e
+--      devolvem linhas de TODOS os vendedores. Quatro delas são ERROR no advisor.
+--
+--   5. current_vendor_name() e is_admin() têm search_path mutável e são
+--      executáveis por anon via /rest/v1/rpc/.
+--
+--   6. 106 warnings de multiple_permissive_policies e 174.562 seq_scan sobre
+--      vendors (tabela de 6 linhas), porque cada policy re-avalia
+--      current_vendor_name() linha a linha em vez de embrulhar em (select ...).
+--
+-- ----------------------------------------------------------------------------
+-- ORDEM DE LEITURA DESTE ARQUIVO
+--   A. VERIFICAÇÃO PRÉVIA — o que rodar ANTES, e o que cada resposta significa
+--   B. O SANEAMENTO       — o DDL propriamente dito (comentado por padrão)
+--   C. VERIFICAÇÃO POSTERIOR — como provar que o v2 continua funcionando
+--   D. ROLLBACK EXATO     — como voltar ao estado de hoje, linha por linha
+-- ----------------------------------------------------------------------------
+
+
+-- ############################################################################
+-- SEÇÃO A · VERIFICAÇÃO PRÉVIA  (SOMENTE LEITURA — pode rodar quando quiser)
+-- ############################################################################
+--
+-- Rode TUDO isto e guarde a saída. É o "antes" contra o qual se compara depois.
+--
+-- A1. Snapshot completo das policies atuais. GUARDE ESTA SAÍDA: é o rollback.
+--     select schemaname, tablename, policyname, permissive, roles, cmd, qual, with_check
+--     from pg_policies where schemaname = 'public' order by tablename, policyname;
+--
+-- A2. Snapshot dos grants atuais. GUARDE TAMBÉM.
+--     select grantee, table_name, string_agg(privilege_type, ',' order by privilege_type)
+--     from information_schema.role_table_grants
+--     where table_schema = 'public' and grantee in ('anon','authenticated')
+--     group by grantee, table_name order by table_name, grantee;
+--
+-- A3. ❗ O TESTE QUE DECIDE TUDO: os 6 vendors têm auth_id?
+--     Se algum tiver auth_id NULL, ao remover a policy aberta essa pessoa
+--     PERDE O ACESSO A TUDO — current_vendor_name() devolve NULL para ela.
+--     select id, name, is_active, is_admin,
+--            (auth_id is not null) as tem_auth_id,
+--            (select count(*) from auth.users u where u.id = v.auth_id) as usuario_existe
+--     from public.vendors v order by id;
+--     -- ESPERADO: 6 linhas, tem_auth_id = true e usuario_existe = 1 em TODAS.
+--     -- Se não for isso: PARE. Vincule os auth_id primeiro.
+--
+-- A4. ❗ Existe alguma linha cujo `vendor` não bate com nenhum vendors.name?
+--     Essas linhas ficariam INVISÍVEIS para todo mundo menos admin.
+--     select 'opportunities' t, count(*) orfaos from public.opportunities o
+--       where coalesce(btrim(o.vendor),'') <> '' and not exists (select 1 from public.vendors v where v.name = o.vendor)
+--     union all
+--     select 'leads', count(*) from public.leads l
+--       where not exists (select 1 from public.vendors v where v.name = l.vendor)
+--     union all
+--     select 'activities', count(*) from public.activities a
+--       where not exists (select 1 from public.vendors v where v.name = a.vendor)
+--     union all
+--     select 'notifications', count(*) from public.notifications n
+--       where not exists (select 1 from public.vendors v where v.name = n.vendor)
+--     union all
+--     select 'commitments', count(*) from public.commitments c
+--       where not exists (select 1 from public.vendors v where v.name = c.vendor)
+--     union all
+--     select 'market_sweep', count(*) from public.market_sweep m
+--       where coalesce(btrim(m.vendor),'') <> '' and not exists (select 1 from public.vendors v where v.name = m.vendor);
+--     -- ESPERADO: 0 em todas. A auditoria confirmou 0 órfãos nas três tabelas
+--     -- verificadas; confirme as seis antes de aplicar.
+--
+-- A5. ❗ O v2 DEPENDE da policy aberta? Ou seja: o front conversa com o banco
+--     usando a anon key SEM sessão? Se sim, remover a policy derruba o CRM.
+--     Isto NÃO se responde com SQL — se responde lendo o código:
+--       grep -rn "createClient" /home/user/CRMbr/src /home/user/CRMbr/api
+--       grep -rn "SUPABASE_ANON\|SERVICE_ROLE\|persistSession" /home/user/CRMbr/src /home/user/CRMbr/api
+--     E medindo o tráfego real:
+--       select count(*) filter (where 1=1) as chamadas_anon
+--       from pg_stat_statements where query ilike '%opportunities%';
+--     REGRA: se qualquer caminho do v2 lê opportunities/leads/touchpoints com a
+--     anon key e sem usuário logado, este arquivo NÃO PODE SER APLICADO até que
+--     esse caminho passe a usar sessão autenticada ou service_role no servidor.
+--
+-- A6. As funções que as policies chamam devolvem o esperado para um usuário real?
+--     -- rodar autenticado como cada vendedor, no SQL editor com "impersonate":
+--     select public.current_vendor_name(), public.is_admin(), auth.uid();
+--
+-- A7. Quantas linhas cada vendedor DEVERIA ver depois do corte (dry-run):
+--     select v.name,
+--            (select count(*) from public.opportunities o where o.vendor = v.name) opps,
+--            (select count(*) from public.leads l where l.vendor = v.name) leads
+--     from public.vendors v where v.is_active order by v.name;
+--     -- ESPERADO (auditoria): Victor Hugo 25 opps/0 leads · Renata 19/0 ·
+--     -- Andre 9/44 · Jordi 9/1 · Tomás 3/9 · Paulo 0/0.
+--     -- Se depois de aplicar alguém vir MENOS que isto, algo quebrou.
+--
+-- A8. Confirme que existe PITR / backup recente no painel do Supabase.
+--
+-- ############################################################################
+
+
+-- ############################################################################
+-- SEÇÃO B · O SANEAMENTO
+-- ############################################################################
+--
+--   ⚠️  TODO O DDL ABAIXO ESTÁ COMENTADO DE PROPÓSITO.
+--   Só descomente depois de A1..A8 e da aprovação escrita.
+--   Rode B1..B6 na ordem, em UMA única transação, e valide a SEÇÃO C ANTES do
+--   COMMIT. Com a transação aberta, um ROLLBACK desfaz tudo instantaneamente.
+--
+-- begin;   -- ← manter a transação ABERTA até validar a seção C
+--
+-- -- ═══ B1 · Remover as policies que anulam o isolamento ═══
+-- --   Estas três são a causa raiz: USING true sobre o role public.
+-- drop policy if exists "Enable all for development" on public.opportunities;
+-- drop policy if exists "Enable all for development" on public.leads;
+-- drop policy if exists "Enable all for development" on public.touchpoints;
+-- --   E a leitura aberta de vendors (nome, email, cargo, telegram_id ao anônimo).
+-- drop policy if exists "all_read_vendors" on public.vendors;
+-- drop policy if exists "Anyone can view active vendors" on public.vendors;
+--
+-- -- ═══ B2 · REVOKE de escrita (e de leitura sensível) ao anon ═══
+-- --   A anon key viaja no bundle do front: ela nunca deve poder escrever.
+-- revoke insert, update, delete, truncate, references, trigger
+--   on all tables in schema public from anon;
+-- --   E não deve poder LER dado comercial nem de contato.
+-- revoke select on
+--   public.opportunities, public.leads, public.touchpoints, public.activities,
+--   public.notifications, public.commitments, public.vendors, public.market_sweep
+--   from anon;
+-- --   Que as tabelas futuras nasçam fechadas para anon:
+-- alter default privileges in schema public revoke all on tables from anon;
+--
+-- -- ═══ B3 · As 5 views SECURITY DEFINER passam a INVOKER ═══
+-- --   Hoje devolvem linhas de TODOS os vendedores, saltando as policies.
+-- alter view public.pending_actions          set (security_invoker = on);
+-- alter view public.vendor_notifications     set (security_invoker = on);
+-- alter view public.vendor_activity_summary  set (security_invoker = on);
+-- alter view public.opportunity_timeline     set (security_invoker = on);
+-- alter view public.stale_opportunities      set (security_invoker = on);
+-- --   ⚠️ ATENÇÃO: se alguma tela do v2 usa uma destas views para mostrar dados
+-- --   do TIME (por exemplo um painel do Jordi), ela vai passar a mostrar só os
+-- --   do próprio usuário. Verifique antes:
+-- --     grep -rn "pending_actions\|vendor_notifications\|vendor_activity_summary" /home/user/CRMbr/src /home/user/CRMbr/api
+--
+-- -- ═══ B4 · search_path fixo nas funções de identidade ═══
+-- --   Sem isto, um schema no search_path do chamador pode sequestrar a resolução
+-- --   de `vendors` dentro de uma função SECURITY DEFINER.
+-- alter function public.current_vendor_name()  set search_path = public, pg_temp;
+-- alter function public.is_admin()             set search_path = public, pg_temp;
+-- alter function public.check_company_collision(text, text) set search_path = public, pg_temp;
+-- alter function public.apollo_cache_get(text)   set search_path = public, pg_temp;
+-- alter function public.apollo_cache_cleanup()   set search_path = public, pg_temp;
+-- alter function public.lusha_cache_get(text)    set search_path = public, pg_temp;
+-- alter function public.lusha_cache_cleanup()    set search_path = public, pg_temp;
+-- --   E que anon não possa mais chamá-las via /rest/v1/rpc/:
+-- revoke execute on function public.is_admin(), public.current_vendor_name() from anon;
+-- revoke execute on function public.check_company_collision(text, text) from anon;
+--
+-- -- ═══ B5 · UMA policy permissiva por AÇÃO, com auth embrulhado em (select ...) ═══
+-- --   Isto resolve os 106 warnings de multiple_permissive_policies e os 174.562
+-- --   seq_scan sobre vendors: com (select ...) o Postgres avalia a função UMA vez
+-- --   por query, não uma vez por linha.
+-- --
+-- --   O modelo de POOL do v2 (ver o que não tem dono + tomar com WITH CHECK) é
+-- --   bom e SE CONSERVA: está embutido no USING de opp_select e no opp_update.
+--
+-- drop policy if exists admin_full_access_opportunities on public.opportunities;
+-- drop policy if exists vendor_own_opportunities        on public.opportunities;
+-- drop policy if exists vendor_pool_opportunities       on public.opportunities;
+-- drop policy if exists vendor_assume_pool              on public.opportunities;
+--
+-- create policy opp_select on public.opportunities
+--   for select to authenticated
+--   using ((select public.is_admin())
+--          or vendor = (select public.current_vendor_name())
+--          or coalesce(nullif(btrim(vendor), ''), null) is null);   -- pool sem dono
+--
+-- create policy opp_insert on public.opportunities
+--   for insert to authenticated
+--   with check ((select public.is_admin())
+--               or vendor = (select public.current_vendor_name()));
+--
+-- create policy opp_update on public.opportunities
+--   for update to authenticated
+--   using ((select public.is_admin())
+--          or vendor = (select public.current_vendor_name())
+--          or coalesce(nullif(btrim(vendor), ''), null) is null)     -- tomar do pool
+--   with check ((select public.is_admin())
+--               or vendor = (select public.current_vendor_name()));  -- só para si
+--
+-- create policy opp_delete on public.opportunities
+--   for delete to authenticated
+--   using ((select public.is_admin()));
+--
+-- drop policy if exists admin_full_access_leads on public.leads;
+-- drop policy if exists vendor_own_leads        on public.leads;
+--
+-- create policy leads_select on public.leads
+--   for select to authenticated
+--   using ((select public.is_admin()) or vendor = (select public.current_vendor_name()));
+-- create policy leads_insert on public.leads
+--   for insert to authenticated
+--   with check ((select public.is_admin()) or vendor = (select public.current_vendor_name()));
+-- create policy leads_update on public.leads
+--   for update to authenticated
+--   using ((select public.is_admin()) or vendor = (select public.current_vendor_name()))
+--   with check ((select public.is_admin()) or vendor = (select public.current_vendor_name()));
+-- create policy leads_delete on public.leads
+--   for delete to authenticated
+--   using ((select public.is_admin()));
+--
+-- drop policy if exists admin_full_access_touchpoints on public.touchpoints;
+-- drop policy if exists vendor_own_touchpoints        on public.touchpoints;
+--
+-- --   touchpoints não tem coluna vendor: o dono se resolve pelo lead.
+-- --   O EXISTS correlacionado é o mesmo do v2, agora apoiado por idx_tp_sequencia (0007).
+-- create policy tp_select on public.touchpoints
+--   for select to authenticated
+--   using ((select public.is_admin())
+--          or exists (select 1 from public.leads l
+--                     where l.id = touchpoints.lead_id
+--                       and l.vendor = (select public.current_vendor_name())));
+-- create policy tp_insert on public.touchpoints
+--   for insert to authenticated
+--   with check ((select public.is_admin())
+--               or exists (select 1 from public.leads l
+--                          where l.id = touchpoints.lead_id
+--                            and l.vendor = (select public.current_vendor_name())));
+-- create policy tp_update on public.touchpoints
+--   for update to authenticated
+--   using ((select public.is_admin())
+--          or exists (select 1 from public.leads l
+--                     where l.id = touchpoints.lead_id
+--                       and l.vendor = (select public.current_vendor_name())))
+--   with check ((select public.is_admin())
+--               or exists (select 1 from public.leads l
+--                          where l.id = touchpoints.lead_id
+--                            and l.vendor = (select public.current_vendor_name())));
+--
+-- drop policy if exists admin_full_access_activities on public.activities;
+-- drop policy if exists vendor_own_activities        on public.activities;
+--
+-- create policy act_select on public.activities
+--   for select to authenticated
+--   using ((select public.is_admin()) or vendor = (select public.current_vendor_name()));
+-- create policy act_insert on public.activities
+--   for insert to authenticated
+--   with check ((select public.is_admin()) or vendor = (select public.current_vendor_name()));
+-- create policy act_update on public.activities
+--   for update to authenticated
+--   using ((select public.is_admin()) or vendor = (select public.current_vendor_name()))
+--   with check ((select public.is_admin()) or vendor = (select public.current_vendor_name()));
+--
+-- drop policy if exists admin_full_access_notifications on public.notifications;
+-- drop policy if exists vendor_own_notifications        on public.notifications;
+--
+-- create policy notif_select on public.notifications
+--   for select to authenticated
+--   using ((select public.is_admin()) or vendor = (select public.current_vendor_name()));
+-- create policy notif_update on public.notifications
+--   for update to authenticated
+--   using (vendor = (select public.current_vendor_name()))
+--   with check (vendor = (select public.current_vendor_name()));
+--
+-- --   vendors: o time inteiro precisa ver os nomes dos colegas (atribuir, placar).
+-- --   O que muda é que deixa de ser visível para o ANÔNIMO.
+-- drop policy if exists admin_modify_vendors on public.vendors;
+-- create policy vendors_select_team on public.vendors
+--   for select to authenticated using (true);
+-- create policy vendors_update_admin on public.vendors
+--   for update to authenticated
+--   using ((select public.is_admin())) with check ((select public.is_admin()));
+-- create policy vendors_insert_admin on public.vendors
+--   for insert to authenticated with check ((select public.is_admin()));
+--
+-- --   market_sweep: RLS ON com ZERO policies = invisível para o front.
+-- --   São as 239 empresas do mapa e as 83 prontas para virar lead.
+-- create policy ms_select on public.market_sweep
+--   for select to authenticated
+--   using ((select public.is_admin())
+--          or vendor = (select public.current_vendor_name())
+--          or coalesce(nullif(btrim(vendor), ''), null) is null);
+-- create policy ms_claim on public.market_sweep
+--   for update to authenticated
+--   using ((select public.is_admin())
+--          or vendor = (select public.current_vendor_name())
+--          or coalesce(nullif(btrim(vendor), ''), null) is null)
+--   with check ((select public.is_admin())
+--               or vendor = (select public.current_vendor_name()));
+--
+-- -- ═══ B6 · O cron que gera o ruído ═══
+-- --   'check-inactivity-daily' insere uma notificação por oportunidade por dia,
+-- --   sem deduplicar: 4.521 linhas, 0,0% de leitura, a opp 46 com 106 avisos.
+-- --   Isto NÃO é segurança: é uma decisão operativa. Deixe para uma janela
+-- --   separada, e só depois que o dispatcher do v3 (0005) estiver rodando.
+-- -- select cron.unschedule('check-inactivity-daily');
+--
+-- -- ⚠️  NÃO DÊ COMMIT AINDA. Vá para a SEÇÃO C.
+--
+-- ############################################################################
+
+
+-- ############################################################################
+-- SEÇÃO C · VERIFICAÇÃO POSTERIOR (com a transação AINDA ABERTA)
+-- ############################################################################
+--
+-- C1. Não sobrou nenhuma policy com USING true sobre dado de negócio:
+--     select tablename, policyname, roles, cmd, qual
+--     from pg_policies
+--     where schemaname = 'public' and coalesce(qual,'') = 'true'
+--       and tablename in ('opportunities','leads','touchpoints','activities','notifications');
+--     -- ESPERADO: 0 linhas.
+--
+-- C2. Nenhuma policy sobre o role `public` (todas devem ser `authenticated`):
+--     select tablename, policyname, roles from pg_policies
+--     where schemaname='public' and roles::text like '%public%';
+--     -- ESPERADO: 0 linhas nas tabelas de negócio.
+--
+-- C3. anon não escreve mais nada:
+--     select table_name, privilege_type from information_schema.role_table_grants
+--     where table_schema='public' and grantee='anon'
+--       and privilege_type in ('INSERT','UPDATE','DELETE','TRUNCATE');
+--     -- ESPERADO: 0 linhas.
+--
+-- C4. As views são INVOKER:
+--     select c.relname, c.reloptions from pg_class c
+--     join pg_namespace n on n.oid=c.relnamespace
+--     where n.nspname='public' and c.relkind='v'
+--       and c.relname in ('pending_actions','vendor_notifications','vendor_activity_summary',
+--                         'opportunity_timeline','stale_opportunities');
+--     -- ESPERADO: reloptions contém security_invoker=true nas cinco.
+--
+-- C5. ❗ O TESTE DE ACEITAÇÃO. Impersonando CADA vendedor (SQL editor do
+--     Supabase → "Run as: authenticated" com o auth_id de cada um), rodar:
+--       select count(*) from opportunities;   -- deve bater com A7
+--       select count(*) from leads;           -- deve bater com A7
+--       select count(*) from touchpoints;
+--       select count(*) from activities;
+--     Depois, como admin (Tomás ou Jordi): deve ver os 65 / 54 / 168 / 151.
+--     Se algum vendedor vê ZERO onde A7 dizia outra coisa → ROLLBACK IMEDIATO.
+--
+-- C6. O CRM v2 abre e funciona? Com a transação ainda aberta isso NÃO se pode
+--     testar de fora (a transação não está commitada). Por isso:
+--       * ou se aceita o risco e se commita, com a janela de rollback da D2;
+--       * ou — recomendado — se aplica primeiro num BRANCH do Supabase
+--         (create_branch), se aponta um deploy de preview do v2 contra ele, e
+--         só depois se replica em produção.
+--
+-- C7. O advisor deve ficar limpo:
+--     -- painel Supabase → Advisors → Security. ESPERADO: 0 ERROR.
+--
+-- ############################################################################
+
+
+-- ############################################################################
+-- SEÇÃO D · ROLLBACK EXATO
+-- ############################################################################
+--
+-- D1. SE A TRANSAÇÃO AINDA ESTÁ ABERTA (o caso feliz):
+--       rollback;
+--     Fim. Nada mudou. É por isso que a seção B abre `begin;` e não commita.
+--
+-- D2. SE JÁ FOI COMMITADO e o v2 quebrou — restaurar o estado EXATO de hoje.
+--     Este bloco recria, uma a uma, as 23 policies que existem hoje em produção
+--     (snapshot lido de pg_policies em 2026-08-24). Rode inteiro:
+--
+--     begin;
+--
+--     -- opportunities (5 policies)
+--     drop policy if exists opp_select on public.opportunities;
+--     drop policy if exists opp_insert on public.opportunities;
+--     drop policy if exists opp_update on public.opportunities;
+--     drop policy if exists opp_delete on public.opportunities;
+--     create policy "Enable all for development" on public.opportunities
+--       as permissive for all to public using (true) with check (true);
+--     create policy admin_full_access_opportunities on public.opportunities
+--       as permissive for all to public using (is_admin());
+--     create policy vendor_own_opportunities on public.opportunities
+--       as permissive for all to public using (vendor = current_vendor_name());
+--     create policy vendor_pool_opportunities on public.opportunities
+--       as permissive for select to public
+--       using (coalesce(nullif(btrim(vendor), ''), null) is null);
+--     create policy vendor_assume_pool on public.opportunities
+--       as permissive for update to public
+--       using (coalesce(nullif(btrim(vendor), ''), null) is null)
+--       with check (vendor = current_vendor_name());
+--
+--     -- leads (3 policies)
+--     drop policy if exists leads_select on public.leads;
+--     drop policy if exists leads_insert on public.leads;
+--     drop policy if exists leads_update on public.leads;
+--     drop policy if exists leads_delete on public.leads;
+--     create policy "Enable all for development" on public.leads
+--       as permissive for all to public using (true) with check (true);
+--     create policy admin_full_access_leads on public.leads
+--       as permissive for all to public using (is_admin()) with check (is_admin());
+--     create policy vendor_own_leads on public.leads
+--       as permissive for all to public
+--       using (vendor = current_vendor_name()) with check (vendor = current_vendor_name());
+--
+--     -- touchpoints (3 policies)
+--     drop policy if exists tp_select on public.touchpoints;
+--     drop policy if exists tp_insert on public.touchpoints;
+--     drop policy if exists tp_update on public.touchpoints;
+--     create policy "Enable all for development" on public.touchpoints
+--       as permissive for all to public using (true) with check (true);
+--     create policy admin_full_access_touchpoints on public.touchpoints
+--       as permissive for all to public using (is_admin()) with check (is_admin());
+--     create policy vendor_own_touchpoints on public.touchpoints
+--       as permissive for all to public
+--       using (exists (select 1 from public.leads
+--                      where leads.id = touchpoints.lead_id
+--                        and leads.vendor = current_vendor_name()))
+--       with check (exists (select 1 from public.leads
+--                           where leads.id = touchpoints.lead_id
+--                             and leads.vendor = current_vendor_name()));
+--
+--     -- activities (2 policies)
+--     drop policy if exists act_select on public.activities;
+--     drop policy if exists act_insert on public.activities;
+--     drop policy if exists act_update on public.activities;
+--     create policy admin_full_access_activities on public.activities
+--       as permissive for all to public using (is_admin());
+--     create policy vendor_own_activities on public.activities
+--       as permissive for all to public using (vendor = current_vendor_name());
+--
+--     -- notifications (2 policies)
+--     drop policy if exists notif_select on public.notifications;
+--     drop policy if exists notif_update on public.notifications;
+--     create policy admin_full_access_notifications on public.notifications
+--       as permissive for all to public using (is_admin());
+--     create policy vendor_own_notifications on public.notifications
+--       as permissive for all to public using (vendor = current_vendor_name());
+--
+--     -- vendors (3 policies)
+--     drop policy if exists vendors_select_team  on public.vendors;
+--     drop policy if exists vendors_update_admin on public.vendors;
+--     drop policy if exists vendors_insert_admin on public.vendors;
+--     create policy all_read_vendors on public.vendors
+--       as permissive for select to public using (true);
+--     create policy "Anyone can view active vendors" on public.vendors
+--       as permissive for select to public using (is_active = true);
+--     create policy admin_modify_vendors on public.vendors
+--       as permissive for all to public using (is_admin());
+--
+--     -- market_sweep volta a ter ZERO policies (era o estado original)
+--     drop policy if exists ms_select on public.market_sweep;
+--     drop policy if exists ms_claim  on public.market_sweep;
+--
+--     -- grants do anon (restaura o estado de hoje)
+--     grant select, insert, update, delete, truncate, references, trigger
+--       on all tables in schema public to anon;
+--     alter default privileges in schema public grant all on tables to anon;
+--
+--     -- views voltam a SECURITY DEFINER
+--     alter view public.pending_actions          set (security_invoker = off);
+--     alter view public.vendor_notifications     set (security_invoker = off);
+--     alter view public.vendor_activity_summary  set (security_invoker = off);
+--     alter view public.opportunity_timeline     set (security_invoker = off);
+--     alter view public.stale_opportunities      set (security_invoker = off);
+--
+--     -- execute das funções de identidade
+--     grant execute on function public.is_admin(), public.current_vendor_name() to anon;
+--
+--     commit;
+--
+--     ⚠️  Depois de D2 o banco volta a estar ABERTO. Isso é aceitável só como
+--     medida de emergência para não deixar o time parado, e obriga a agendar
+--     uma nova janela. Não é um lugar onde ficar.
+--
+-- D3. SE NEM D2 RESOLVE: Point-in-Time Recovery pelo painel do Supabase, para o
+--     minuto anterior ao início da janela. É a razão do pré-requisito 4.
+--
+-- ############################################################################
+
+-- Nenhuma sentença executável neste arquivo. É intencional.
+select 'ARQUIVO 0100: pendente de aprovação humana. Nada foi aplicado.' as aviso;

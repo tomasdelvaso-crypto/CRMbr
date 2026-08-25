@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR" class="no-js">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover: obligatorio para que env(safe-area-inset-*) tenga valor -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <!-- theme-color por esquema: la barra de estado acompaña el tema del sistema -->
+    <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Ventus" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="description" content="Ventus — CRM de campo da Ventapel Brasil. Metodologia PPVVCC." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>Ventus — Ventapel Brasil</title>
+    <script>
+      // Tema aplicado antes del primer paint para evitar el flash de tema claro.
+      // Duplica la lógica de src/app/ThemeProvider.tsx a propósito: tiene que
+      // correr sincrónico, antes de que React monte.
+      (function () {
+        try {
+          document.documentElement.classList.remove('no-js')
+          var stored = localStorage.getItem('ventus.theme')
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          var dark = stored === 'dark' || ((stored === 'system' || !stored) && prefersDark)
+          document.documentElement.classList.toggle('dark', dark)
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+        } catch (e) {
+          /* modo privado sin localStorage: se queda con el tema del sistema */
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Ventus precisa de JavaScript ativado para funcionar.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
