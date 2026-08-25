@@ -10,11 +10,10 @@
 // un nombre. `@/push` tampoco: `soporteDeNotificacoes` no pisa a
 // `permissaoDeAviso` de `@/data`, la usa.
 
-export {
-  soporteDeNotificacoes,
-  plataformaDoAparelho,
-  estaInstalado,
-} from './soporte'
+// `estaInstalado` NO sale por aquí: vive en `@/install` y es uno solo en todo
+// el proyecto. Dos barriles con el mismo nombre es una colisión esperando a
+// que alguien importe los dos en el mismo archivo.
+export { soporteDeNotificacoes, plataformaDoAparelho } from './soporte'
 export type { SuporteDeAvisos, PlataformaDoAparelho } from './soporte'
 
 export {

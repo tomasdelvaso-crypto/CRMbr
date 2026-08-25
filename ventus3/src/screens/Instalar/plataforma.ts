@@ -18,32 +18,44 @@
 // Por eso la pantalla pregunta primero dónde está parada y recién después
 // decide qué mostrar.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+
+import {
+  detectarPlataforma as detectarPlataformaDoAparelho,
+  estaInstalado,
+  observarModo,
+} from '@/install/deteccao'
+import {
+  dispararPromptNativo,
+  foiInstaladoNestaSessao,
+  observarPrompt,
+  temPromptNativo,
+} from '@/install/prompt-android'
 
 export type Plataforma = 'ios' | 'android' | 'desktop'
 
-/** Evento de Chrome. No está en lib.dom todavía: es una frontera tipada. */
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
-}
+// ══════════════════════════════════════════════════════════════════════════
+// INTEGRACIÓN: ESTA PANTALLA YA NO ESCUCHA `beforeinstallprompt`
+// ══════════════════════════════════════════════════════════════════════════
+// Antes registraba su propio listener en un `useEffect`, y ése es justo el
+// error que deja el botón gris en el teléfono de verdad: Chrome dispara el
+// evento UNA vez y casi siempre antes de que React monte, así que la pantalla
+// llegaba tarde. El evento lo captura ahora `@/install/prompt-android`, un
+// singleton de módulo que se instala en el primer tick del bundle (lo importa
+// `CamadaPWA` desde `App.tsx`), y esta pantalla sólo lo lee.
+//
+// La detección de plataforma y de «ya está instalado» también sale de
+// `@/install/deteccao`: había tres copias en el árbol y ninguna miraba la TWA.
+// Se importan los módulos sueltos, no el barril `@/install`, para no arrastrar
+// los componentes del convite al chunk de esta pantalla.
 
 export function detectarPlataforma(): Plataforma {
-  if (typeof navigator === 'undefined') return 'desktop'
-  const ua = navigator.userAgent
-  // El iPad moderno se presenta como Macintosh: el desempate es el táctil.
-  const ehIOS =
-    /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && 'ontouchend' in document)
-  if (ehIOS) return 'ios'
-  if (/Android/.test(ua)) return 'android'
-  return 'desktop'
+  return detectarPlataformaDoAparelho()
 }
 
-/** ¿La app ya está corriendo instalada (standalone)? */
+/** ¿La app ya está corriendo instalada (standalone, TWA o Mini App)? */
 export function jaInstalado(): boolean {
-  if (typeof window === 'undefined') return false
-  if (window.matchMedia('(display-mode: standalone)').matches) return true
-  return (navigator as Navigator & { standalone?: boolean }).standalone === true
+  return estaInstalado()
 }
 
 export interface EstadoDeInstalacao {
@@ -56,64 +68,62 @@ export interface EstadoDeInstalacao {
 }
 
 /**
- * Captura `beforeinstallprompt` y expone el estado de instalación.
+ * Expone el estado de instalación de este aparato.
  *
- * El listener se registra en un efecto —eso es correcto acá, porque no abre
- * ningún diálogo—, pero `instalar()` SÓLO puede llamarse desde un tap: Chrome
- * exige gesto del usuario y, sin él, la promesa se rechaza en silencio.
+ * `instalar()` SÓLO puede llamarse desde un tap: Chrome exige gesto del
+ * usuario y, sin él, la promesa se rechaza en silencio.
  */
 export function useInstalacao(): EstadoDeInstalacao {
   const [plataforma] = useState<Plataforma>(detectarPlataforma)
-  const [instalado, setInstalado] = useState<boolean>(jaInstalado)
-  const [evento, setEvento] = useState<BeforeInstallPromptEvent | null>(null)
+  const [instalado, setInstalado] = useState<boolean>(
+    () => jaInstalado() || foiInstaladoNestaSessao(),
+  )
+
+  // El prompt vive fuera de React: `useSyncExternalStore` es la lectura
+  // correcta —un useState se quedaría con la foto del primer render y el
+  // botón no se encendería cuando Chrome entrega el evento tarde.
+  const podeInstalar = useSyncExternalStore(observarPrompt, temPromptNativo, () => false)
 
   useEffect(() => {
-    const aoPrompt = (e: Event) => {
-      // Sin preventDefault, Chrome se queda con el evento y no lo devuelve.
-      e.preventDefault()
-      setEvento(e as BeforeInstallPromptEvent)
-    }
+    // El modo de visualización cambia sin recargar: abrir desde el ícono de la
+    // pantalla de inicio con la pestaña todavía viva.
+    const soltar = observarModo(() => {
+      setInstalado(jaInstalado() || foiInstaladoNestaSessao())
+    })
     const aoInstalar = () => {
       setInstalado(true)
-      setEvento(null)
     }
-    window.addEventListener('beforeinstallprompt', aoPrompt)
     window.addEventListener('appinstalled', aoInstalar)
-
-    // El modo de visualización puede cambiar sin recargar (abrir desde el
-    // icono de la pantalla de inicio con la pestaña ya viva).
-    const mq = window.matchMedia('(display-mode: standalone)')
-    const aoMudar = () => setInstalado(jaInstalado())
-    mq.addEventListener('change', aoMudar)
-
     return () => {
-      window.removeEventListener('beforeinstallprompt', aoPrompt)
+      soltar()
       window.removeEventListener('appinstalled', aoInstalar)
-      mq.removeEventListener('change', aoMudar)
     }
   }, [])
 
   const instalar = useCallback(async (): Promise<boolean> => {
-    if (!evento) return false
-    await evento.prompt()
-    const { outcome } = await evento.userChoice
-    // El evento se consume: Chrome no lo vuelve a entregar en esta sesión.
-    setEvento(null)
-    return outcome === 'accepted'
-  }, [evento])
+    const aceitou = await dispararPromptNativo()
+    if (aceitou) setInstalado(true)
+    return aceitou
+  }, [])
 
-  return { plataforma, instalado, podeInstalar: evento !== null, instalar }
+  return { plataforma, instalado, podeInstalar, instalar }
 }
 
 /**
  * De dónde se baja el APK.
  *
- * Es una variable de entorno porque el archivo va a vivir en el bucket que el
- * trámite de Play deje disponible, y ese destino todavía no está decidido. El
- * fallback apunta al propio origen para que la página nunca muestre un botón
- * que lleva a la nada.
+ * Es una variable de entorno porque el archivo NO vive en este sitio: el
+ * workflow `.github/workflows/apk.yml` compila la TWA con Bubblewrap y publica
+ * `ventus.apk` en una GitHub Release (el `android/dist/` local está
+ * gitignoreado a propósito — un APK firmado no se versiona).
+ *
+ * `null` cuando la variable no está: entonces el botón NO se muestra. Antes
+ * caía a `/ventus.apk`, una ruta que en este sitio devuelve el index.html
+ * —por el rewrite de SPA del vercel.json— y el vendedor se quedaba mirando una
+ * descarga que nunca aparecía. Un botón ausente se entiende; uno que no hace
+ * nada, no.
  */
-export const URL_DO_APK: string = import.meta.env.VITE_APK_URL ?? '/ventus.apk'
+export const URL_DO_APK: string | null = import.meta.env.VITE_APK_URL ?? null
 
 /** La URL que se codifica en el QR: esta misma página, en el origen actual. */
 export function urlDaPagina(): string {

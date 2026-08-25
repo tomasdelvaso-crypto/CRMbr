@@ -159,13 +159,23 @@ export default function GoldenHourScreen() {
           tone: 'perigo',
           footnote: 'Os toques já registrados ficam salvos e sobem sozinhos.',
         })
-        // Las dos salidas esperan al macrotask siguiente, y por el mismo
-        // motivo: el diálogo saca su propia entrada del historial DESPUÉS de
-        // que la promesa resuelve. Navegando antes, ese `history.back()` se
+        // Las dos salidas esperan a que el diálogo TERMINE de sacar su propia
+        // entrada del historial, cosa que hace con un `history.back()` recién
+        // después de que esta promesa resuelve. Navegando antes, ese back se
         // llevaba puesta la navegación y el vendedor volvía a la Golden Hour
         // después de haber tocado «Sair»; marcando antes, la marca quedaba
         // justo donde el back se la lleva.
-        idRemarcar = window.setTimeout(() => {
+        //
+        // No alcanza con un setTimeout(0): el orden entre la limpieza del
+        // efecto de React y el timer no está garantizado, y la carrera se
+        // pierde una de cada tantas. Se espera a que la entrada del overlay ya
+        // no esté arriba, con un techo de intentos para no colgarse nunca.
+        const seguir = (tentativa = 0): void => {
+          const estado = window.history.state as { ventusOverlay?: number } | null
+          if (estado?.ventusOverlay !== undefined && tentativa < 12) {
+            idRemarcar = window.setTimeout(() => seguir(tentativa + 1), 16)
+            return
+          }
           idRemarcar = null
           perguntandoRef.current = false
           if (sair) {
@@ -173,7 +183,8 @@ export default function GoldenHourScreen() {
             return
           }
           marcar()
-        }, 0)
+        }
+        seguir()
       })()
     }
 

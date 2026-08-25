@@ -108,6 +108,30 @@ export function Sheet({
 
   const alturaFixa = snaps.length > 1
   const snapMax = snaps[snaps.length - 1] ?? 1
+  const snapMin = snaps[0] ?? snapMax
+
+  /* ── El pie no puede quedar abajo de la pantalla ────────────────────────
+     Con varios snaps, el panel mide SIEMPRE el snap más alto y los snaps
+     bajos se logran empujándolo hacia abajo con un transform. Consecuencia:
+     lo que está al pie del panel —justo la barra de acción— queda fuera de la
+     pantalla en cualquier snap que no sea el último. En el editor de escala,
+     eso era el botón «Salvar»: el vendedor abría el sheet y no había con qué
+     guardar hasta arrastrar el panel hacia arriba.
+
+     Se corrige compensando el pie con el transform inverso, así queda pegado
+     al borde inferior visible, y reservando esa misma altura al final del
+     contenido para que el pie nunca tape la última línea. La compensación se
+     limita al offset del snap más bajo: durante la animación de cierre el
+     panel baja mucho más que eso y el pie tiene que irse CON él, no quedarse
+     flotando en pantalla. */
+  const reservaMaxima = useCallback(
+    () => alturaRef.current * (1 - snapMin / snapMax),
+    [snapMin, snapMax],
+  )
+  const [reservaDoRodape, setReservaDoRodape] = useState(0)
+  const compensacaoDoRodape = useTransform(y, (v) =>
+    alturaFixa && footer ? -clamp(v, 0, reservaMaxima()) : 0,
+  )
 
   /** Offset de reposo (px desde la posición «abierto del todo») de cada snap. */
   const offsetDoSnap = useCallback(
@@ -138,8 +162,9 @@ export function Sheet({
     const el = painelRef.current
     if (!el) return
     alturaRef.current = Math.max(el.offsetHeight, 1)
+    setReservaDoRodape(alturaFixa && footer ? reservaMaxima() : 0)
     if (open && y.get() === 0) y.set(alturaRef.current)
-  }, [montado, open, y])
+  }, [montado, open, y, alturaFixa, footer, reservaMaxima])
 
   useEffect(() => {
     if (!montado) return
@@ -165,10 +190,11 @@ export function Sheet({
     if (!el) return
     const ro = new ResizeObserver(() => {
       alturaRef.current = Math.max(el.offsetHeight, 1)
+      setReservaDoRodape(alturaFixa && footer ? reservaMaxima() : 0)
     })
     ro.observe(el)
     return () => ro.disconnect()
-  }, [montado])
+  }, [montado, alturaFixa, footer, reservaMaxima])
 
   const fechar = useCallback(() => {
     if (!dismissible) {
@@ -395,12 +421,18 @@ export function Sheet({
           onPointerCancel={soltarArraste}
         >
           {children}
+          {/* Colchón del pie compensado. Ver el bloque «El pie no puede quedar
+              abajo de la pantalla». */}
+          {reservaDoRodape > 0 && <div aria-hidden style={{ height: reservaDoRodape }} />}
         </div>
 
         {footer && (
-          <div className="shrink-0 border-t border-border bg-surface px-4 pt-3 pb-[calc(var(--safe-bottom)+0.75rem)]">
+          <motion.div
+            style={{ y: compensacaoDoRodape }}
+            className="shrink-0 border-t border-border bg-surface px-4 pt-3 pb-[calc(var(--safe-bottom)+0.75rem)]"
+          >
             {footer}
-          </div>
+          </motion.div>
         )}
       </motion.div>
     </div>,

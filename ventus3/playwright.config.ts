@@ -54,10 +54,16 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env['CI']),
   retries: process.env['CI'] ? 1 : 0,
-  workers: process.env['CI'] ? 2 : 4,
+  // Dos workers, no cuatro. El dev server de Vite es UN proceso: con doce
+  // páginas arrancando a la vez tarda más de diez segundos en servir los
+  // módulos de una ruta y las pruebas empiezan a fallar por hambre de CPU, no
+  // por la app. Con dos, la suite entera tarda un minuto más y no parpadea.
+  workers: 2,
   reporter: process.env['CI'] ? [['github'], ['list']] : [['list']],
   timeout: 60_000,
-  expect: { timeout: 10_000 },
+  // 15 s y no los 5 por defecto: la primera visita a cada ruta en el dev
+  // server incluye transformar la pantalla entera y sus dependencias.
+  expect: { timeout: 15_000 },
 
   use: {
     baseURL: BASE_URL,

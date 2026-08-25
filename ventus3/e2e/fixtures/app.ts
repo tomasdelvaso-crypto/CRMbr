@@ -35,6 +35,16 @@ export * from './dados'
 /** Host del doble de Supabase. No existe: sólo lo contesta `page.route`. */
 const HOST_STUB = 'stub.supabase.test'
 
+/**
+ * Páginas a las que se les cortó la red con `desconectar()`.
+ *
+ * Hace falta porque `context.setOffline(true)` corta la red DE VERDAD pero no
+ * toca los pedidos interceptados por `page.route`: el doble de Supabase seguía
+ * contestando en modo avión y el outbox se vaciaba solo. Un teléfono sin señal
+ * no tiene un servidor adentro.
+ */
+const semRede = new WeakMap<Page, boolean>()
+
 /* ══════════════════════════════════════════════════════════════════════════
    Sesión falsa
    ══════════════════════════════════════════════════════════════════════════ */
@@ -94,9 +104,17 @@ async function responderComoPostgrest(
   rota: Route,
   registro: PedidoAoServidor[],
   servidor: () => Record<string, unknown[]>,
+  offline: () => boolean,
 ): Promise<void> {
   const pedido = rota.request()
   const url = pedido.url()
+
+  if (offline()) {
+    // Ni se registra: en modo avión este pedido nunca sale del teléfono.
+    await rota.abort('internetdisconnected')
+    return
+  }
+
   registro.push({ metodo: pedido.method(), url, corpo: pedido.postData() })
 
   const json = (body: unknown, status = 200): Promise<void> =>
@@ -181,13 +199,13 @@ interface Fixtures {
 export const test = base.extend<Fixtures>({
   ventus: async ({ context, page }, usar) => {
     const pedidos: PedidoAoServidor[] = []
-    // Lo que «el servidor» sabe. Sólo el vendedor: ver el comentario en
-    // responderComoPostgrest().
+    // Lo que «el servidor» sabe. Sólo el vendedor de la semilla: el resto de
+    // las tablas contestan vacío a propósito. Ver responderComoPostgrest().
     let servidor: Record<string, unknown[]> = { vendors: sementePadrao().vendors }
 
     // Defensa 1: el doble contesta por el host stub.
     await context.route(`**://${HOST_STUB}/**`, (rota) =>
-      responderComoPostgrest(rota, pedidos, () => servidor),
+      responderComoPostgrest(rota, pedidos, () => servidor, () => semRede.get(page) === true),
     )
     // Defensa 2: cualquier cosa que apunte a Supabase de verdad se corta.
     await context.route('**://*.supabase.co/**', (rota) => rota.abort('blockedbyclient'))
@@ -197,7 +215,12 @@ export const test = base.extend<Fixtures>({
       ([sessao, tema]) => {
         try {
           localStorage.setItem('ventus.auth', JSON.stringify(sessao))
-          localStorage.setItem('ventus.theme', tema as string)
+          // El tema se siembra sólo si no hay uno elegido: este script corre
+          // en CADA navegación y, si pisara el valor, una prueba que cambie el
+          // tema (las capturas) lo perdería en el primer reload.
+          if (localStorage.getItem('ventus.theme') === null) {
+            localStorage.setItem('ventus.theme', tema as string)
+          }
           // Sin esto, el primer arranque pide permiso de notificaciones y el
           // sheet de instalación tapa media pantalla en las capturas.
           localStorage.setItem('ventus.instalar.dispensado', '1')
@@ -208,15 +231,37 @@ export const test = base.extend<Fixtures>({
       [sessaoFalsa(), 'light'] as const,
     )
 
-    const ler = async <T,>(tabla: string): Promise<T[]> =>
-      page.evaluate(async (nome) => {
-        const mod = (await import('/src/data/db.ts')) as {
-          getDb: () => { open: () => Promise<unknown>; table: (n: string) => { toArray: () => Promise<unknown[]> } }
-        }
-        const db = mod.getDb()
-        await db.open()
-        return (await db.table(nome).toArray()) as unknown[]
-      }, tabla) as Promise<T[]>
+    // Dexie, desde adentro de la página y por el MISMO módulo que usa la app.
+    //
+    // El especificador va en una constante y no como literal: con un literal,
+    // TypeScript intenta resolver '/src/data/db.ts' contra el disco y no lo
+    // encuentra (esa ruta la sirve Vite, no el sistema de archivos).
+    const MODULO_DB = '/src/data/db.ts'
+
+    interface TabelaDexie {
+      bulkPut: (linhas: readonly unknown[]) => Promise<unknown>
+      toArray: () => Promise<unknown[]>
+      delete: (chave: string) => Promise<unknown>
+    }
+    interface BancoDexie {
+      open: () => Promise<unknown>
+      table: (nome: string) => TabelaDexie
+    }
+
+    const ler = async <T,>(tabla: string): Promise<T[]> => {
+      const linhas = await page.evaluate(
+        async ([modulo, nome]) => {
+          const mod = (await import(/* @vite-ignore */ modulo)) as {
+            getDb: () => { open: () => Promise<unknown>; table: (n: string) => { toArray: () => Promise<unknown[]> } }
+          }
+          const db = mod.getDb()
+          await db.open()
+          return db.table(nome).toArray()
+        },
+        [MODULO_DB, tabla] as const,
+      )
+      return linhas as T[]
+    }
 
     const ventus: Ventus = {
       pedidos,
@@ -226,32 +271,95 @@ export const test = base.extend<Fixtures>({
         return filas.filter((f) => f.estado !== 'enviado').length
       },
       async semear(semente = sementePadrao()) {
-        servidor = { vendors: semente.vendors as unknown[] }
-        // La app tiene que estar montada una vez para que Vite haya servido
-        // `/src/data/db.ts`; recién ahí el import dinámico devuelve el MISMO
-        // módulo que usa React. Después se recarga, y el arranque en frío ya
-        // encuentra la cartera en Dexie — que es el caso real.
-        if (!page.url().startsWith('http')) await abrir(page, '/')
-        await page.evaluate(async (dados) => {
-          const mod = (await import('/src/data/db.ts')) as {
-            getDb: () => {
-              open: () => Promise<unknown>
-              vendors: { bulkPut: (v: unknown[]) => Promise<unknown> }
-              opportunities: { bulkPut: (v: unknown[]) => Promise<unknown> }
-              leads: { bulkPut: (v: unknown[]) => Promise<unknown> }
-              tasks: { bulkPut: (v: unknown[]) => Promise<unknown> }
-              commitments: { bulkPut: (v: unknown[]) => Promise<unknown> }
-            }
-          }
-          const db = mod.getDb()
-          await db.open()
-          await db.vendors.bulkPut(dados.vendors)
-          await db.opportunities.bulkPut(dados.opportunities)
-          await db.leads.bulkPut(dados.leads)
-          await db.tasks.bulkPut(dados.tasks)
-          await db.commitments.bulkPut(dados.commitments)
-        }, semente as unknown as Record<string, unknown[]>)
-        await page.reload()
+        servidor = { vendors: [...semente.vendors] }
+
+        // El primer arranque va a /instalar, y no es un capricho.
+        //
+        // La app tiene que montarse una vez para que Vite sirva
+        // `/src/data/db.ts` —recién ahí el import dinámico devuelve el MISMO
+        // módulo que usa React, con la misma instancia de Dexie—. Pero si ese
+        // primer arranque fuera la tela Hoje, sus queries correrían contra una
+        // base todavía vacía, el resultado vacío quedaría guardado en el cache
+        // que la app persiste en Dexie, y el arranque siguiente lo hidrataría
+        // y lo trataría como fresco 60 segundos (staleTime): la pantalla diría
+        // «a fila de hoje está vazia» con los cuatro leads ya en el aparato.
+        // /instalar no monta ninguna query de cartera, así que abre el módulo
+        // sin dejar nada guardado.
+        if (!page.url().startsWith('http')) await abrir(page, '/instalar')
+
+        // Antes de sembrar hay que esperar a que la app sepa QUIÉN es el
+        // vendedor. `CamadaDeDados` —que es quien conecta el cache al canal de
+        // cambios— solo se monta con un vendedor resuelto, así que un aviso
+        // emitido antes no lo escucha nadie y la pantalla se queda con el
+        // resultado del arranque vacío.
+        await expect
+          .poll(async () => (await ler<unknown>('vendors')).length, {
+            timeout: 15_000,
+            message: 'A app nunca resolveu o vendedor da sessão',
+          })
+          .toBeGreaterThan(0)
+        await page.waitForTimeout(200)
+
+        const esperado = semente.opportunities.length + semente.leads.length
+
+        const escrever = async (): Promise<void> => {
+          await page.evaluate(
+            async ([modulo, dados]) => {
+              const mod = (await import(/* @vite-ignore */ modulo as string)) as {
+                getDb: () => BancoDexie
+              }
+              const db = mod.getDb()
+              await db.open()
+              for (const [tabela, linhas] of Object.entries(
+                dados as Record<string, readonly unknown[]>,
+              )) {
+                await db.table(tabela).bulkPut(linhas)
+              }
+
+              // Se avisa por el MISMO canal que usa el sync cuando el pull
+              // trae filas nuevas. No es un adorno: la app monta TanStack
+              // Query sobre Dexie y trata lo leído como fresco 60 s
+              // (staleTime), así que sin el aviso la pantalla sigue mostrando
+              // el resultado del arranque anterior —con la base vacía— aunque
+              // los datos ya estén. Avisando, la app invalida las claves
+              // afectadas y relee, que es exactamente lo que hace en campo.
+              const sync = (await import(
+                /* @vite-ignore */ (modulo as string).replace('db.ts', 'sync.ts')
+              )) as { notificarMudancas: (tabelas: readonly string[]) => void }
+              sync.notificarMudancas(Object.keys(dados as Record<string, unknown>))
+            },
+            [MODULO_DB, semente as unknown as Record<string, readonly unknown[]>] as const,
+          )
+        }
+
+        const cuenta = async (): Promise<number> => {
+          const [opps, leads] = await Promise.all([
+            ler<unknown>('opportunities'),
+            ler<unknown>('leads'),
+          ])
+          return opps.length + leads.length
+        }
+
+        // Se siembra hasta que la semilla SOBREVIVA dos comprobaciones
+        // seguidas, y no por las dudas: el primer arranque encuentra la base
+        // vacía con sesión viva —la firma exacta de una purga de iOS— y
+        // `recuperarDePurga()` limpia el espejo entero para rehacer la carga
+        // desde el servidor. Ese borrado puede caer justo encima de lo que
+        // acabamos de escribir. Del segundo arranque en adelante la base ya no
+        // está vacía y no vuelve a dispararse. Es comportamiento correcto de
+        // la app; lo anómalo es sembrar por atrás, que es cosa de la prueba.
+        for (let tentativa = 0; tentativa < 4; tentativa++) {
+          await escrever()
+          await page.waitForTimeout(250)
+          if ((await cuenta()) < esperado) continue
+          await page.waitForTimeout(400)
+          if ((await cuenta()) < esperado) continue
+          // Arranque limpio con la cartera ya en el aparato, que es como
+          // abre el teléfono todas las mañanas.
+          await abrir(page, '/')
+          return
+        }
+        throw new Error('A semente não sobreviveu ao arranque da app')
       },
       async ir(rota: string) {
         await abrir(page, rota)
@@ -262,7 +370,9 @@ export const test = base.extend<Fixtures>({
   },
 
   app: async ({ page, ventus }, usar) => {
-    await abrir(page, '/')
+    // Ojo: acá NO se navega a '/' antes de sembrar. `semear()` hace el primer
+    // arranque en /instalar justamente para no dejar en el cache persistido el
+    // resultado de una tela Hoje leída con la base todavía vacía.
     await ventus.semear()
     await esperarPelaTelaHoje(page)
     await usar(page)
@@ -349,6 +459,7 @@ export async function arrastar(alvo: Locator, dx: number): Promise<void> {
 
 /** Deja la app sin red de verdad: el navegador falla todo fetch. */
 export async function desconectar(page: Page, offline: boolean): Promise<void> {
+  semRede.set(page, offline)
   await page.context().setOffline(offline)
   // `navigator.onLine` no dispara el evento solo en todos los casos; la app
   // escucha 'online'/'offline' para pintar el cartel y para reintentar.

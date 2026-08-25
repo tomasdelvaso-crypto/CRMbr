@@ -6,6 +6,18 @@ Interface inteira em PT-BR; comentários de código em espanhol.
 Convive com o CRM v2 (`/home/user/CRMbr/src` e `/home/user/CRMbr/api`) até o corte.
 **O v2 não se toca.** Todo o v3 vive dentro de `ventus3/`.
 
+## Documentos
+
+| Arquivo | O que responde |
+|---|---|
+| `docs/ESTADO.md` | **Em que ponto estamos.** O que funciona, o que é andaime, o que falta. Começa pelos bloqueios (§0). |
+| `docs/DEPLOY.md` | Os passos exatos para produção, com o comando e como verificar cada um. |
+| `docs/PLANO.md` | O plano de produto completo. |
+| `docs/AUDITORIA.md` | A auditoria do v2 que originou tudo isto. |
+| `docs/QA.md` | A suite de Playwright: o que cobre e o que não. |
+| `docs/ANDROID.md` | O APK (TWA), o keystore e o trâmite do Google. |
+| `.env.example` | **A lista completa** das variáveis de ambiente, cada uma com o arquivo que a lê. |
+
 ## Rodar
 
 ```bash
@@ -21,7 +33,9 @@ npm run dev               # http://localhost:5173
 | `npm run build` | `type-check` + build de produção em `dist/` |
 | `npm run preview` | Serve `dist/` localmente |
 | `npm run type-check` | `tsc --noEmit` nos três projetos (app, node/api, service worker) |
-| `npm test` | Vitest sobre o domínio puro (`src/core`) |
+| `npm test` | Vitest: domínio, capa de dados, telas e `api/` (781 testes) |
+| `npm run verificar:pwa` | Checa ícones e instalabilidade sobre `dist/` (não precisa de `sharp`) |
+| `npx playwright test` | 87 testes de interação em iPhone 14, Pixel 7 e desktop |
 | `npm run lint` | ESLint 10 (flat config) |
 
 O service worker **não** roda em `dev` (`devOptions.enabled: false`).
@@ -34,7 +48,7 @@ ventus3/
   index.html            lang="pt-BR", viewport-fit=cover, theme-color claro/escuro
   vite.config.ts        react + tailwind v4 + VitePWA (injectManifest) + alias '@'
   vercel.json           functions, CORS específico, Content-Type do assetlinks.json
-  public/               ícones, favicon, .well-known/assetlinks.json (placeholder)
+  public/               ícones (any + maskable), favicon, .well-known/assetlinks.json
   src/
     main.tsx            entrada; registra o SW em modo 'prompt'
     index.css           tokens de cor (claro/escuro), safe areas, utilidades base

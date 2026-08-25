@@ -1,5 +1,7 @@
 node_modules
 dist
+# Build de medição do QA (scripts/medir-arranque.mjs). Nunca é o que se publica.
+dist-qa
 dist-ssr
 .vite
 *.local

@@ -4,7 +4,37 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/**/*.ts": {
+    "api/health.ts": {
+      "maxDuration": 10
+    },
+    "api/ventus/feedback.ts": {
+      "maxDuration": 10
+    },
+    "api/tma-auth.ts": {
+      "maxDuration": 15
+    },
+    "api/dispatch/track.ts": {
+      "maxDuration": 15
+    },
+    "api/telegram.ts": {
+      "maxDuration": 30
+    },
+    "api/act.ts": {
+      "maxDuration": 60
+    },
+    "api/ingest.ts": {
+      "maxDuration": 60
+    },
+    "api/plan.ts": {
+      "maxDuration": 60
+    },
+    "api/ventus.ts": {
+      "maxDuration": 60
+    },
+    "api/dispatch/run.ts": {
+      "maxDuration": 60
+    },
+    "api/dispatch/jobs.ts": {
       "maxDuration": 60
     }
   },

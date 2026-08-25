@@ -68,7 +68,10 @@ export {
   oferecerAtalho,
   ofertaJaFeita,
   marcarOfertaFeita,
-  registrarSessao,
+  // Sale con alias: `@/install` exporta otro `registrarSessao` (el del convite
+  // de instalación, que es puro y recibe la memoria). Son dos contadores
+  // distintos y ninguno debe poder pisar al otro en un import.
+  registrarSessao as registrarSessaoDoAtalho,
   sessoesContadas,
   SESSAO_DA_OFERTA,
 } from './atalho'

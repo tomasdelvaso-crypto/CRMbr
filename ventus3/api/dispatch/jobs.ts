@@ -9,7 +9,7 @@
 // y compartir el bundle evita nueve arranques en frío distintos.
 //
 // pg_cron agenda y pg_net hace el POST con `?job=<nome>` y el `CRON_SECRET`.
-// Los horarios están declarados UNA vez, en 0011_cron.sql, en BRT. El v2 tenía
+// Los horarios están declarados UNA vez, en 0012_cron.sql, en BRT. El v2 tenía
 // tres horarios distintos para el mismo digest (vercel.json decía 12:00 UTC, el
 // README prometía 7:30 y el comentario decía 10:30): nadie sabía cuál corría.
 //

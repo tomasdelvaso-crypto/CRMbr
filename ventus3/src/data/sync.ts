@@ -219,19 +219,28 @@ let syncEmCurso: Promise<SyncReport> | null = null
  * anterior del servidor y la regla de "no pisar campos pendientes" tendría que
  * trabajar de más. Subiendo primero, la mayoría de las veces no hay conflicto.
  */
-export async function syncNow(vendor: string): Promise<SyncReport> {
+export interface OpcoesSync {
+  /**
+   * La red ACABA de volver. Se saltea la ventana de backoff de la cola: los
+   * reintentos que se acumularon sin señal no tienen por qué seguir contando
+   * cuando el teléfono vuelve a estar en línea.
+   */
+  redeVoltou?: boolean
+}
+
+export async function syncNow(vendor: string, opcoes: OpcoesSync = {}): Promise<SyncReport> {
   if (syncEmCurso) return syncEmCurso
-  syncEmCurso = executarSync(vendor).finally(() => {
+  syncEmCurso = executarSync(vendor, opcoes).finally(() => {
     syncEmCurso = null
   })
   return syncEmCurso
 }
 
-async function executarSync(vendor: string): Promise<SyncReport> {
+async function executarSync(vendor: string, opcoes: OpcoesSync = {}): Promise<SyncReport> {
   const relatorio = relatorioVazio()
   if (!talvezOnline()) return relatorio
 
-  const flushado = await flush()
+  const flushado = await flush(opcoes.redeVoltou === true ? { ignorarEspera: true } : {})
   relatorio.enviados = flushado.enviados
   relatorio.conflitos = flushado.conflitos
   relatorio.falhados = flushado.falhados
@@ -324,15 +333,17 @@ export function instalarGatilhosDeSync(
   if (typeof window === 'undefined') return () => undefined
 
   let vivo = true
-  const disparar = (): void => {
+  const disparar = (redeVoltou = false): void => {
     if (!vivo || !talvezOnline()) return
-    void syncNow(vendor).then((r) => {
+    void syncNow(vendor, { redeVoltou }).then((r) => {
       if (vivo) aoSincronizar?.(r)
     })
   }
 
-  // 1) Vuelta de la red.
-  window.addEventListener('online', disparar)
+  // 1) Vuelta de la red. Es el único disparador que sabe que la condición que
+  //    hacía fallar la cola cambió, así que es el único que saltea la espera.
+  const aoVoltarARede = (): void => disparar(true)
+  window.addEventListener('online', aoVoltarARede)
 
   // 2) La app vuelve al frente. EL mecanismo en iOS.
   const aoMudarVisibilidade = (): void => {
@@ -341,7 +352,8 @@ export function instalarGatilhosDeSync(
   document.addEventListener('visibilitychange', aoMudarVisibilidade)
   // pagehide/pageshow: iOS congela pestañas en el bfcache y a veces no emite
   // visibilitychange al volver.
-  window.addEventListener('pageshow', disparar)
+  const aoVoltarDoBfcache = (): void => disparar()
+  window.addEventListener('pageshow', aoVoltarDoBfcache)
 
   // 3) El service worker avisa que Chromium le dio la ventana de Background Sync.
   const aoMensagemDoSw = (evento: MessageEvent<unknown>): void => {
@@ -356,16 +368,15 @@ export function instalarGatilhosDeSync(
   }
 
   // Red de seguridad: la app abierta todo el día en el escritorio de Jordi.
-  const timer =
-    intervaloMs > 0 ? window.setInterval(disparar, intervaloMs) : null
+  const timer = intervaloMs > 0 ? window.setInterval(() => disparar(), intervaloMs) : null
 
   // Primer disparo inmediato.
   disparar()
 
   return () => {
     vivo = false
-    window.removeEventListener('online', disparar)
-    window.removeEventListener('pageshow', disparar)
+    window.removeEventListener('online', aoVoltarARede)
+    window.removeEventListener('pageshow', aoVoltarDoBfcache)
     document.removeEventListener('visibilitychange', aoMudarVisibilidade)
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.removeEventListener('message', aoMensagemDoSw)

@@ -13,6 +13,11 @@
 // porque pasarse hace que el mensaje entero sea rechazado con 400.
 
 import { optionalEnv, requireEnv } from '../_lib/env.js'
+// El conversor de rutas a start_param vive en src/host/deep-link.ts y es
+// isomórfico a propósito: es la MISMA tabla que la app usa para resolver el
+// destino al abrirse. Tener dos tablas —una acá y otra allá— es la forma
+// garantizada de que un aviso lleve a otra pantalla que el link.
+import { linkDoMiniApp, startParamDoCaminho } from '../../src/host/deep-link.js'
 import type { AcaoDeAviso } from './_tipos.js'
 
 /** Límite de la API de Telegram para el texto de un mensaje. */
@@ -30,6 +35,37 @@ export interface ResultadoTelegram {
 
 export function telegramConfigurado(): boolean {
   return optionalEnv('TELEGRAM_BOT_TOKEN') !== undefined
+}
+
+/**
+ * Usuario del bot, sin arroba. Si está, los botones de un aviso abren el MINI
+ * APP en el destino exacto en vez del navegador: el vendedor se queda dentro
+ * de Telegram, ya autenticado, sin pasar por el login.
+ *
+ * Es opcional a propósito: sin la variable —o sin Mini App registrado en
+ * @BotFather— los botones siguen siendo la URL web de siempre, que funciona.
+ */
+function usuarioDoBot(): string | null {
+  const bruto = optionalEnv('TELEGRAM_BOT_USERNAME')?.trim().replace(/^@/, '')
+  return bruto !== undefined && bruto !== '' ? bruto : null
+}
+
+/**
+ * La URL de un botón a partir de la ruta que escribió quien encoló el aviso.
+ *
+ * Orden: link absoluto tal cual → Mini App (si hay bot y la ruta tiene
+ * codificación) → URL web absoluta. `startParamDoCaminho` devuelve null para
+ * los destinos que no están en la tabla, y ahí se cae al web en vez de
+ * inventar un start_param que llevaría a otra pantalla.
+ */
+export function urlDoBotao(link: string): string {
+  if (link.startsWith('http')) return link
+  const bot = usuarioDoBot()
+  if (bot !== null) {
+    const startParam = startParamDoCaminho(link)
+    if (startParam !== null) return linkDoMiniApp(bot, startParam)
+  }
+  return `${baseDaApp()}${link}`
 }
 
 /** Base absoluta para los botones URL. Telegram no acepta rutas relativas. */
@@ -73,7 +109,6 @@ interface BotaoTelegram {
  */
 export function tecladoDe(acoes: readonly AcaoDeAviso[] | null): { inline_keyboard: BotaoTelegram[][] } | null {
   if (acoes === null || acoes.length === 0) return null
-  const base = baseDaApp()
   const botoes: BotaoTelegram[] = []
 
   for (const acao of acoes) {
@@ -86,7 +121,7 @@ export function tecladoDe(acoes: readonly AcaoDeAviso[] | null): { inline_keyboa
     }
     const link = acao.deep_link?.trim()
     if (link !== undefined && link !== '') {
-      botoes.push({ text: rotulo, url: link.startsWith('http') ? link : `${base}${link}` })
+      botoes.push({ text: rotulo, url: urlDoBotao(link) })
       continue
     }
     if (cb !== undefined && cb !== '') {

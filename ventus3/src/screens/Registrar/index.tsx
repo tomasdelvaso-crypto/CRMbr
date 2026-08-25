@@ -66,6 +66,7 @@ import {
   haptic,
   toast,
 } from '@/ui'
+import { consumirCompartilhamento, idCompartilhadoDaUrl } from '@/install/compartilhado'
 import { BotaoGravar } from './BotaoGravar'
 import { CartaoConfirmacao } from './CartaoConfirmacao'
 import { EsqueletoAnalise } from './EsqueletoAnalise'
@@ -380,6 +381,74 @@ export default function RegistrarScreen() {
     },
     [vendorName, alvoDaUrl, interpretar],
   )
+
+  /* ── «Compartilhar» de Android ────────────────────────────────────────
+     El manifest declara un share_target POST contra /registrar: el vendedor
+     puede mandar acá una foto del galpón desde la cámara o el texto de una
+     conversa de WhatsApp sin abrir el CRM primero. El POST no llega a React
+     —un POST no se puede responder con el index.html sin perder el cuerpo—:
+     lo atiende el service worker, guarda el paquete en Cache Storage y
+     redirige a /registrar?compartilhado=<id>. Acá se consume ESE id.
+
+     Corre una sola vez y recién cuando hay vendedor: `enviarFoto` persiste el
+     blob con el nombre del vendedor adentro, y guardarlo con '' dejaría la
+     nota huérfana en la cola.                                             */
+  const compartilhadoConsumido = useRef(false)
+  useEffect(() => {
+    if (compartilhadoConsumido.current || !vendorName) return
+    if (!idCompartilhadoDaUrl(window.location.search)) return
+    compartilhadoConsumido.current = true
+
+    let vivo = true
+    void (async () => {
+      const pacote = await consumirCompartilhamento(window.location.search)
+      if (!pacote || !vivo) return
+
+      // Orden de preferencia: la foto es lo que más cuesta reponer, el audio
+      // después, y el texto es lo que el vendedor puede volver a pegar.
+      const imagem = pacote.arquivos.find((a) => a.type.startsWith('image/'))
+      if (imagem) {
+        await enviarFoto(imagem)
+        return
+      }
+
+      const audio = pacote.arquivos.find((a) => a.type.startsWith('audio/'))
+      if (audio) {
+        const clientUuid = novoClientUuid()
+        await guardarNota({
+          id: clientUuid,
+          blob: audio,
+          mime: audio.type || 'audio/mp4',
+          duracaoSeg: 0,
+          vendor: vendorName,
+          alvo: alvoDaUrl ? { kind: alvoDaUrl.kind, id: alvoDaUrl.id } : null,
+        })
+        await interpretar({
+          clientUuid,
+          fonte: 'audio',
+          duracaoSeg: 0,
+          mime: audio.type,
+          arquivo: audio,
+        })
+        return
+      }
+
+      const texto = [pacote.titulo, pacote.texto, pacote.url]
+        .map((t) => t.trim())
+        .filter((t) => t !== '')
+        .join('\n')
+      if (texto !== '') {
+        enviarTexto('texto', texto)
+        return
+      }
+
+      toast({ message: 'O compartilhamento chegou vazio.', tone: 'neutro' })
+    })()
+
+    return () => {
+      vivo = false
+    }
+  }, [vendorName, alvoDaUrl, enviarFoto, enviarTexto, interpretar])
 
   /* ══════════════════════════════════════════════════════════════════════
      Confirmar — la única escritura

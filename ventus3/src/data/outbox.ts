@@ -261,6 +261,17 @@ let flushEmCurso: Promise<ResultadoFlush> | null = null
 export interface OpcoesFlush {
   /** Ignorar el backoff: lo usa retry() y el botón 'Tentar agora'. */
   forcar?: boolean
+  /**
+   * Ignorar SOLO la ventana de espera, no el estado 'erro'.
+   *
+   * El backoff existe para no golpear un servidor que está fallando. Cuando lo
+   * que falló fue el teléfono —sin señal en el galpón—, cada intento sube el
+   * exponente igual, y al volver la señal la nota podía quedarse hasta cinco
+   * minutos más en la cola esperando su turno. Volver a tener red es
+   * información nueva: la espera ya no aplica. Lo que sí se respeta es el
+   * 'erro' permanente, que no se arregla reintentando.
+   */
+  ignorarEspera?: boolean
   /** Tope de mutaciones por pasada. Evita bloquear el hilo al reconectar. */
   limite?: number
 }
@@ -280,7 +291,7 @@ export async function flush(opcoes: OpcoesFlush = {}): Promise<ResultadoFlush> {
 }
 
 async function executarFlush(opcoes: OpcoesFlush): Promise<ResultadoFlush> {
-  const { forcar = false, limite = 200 } = opcoes
+  const { forcar = false, ignorarEspera = false, limite = 200 } = opcoes
   const db = getDb()
   const resultado: ResultadoFlush = { enviados: 0, falhados: 0, conflitos: 0, adiados: 0 }
 
@@ -311,7 +322,7 @@ async function executarFlush(opcoes: OpcoesFlush): Promise<ResultadoFlush> {
     if (!forcar && mutacao.estado === 'erro') {
       continue
     }
-    if (!forcar && mutacao.proxima_tentativa_em > agoraIso) {
+    if (!forcar && !ignorarEspera && mutacao.proxima_tentativa_em > agoraIso) {
       resultado.adiados += 1
       continue
     }

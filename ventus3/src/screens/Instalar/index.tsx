@@ -100,16 +100,20 @@ export default function InstalarScreen() {
               >
                 {podeInstalar ? 'Instalar agora' : 'Use o menu do Chrome (passo 1 abaixo)'}
               </Button>
-              <Button
-                variant="secondary"
-                block
-                icon={<Download size={18} aria-hidden />}
-                onClick={() => {
-                  window.location.href = URL_DO_APK
-                }}
-              >
-                Baixar o APK
-              </Button>
+              {/* Sin VITE_APK_URL no hay APK publicado todavía: el botón no
+                  se muestra en vez de llevar a una descarga que no existe. */}
+              {URL_DO_APK !== null && (
+                <Button
+                  variant="secondary"
+                  block
+                  icon={<Download size={18} aria-hidden />}
+                  onClick={() => {
+                    if (URL_DO_APK !== null) window.location.href = URL_DO_APK
+                  }}
+                >
+                  Baixar o APK
+                </Button>
+              )}
             </div>
           </Card>
         )}

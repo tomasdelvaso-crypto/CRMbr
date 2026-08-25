@@ -10,6 +10,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from './app/App'
+// El nombre del evento sale del módulo que lo escucha, no de un string
+// repetido: si alguien lo renombra allá y acá queda el viejo, el toast de
+// «Nova versão» deja de aparecer y nadie se entera hasta la próxima release.
+import { EVENTO_ATUALIZACAO } from '@/install/atualizacao'
 import './index.css'
 
 const container = document.getElementById('root')
@@ -26,7 +30,7 @@ createRoot(container).render(
 // ofrecer la actualización (nada de confirm(): siempre sheets y toasts).
 export const updateSW = registerSW({
   onNeedRefresh() {
-    window.dispatchEvent(new CustomEvent('ventus:update-available'))
+    window.dispatchEvent(new CustomEvent(EVENTO_ATUALIZACAO))
   },
   onOfflineReady() {
     window.dispatchEvent(new CustomEvent('ventus:offline-ready'))

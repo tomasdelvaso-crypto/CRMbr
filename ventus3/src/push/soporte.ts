@@ -27,6 +27,7 @@
 // botón se muestra o si se muestra el paso a paso de instalación.
 
 import { permissaoDeAviso, precisaInstalarParaAviso, type PermissaoDeAviso } from '@/data'
+import { estaInstalado } from '@/install/deteccao'
 
 export type PlataformaDoAparelho = 'ios' | 'android' | 'desktop'
 
@@ -72,20 +73,6 @@ export function plataformaDoAparelho(): PlataformaDoAparelho {
   return 'desktop'
 }
 
-/** ¿Está corriendo instalada? Cubre PWA, TWA y el Mini App de Telegram. */
-export function estaInstalado(): boolean {
-  if (typeof window === 'undefined') return false
-  try {
-    const standalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      window.matchMedia('(display-mode: fullscreen)').matches ||
-      window.matchMedia('(display-mode: minimal-ui)').matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true
-    return standalone
-  } catch {
-    return false
-  }
-}
 
 /**
  * El mapa completo. Es síncrono a propósito: se lee en render y se refresca
