@@ -75,9 +75,24 @@ async function montar(children: ReactNode): Promise<string> {
   // Se cede el turno con un macrotask, no con un microtask: resolver un
   // import() dinámico pasa por el loader de módulos y no alcanza con vaciar
   // la cola de promesas.
-  for (let i = 0; i < 100 && host.innerHTML.includes('data-rota-carregando'); i++) {
+  //
+  // La espera se mide en TIEMPO, no en vueltas. Antes eran 100 × 5 ms = 500 ms
+  // fijos, y bajo la carga de la suite completa el chunk más pesado
+  // (/registrar) a veces no llegaba a tiempo: el test fallaba de forma
+  // intermitente, que es la peor clase de test — el que enseña al equipo a
+  // ignorar el rojo. Aislado siempre pasaba, y eso mismo era la pista.
+  const LIMITE_MS = 8_000
+  const arranque = Date.now()
+  while (host.innerHTML.includes('data-rota-carregando')) {
+    if (Date.now() - arranque > LIMITE_MS) {
+      throw new Error(
+        `La pantalla no terminó de cargar en ${LIMITE_MS} ms: el chunk lazy nunca resolvió. ` +
+          'Si pasa sólo en la suite completa es lentitud de la máquina; si pasa aislado, ' +
+          'el import dinámico está roto.',
+      )
+    }
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 5))
+      await new Promise((resolve) => setTimeout(resolve, 10))
     })
   }
   return host.innerHTML
@@ -118,7 +133,7 @@ describe('router', () => {
       expect(html.length).toBeGreaterThan(50)
       // Y es la pantalla de verdad, no el esqueleto esperando el chunk.
       expect(html).not.toContain('data-rota-carregando')
-    })
+    }, 20_000)
   }
 
   it('las rutas del Shell traen la navegação principal; a Golden Hour não', async () => {
