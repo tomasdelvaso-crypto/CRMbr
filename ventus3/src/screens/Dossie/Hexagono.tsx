@@ -86,8 +86,14 @@ export function Hexagono({
   return (
     <div>
       <svg
-        viewBox="0 0 240 208"
-        className="mx-auto block w-full max-w-[20rem]"
+        // El viewBox EMPIEZA EN NEGATIVO a propósito. La malla vive en
+        // 0…240, pero los rótulos se dibujan FUERA del hexágono: «Controle 0»
+        // se ancla en x=37 con `text-anchor=end` y se extiende hasta x≈-25,
+        // así que con el viewBox pegado a 0 la palabra salía cortada
+        // («ontrole 0») en todos los tamaños. Los 36 px de aire a cada lado
+        // son el ancho del rótulo más largo, no un número redondo.
+        viewBox="-36 0 312 208"
+        className="mx-auto block w-full max-w-[20rem] lg:max-w-[24rem]"
         aria-hidden
         focusable="false"
       >

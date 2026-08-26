@@ -55,6 +55,7 @@ import { definirBadge } from '@/push'
 import { BarraDeComando } from '@/screens/Ventus/BarraDeComando'
 import { barraDeComandoVisivel } from '@/screens/Ventus/rotas'
 import { ConfirmHost, Skeleton, ToastHost, confirmar, direcaoEntreRotas, haptic } from '@/ui'
+import { larguraDe } from './largura'
 
 /** Títulos del header por ruta. En PT-BR, como todo lo visible. */
 const TITULOS: Readonly<Record<string, string>> = {
@@ -75,48 +76,11 @@ const TITULOS: Readonly<Record<string, string>> = {
 }
 
 /**
- * Ancho de la columna de contenido, por ruta y por tamaño de pantalla.
- *
- * En móvil TODA la app vive en `max-w-lg` a propósito: es una app de campo
- * que se usa con una mano. En escritorio (`lg:`, ≥1024px) esa misma columna
- * de 32rem flotando en el centro de un monitor es lo que el dueño del
- * producto leyó como «está roto», no como decisión de diseño — así que cada
- * ruta gana el ancho que le corresponde por densidad de contenido:
- *
- *  · Hoje es una lista de foco (3 tarjetas, una decisión por vez): se angosta
- *    apenas, a `max-w-2xl`. Estirarla al ancho de la Carteira le daría a una
- *    lista de tres ítems el mismo peso visual que a una tabla de 65 filas.
- *  · Carteira, Cadência, Revisão y Placar son listas densas que hoy usan cada
- *    píxel del teléfono: en escritorio pasan a `max-w-4xl` para mostrar más
- *    columnas por fila sin estirar el texto a un ancho ilegible.
- *  · Dossiê es una ficha de UNA oportunidad: `max-w-3xl`, entre las dos.
- *  · El Painel do Gestor ya tenía su excepción declarada del PLANO
- *    —«optimizada para tablet e desktop»— y no cambia acá.
- *  · La Golden Hour es modo foco y ni pasa por esta función: ver `modoFoco`.
- *  · Registrar queda en `max-w-lg` en TODOS los tamaños, sin excepción: la
- *    barra de acción del final es `fixed` y centra su propio `max-w-lg`
- *    independiente de este ancho —lo necesita para no moverse cuando el
- *    teclado empuja el layout—, así que ensanchar el contenido de arriba sin
- *    tocar esa barra dejaría los botones más angostos que el formulario que
- *    confirman. Es la misma razón por la que la Golden Hour tampoco cambia.
- *  · Todo lo demás (Mais, Ajustes, Rituais, Ventus…) son pantallas de
- *    formulario o de una sola tarjeta: el mismo `max-w-2xl` de Hoje evita que
- *    sigan viéndose como teléfono sin volverse una plana de texto larga.
+ * Ancho de la columna de contenido: vive en `largura.ts` porque lo comparten
+ * el header, el <main> y la BarraDeComando del Ventus. Tener el número dos
+ * veces es exactamente lo que hacía que la barra flotara desalineada de la
+ * columna que dice comandar.
  */
-const ROTAS_5XL: readonly string[] = ['/gestor']
-const ROTAS_4XL: readonly string[] = ['/carteira', '/cadencia', '/revisao', '/placar']
-const ROTAS_ANGOSTAS: readonly string[] = ['/registrar']
-
-function larguraDe(pathname: string): string {
-  if (ROTAS_5XL.includes(pathname)) return 'max-w-5xl'
-  if (ROTAS_ANGOSTAS.includes(pathname)) return 'max-w-lg'
-  if (pathname === '/') return 'max-w-lg lg:max-w-2xl'
-  // /carteira/46 → Dossiê. Antes del check de ROTAS_4XL: si no, /carteira
-  // (sin id) lo captura primero y listo, pero /carteira/46 empieza igual.
-  if (pathname.startsWith('/carteira/')) return 'max-w-lg lg:max-w-3xl'
-  if (ROTAS_4XL.includes(pathname)) return 'max-w-lg lg:max-w-4xl'
-  return 'max-w-lg lg:max-w-2xl'
-}
 
 function tituloDe(pathname: string): string {
   const exato = TITULOS[pathname]

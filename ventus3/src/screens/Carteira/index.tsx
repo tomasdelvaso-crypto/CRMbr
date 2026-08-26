@@ -229,8 +229,11 @@ function Carteira({ vendorName }: { vendorName: string | null }) {
           onAssumir={assumirDoPool}
         />
 
-        {/* Tres columnas, no dos: ver el comentario de `rotuloCurto`. */}
-        <div className="grid grid-cols-3 gap-2 px-4 pb-3 pt-3">
+        {/* Tres columnas, no dos: ver el comentario de `rotuloCurto`. En lg+
+            las SEIS entran en UNA fila: son seis preguntas distintas sobre la
+            misma carteira y verlas juntas es el resumen de la pantalla — en
+            dos filas de tres, el ojo las lee como dos grupos que no existen. */}
+        <div className="grid grid-cols-3 gap-2 px-4 pb-3 pt-3 lg:grid-cols-6">
           {VISOES.map((visao) => {
             const total = contagem[visao.chave]
             const ativo = filtros.visao === visao.chave
@@ -272,7 +275,9 @@ function Carteira({ vendorName }: { vendorName: string | null }) {
         {/* Buscador + filtros. O input tem 16px reais: abaixo disso o Safari
             dá zoom ao focar e o layout nunca mais volta. */}
         <div className="flex items-center gap-2 px-4 pb-2">
-          <label className="relative flex flex-1 items-center">
+          {/* El buscador con tope en escritorio: un campo de una línea de
+              1.700 px no ayuda a buscar, sólo estira el placeholder. */}
+          <label className="relative flex flex-1 items-center lg:max-w-xl">
             <span className="sr-only">Buscar na carteira</span>
             <Search
               size={16}
@@ -328,6 +333,35 @@ function Carteira({ vendorName }: { vendorName: string | null }) {
             </Chip>
           ))}
         </div>
+      </div>
+
+      {/* ── O cabeçalho da tabela (só em xl+) ────────────────────────────
+          Los mismos anchos y los MISMOS breakpoints que LinhaCarteira, en el
+          mismo orden — si los dos no se mueven juntos, los rótulos dejan de
+          caer sobre su columna. Pasó: con el encabezado en `lg:` y la fila
+          revelando columnas más tarde, a 1024 px «NEGÓCIO» y «ETAPA» se
+          imprimían uno encima del otro.
+
+          Arranca en `xl` y no en `lg` porque es ahí donde la fila se vuelve
+          tabla de verdad (ver el bloque grande de LinhaCarteira): entre 1024 y
+          1280 la fila sigue siendo una tarjeta con dos líneas y un encabezado
+          de columnas sería un rótulo sin columna debajo.
+
+          `aria-hidden` porque cada fila ya lleva su etiqueta accesible
+          completa. */}
+      <div
+        aria-hidden
+        className="hidden shrink-0 items-center gap-4 border-b border-border bg-surface-2/60 px-4 py-1.5 text-2xs font-semibold uppercase tracking-wide text-fg-subtle xl:flex"
+      >
+        <span className="size-2 shrink-0" />
+        <span className="min-w-0 flex-1">Negócio</span>
+        <span className="hidden w-40 shrink-0 2xl:block">Cliente</span>
+        <span className="w-28 shrink-0">Etapa</span>
+        <span className="w-28 shrink-0">Saúde</span>
+        <span className="w-28 shrink-0">Contato</span>
+        <span className="w-44 shrink-0 2xl:w-56">Próxima ação</span>
+        <span className="w-24 shrink-0 text-right">Valor</span>
+        <span className="w-[18px] shrink-0" />
       </div>
 
       {/* ── A ÚNICA região com scroll ─────────────────────────────────── */}

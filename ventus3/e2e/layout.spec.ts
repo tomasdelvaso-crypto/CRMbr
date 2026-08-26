@@ -97,6 +97,200 @@ test.describe('Tela Hoje · o primeiro cartão cabe na tela', () => {
   })
 })
 
+/* ══════════════════════════════════════════════════════════════════════════
+   DENSIDADE DE ESCRITORIO
+   ══════════════════════════════════════════════════════════════════════════
+   El defecto que estas pruebas cierran es el que el dueño del producto
+   reportó con la captura en la mano: el rail estaba, pero el CONTENIDO no
+   usaba el espacio. El kanban de Cadência metía cuatro columnas de ~150 px
+   en el centro de un área de 1.700, con los nombres de empresa cortados, y
+   la barra «Perguntar ao Ventus» flotaba centrada sobre la ventana en vez de
+   alinearse con la columna que dice comandar.
+
+   Miden GEOMETRÍA, no clases de CSS: `larguraDe()` puede cambiar de valores
+   sin romperlas, y no pueden pasar por accidente si alguien vuelve a poner
+   un `max-w-4xl` en el medio.
+
+   Sólo en el proyecto `desktop`. En los dos teléfonos ni el rail existe.
+   ══════════════════════════════════════════════════════════════════════════ */
+test.describe('Escritorio · o conteúdo usa a largura', () => {
+  // Por ANCHO y no por nombre de proyecto: `lg` es 1024 px y es el único
+  // número que decide si hay rail y si hay segunda columna.
+  test.skip(({ viewport }) => (viewport?.width ?? 0) < 1024, 'só faz sentido em lg+')
+
+  test('Cadência: o kanban ocupa a área toda e os nomes não são cortados', async ({ app }) => {
+    await abrir(app, '/cadencia')
+
+    const primeiraColuna = app.getByRole('heading', { name: /^1A/ })
+    await expect(primeiraColuna).toBeVisible({ timeout: 15_000 })
+
+    // El área de contenido = lo que queda a la derecha del rail.
+    const area = await app.evaluate(() => {
+      const rail = document.querySelector('nav[aria-label="Navegação principal"]')
+      const esquerda = rail ? rail.getBoundingClientRect().right : 0
+      return { esquerda, largura: window.innerWidth - esquerda }
+    })
+
+    // Las CUATRO columnas del kanban, medidas de verdad.
+    const colunas = await app.evaluate(() => {
+      const titulos = [...document.querySelectorAll('main h3')]
+      return titulos.map((h) => {
+        const b = (h.parentElement ?? h).getBoundingClientRect()
+        return { x: b.x, largura: b.width }
+      })
+    })
+    expect(colunas).toHaveLength(4)
+
+    // El kanban entero cubre casi toda el área: es la regresión de «896 px
+    // flotando en el medio de 1.700». Con el defecto, este número era 0,53.
+    const primeira = colunas[0]
+    const ultima = colunas[3]
+    expect(primeira).toBeDefined()
+    expect(ultima).toBeDefined()
+    if (!primeira || !ultima) return
+    const ocupado = ultima.x + ultima.largura - primeira.x
+    expect(ocupado / area.largura).toBeGreaterThan(0.9)
+
+    // Y cada columna es ancha de verdad, no una tira de 150 px.
+    for (const coluna of colunas) {
+      expect(coluna.largura).toBeGreaterThan(200)
+    }
+
+    // Ningún nombre de empresa cortado: el texto entra en su caja.
+    const cortados = await app.evaluate(() => {
+      const nomes = [...document.querySelectorAll('main ul li button > span:first-child')]
+      return nomes
+        .filter((s) => s.scrollWidth > s.clientWidth + 1)
+        .map((s) => s.textContent ?? '')
+    })
+    expect(cortados, 'nomes de empresa cortados no kanban').toEqual([])
+  })
+
+  test('a barra do Ventus se alinha à coluna de conteúdo, não à janela', async ({ app }) => {
+    // Dos rutas de anchos MUY distintos: una tabla a todo lo ancho y la tela
+    // de foco. La barra tiene que seguir a las dos.
+    for (const rota of ['/cadencia', '/']) {
+      await abrir(app, rota)
+      // La barra sólo se pinta con vendedor resuelto: sin esta espera se mide
+      // el frame anterior a que la sesión termine de resolver.
+      await expect(app.getByRole('button', { name: 'Perguntar ao Ventus' })).toBeVisible({
+        timeout: 15_000,
+      })
+
+      const medidas = await app.evaluate(() => {
+        const titulo = document.querySelector('header h1')
+        const barra = document.querySelector('div.fixed.inset-x-0.z-30')
+        const campo = barra?.querySelector(':scope > div > div')
+        if (!titulo || !campo) return null
+        return {
+          titulo: titulo.getBoundingClientRect().x,
+          campo: campo.getBoundingClientRect().x,
+        }
+      })
+      expect(medidas, `sem barra ou sem título em ${rota}`).not.toBeNull()
+      if (!medidas) continue
+
+      // Mismo eje. Antes había 112 px de diferencia en /cadencia: el título
+      // vivía en una columna de 896 px y la barra en una de 672, las dos
+      // centradas contra el mismo viewport.
+      expect(Math.abs(medidas.campo - medidas.titulo), `barra desalinhada em ${rota}`).toBeLessThanOrEqual(1)
+    }
+  })
+
+  test('Carteira: a linha vira tabela — cliente, etapa, saúde e próxima ação', async ({ app }) => {
+    await abrir(app, '/carteira')
+    await expect(app.getByRole('button', { name: 'Filtros da carteira' })).toBeVisible({
+      timeout: 15_000,
+    })
+
+    // Las columnas de escritorio existen y se ven. Son las que en el teléfono
+    // viven amontonadas en el subtítulo truncado de la fila.
+    const primeira = app.getByRole('button', { name: /CD Guarulhos/ }).first()
+    await expect(primeira).toBeVisible()
+    await expect(primeira.getByText('declarada')).toBeVisible()
+    await expect(primeira.getByText('com prova')).toBeVisible()
+
+    // Y el encabezado de la tabla, que sólo existe en lg+.
+    for (const coluna of ['Negócio', 'Etapa', 'Saúde', 'Contato', 'Próxima ação', 'Valor']) {
+      await expect(app.getByText(coluna, { exact: true }).first()).toBeVisible()
+    }
+  })
+
+  test('Carteira: o nome do negócio sobrevive em TODA largura de escritorio', async ({ app }) => {
+    // ── Por qué esta prueba existe ──────────────────────────────────────
+    // La de arriba comprobaba que las columnas EXISTIERAN y pasaba en verde
+    // con el nombre del negocio en 38 px a 1280. El nombre es el único
+    // elemento flexible de la fila (`flex-1 min-w-0`) y por eso es el único
+    // que se encoge cuando los anchos fijos no entran: a 1024 px medía
+    // EXACTAMENTE 0 y la fila no decía de qué negocio se trataba. Una prueba
+    // de geometría que no mide el elemento flexible no ve lo único que cede.
+    //
+    // Se recorren los seis anchos donde cambia algo: los tres breakpoints
+    // (lg/xl/2xl) y los tres portátiles corrientes de la vida real.
+    for (const largura of [1024, 1152, 1280, 1366, 1440, 1920]) {
+      await app.setViewportSize({ width: largura, height: 900 })
+      await abrir(app, '/carteira')
+      await expect(app.getByRole('button', { name: 'Filtros da carteira' })).toBeVisible({
+        timeout: 15_000,
+      })
+
+      const nome = await app.evaluate(() => {
+        const fila = [...document.querySelectorAll('main button')].find((b) =>
+          (b.textContent ?? '').includes('CD Guarulhos'),
+        )
+        const alvo = fila?.querySelector('span > span:first-child')
+        if (!alvo) return null
+        const caixa = alvo.getBoundingClientRect()
+        return {
+          largura: caixa.width,
+          cortado: alvo.scrollWidth > alvo.clientWidth + 1,
+        }
+      })
+
+      expect(nome, `sem a linha de CD Guarulhos em ${String(largura)} px`).not.toBeNull()
+      if (!nome) continue
+      // 200 px es el ancho de «CD Guarulhos — caixa violada» con holgura: el
+      // número no es redondo, es el texto más largo de la semilla.
+      expect(nome.largura, `nome do negócio esmagado em ${String(largura)} px`).toBeGreaterThan(200)
+      expect(nome.cortado, `nome do negócio cortado em ${String(largura)} px`).toBe(false)
+    }
+  })
+
+  test('Hoje: o contexto do dia vira coluna secundária à direita', async ({ app }) => {
+    await abrir(app, '/')
+    await expect(cartoesDoDia(app)).toHaveCount(3)
+
+    const caixas = await app.evaluate(() => {
+      const secao = document.querySelector('[aria-label="ações de hoje"], [aria-label*="ações de hoje"]')
+      const aside = document.querySelector('aside[aria-label="Contexto do dia"]')
+      if (!secao || !aside) return null
+      const a = secao.getBoundingClientRect()
+      const b = aside.getBoundingClientRect()
+      return { foco: { x: a.x, right: a.right }, lateral: { x: b.x, right: b.right } }
+    })
+    expect(caixas, 'a coluna secundária não existe em lg+').not.toBeNull()
+    if (!caixas) return
+
+    // La columna secundaria está AL LADO, no debajo: empieza donde termina la
+    // de foco. Es la diferencia entre usar el espacio lateral y apilarlo.
+    expect(caixas.lateral.x).toBeGreaterThanOrEqual(caixas.foco.right - 1)
+  })
+
+  test('Hoje num portátil baixo: a faixa da sequência aparece UMA vez', async ({ app }) => {
+    // 1920×800 cumple LAS DOS condiciones que reparten el bloque de contexto:
+    // es «tela curta» (≤880 px de alto, la regla del iPhone) y es escritorio
+    // (≥1024 px de ancho, la regla del rail). Las dos reglas mandaban pintar
+    // la racha, cada una en su lugar, y salía dos veces. Es el tamaño de un
+    // portátil corriente, no un caso de laboratorio.
+    await app.setViewportSize({ width: 1920, height: 800 })
+    await abrir(app, '/')
+    await expect(cartoesDoDia(app)).toHaveCount(3)
+
+    const escudos = app.locator('[aria-label$="escudos disponíveis"]')
+    await expect(escudos).toHaveCount(1)
+  })
+})
+
 test.describe('Editor de escala · não desborda na horizontal', () => {
   test('o conteúdo cabe na largura do sheet, e focar «Cargo» não o desloca', async ({ app }) => {
     await abrir(app, `/carteira/${String(TETRA)}`)

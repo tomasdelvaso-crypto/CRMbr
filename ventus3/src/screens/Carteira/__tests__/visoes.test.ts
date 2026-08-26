@@ -27,6 +27,9 @@ function linha(over: Partial<CarteiraRow> = {}, oportunidade = opp()): CarteiraR
     nextAction: oportunidade.next_action,
     nextActionDate: oportunidade.next_action_date,
     healthScore: calculateHealthScore(oportunidade.scales),
+    // Sin evidencias armadas a mano, el verificado es 0: es exactamente lo que
+    // devuelve `healthVerificado()` para escalas sin cita.
+    healthVerificado: 0,
     risks: detectRisks(oportunidade, [], HOJE),
     compromissosSemVeredicto: 0,
     busca: `${oportunidade.name ?? ''} ${oportunidade.client ?? ''}`.toLowerCase(),

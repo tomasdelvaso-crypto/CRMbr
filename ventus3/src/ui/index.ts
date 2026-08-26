@@ -21,9 +21,11 @@ export {
   useMediaQuery,
   useTelaLarga,
   useTelaCurta,
+  useTelaEscritorio,
   useDebouncedValue,
   CONSULTA_TELA_LARGA,
   CONSULTA_TELA_CURTA,
+  CONSULTA_ESCRITORIO,
 } from './hooks'
 
 // Dictado en vivo (Web Speech). Vivía en Dossie/ y lo importaba también el

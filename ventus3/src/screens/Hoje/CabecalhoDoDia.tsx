@@ -32,6 +32,16 @@ export interface CabecalhoDoDiaProps {
   carregando: boolean
   /** Teléfono corto: sólo los anéis, y más chicos. Ver el encabezado. */
   compacto?: boolean
+  /**
+   * ¿La explicación de la largada y la faixa de la racha van ACÁ DENTRO?
+   *
+   * En escritorio no: viven en la columna secundaria de la derecha, junto a
+   * la corrente do time (ver Hoje/index.tsx). Es el mismo reparto que hace
+   * `compacto` en un teléfono corto —arriba estado y acción, aparte
+   * explicación y motivación— pero sin achicar los anéis, porque en un
+   * monitor el problema nunca fue el alto.
+   */
+  comContexto?: boolean
 }
 
 export function CabecalhoDoDia({
@@ -40,6 +50,7 @@ export function CabecalhoDoDia({
   sequencia,
   carregando,
   compacto = false,
+  comContexto = true,
 }: CabecalhoDoDiaProps) {
   if (carregando || !aneis) {
     return (
@@ -58,7 +69,7 @@ export function CabecalhoDoDia({
         avanco={{ value: aneis.avanco.current, max: aneis.avanco.goal }}
       />
 
-      {!compacto && <ContextoDoDia largada={largada} sequencia={sequencia} />}
+      {!compacto && comContexto && <ContextoDoDia largada={largada} sequencia={sequencia} />}
     </section>
   )
 }

@@ -215,7 +215,31 @@ export default function DossieScreen() {
         )}
       </div>
 
-      <div className="mt-4 border-t border-border">
+      {/* ══════════════════════════════════════════════════════════════════
+          LAS DOS COLUMNAS DEL ESCRITORIO
+          ══════════════════════════════════════════════════════════════════
+          En el teléfono la ficha es UN scroll de secciones plegables, y así
+          se queda: es el orden de la cabeza del vendedor a las 8:40 (quién es
+          → qué hago hoy → qué me traba → con quién hablo → qué pasó).
+
+          En un monitor ese mismo scroll único era una tira de teléfono
+          estirada: para ver el histórico había que pasar de largo el
+          hexágono, el gate y el mapa de poder, aunque los dos bloques
+          entraran cómodos uno al lado del otro. En lg+ se parten en dos:
+
+            IZQUIERDA — el estado del negocio: escalas PPVVCC, qué traba el
+            avance, la jugada que sugiere el Ventus y el mapa de poder.
+            DERECHA — lo que pasó y lo que se prometió: histórico,
+            compromisos y ficha.
+
+          El corte no es arbitrario: la izquierda se lee para DECIDIR y la
+          derecha para VERIFICAR, y tenerlas a la vista al mismo tiempo es
+          justamente lo que un teléfono no puede dar.
+
+          Nada de esto existe por debajo de 1024 px: las dos envolturas son
+          divs transparentes y el árbol es idéntico al de siempre. */}
+      <div className="mt-4 border-t border-border lg:mt-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:border-t-0 lg:px-4">
+        <div className="border-b border-border lg:overflow-hidden lg:rounded-card lg:border lg:bg-surface">
         <Secao
           id="ppvvcc"
           titulo="Escalas PPVVCC"
@@ -292,7 +316,9 @@ export default function DossieScreen() {
         >
           <Stakeholders opportunity={oportunidade} lead={dossie.lead} />
         </Secao>
+        </div>
 
+        <div className="lg:overflow-hidden lg:rounded-card lg:border lg:border-border lg:bg-surface">
         <Secao id="timeline" titulo="Histórico" resumo={`${String(itens.length)} registros`}>
           <LinhaDoTempo
             itens={itens}
@@ -320,6 +346,7 @@ export default function DossieScreen() {
             hoje={dossie.hoje}
           />
         </Secao>
+        </div>
       </div>
 
       {escalaAberta && (

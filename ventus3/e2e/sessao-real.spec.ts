@@ -264,6 +264,46 @@ test('ningún control visible queda debajo de otra cosa', async ({ page }) => {
       const barra = chromeVisivel('.fixed.inset-x-0.z-30')
       const topo = cabecalho ? cabecalho.bottom : 0
 
+      // ── El rectángulo que de verdad se ve ───────────────────────────────
+      // `getBoundingClientRect()` devuelve dónde ESTARÍA el elemento, no dónde
+      // se lo ve: un control dentro de una región con scroll propio conserva
+      // su caja aunque esté enrollado fuera de la vista. En el kanban de
+      // Cadência cada columna es un scroller —seis leads en 1B, cinco que
+      // entran— y esta prueba lleva todo scroller al fondo, así que la primera
+      // tarjeta queda ARRIBA del scroller, tapada por su propio recorte.
+      // `document.elementFromPoint` en el centro de esa caja fantasma
+      // contestaba el filtro de etapas, que está ahí pero varias capas por
+      // encima: un falso «control tapado» que no se puede arreglar tocando la
+      // pantalla, porque no hay nada tapado.
+      //
+      // Así que se recorta la caja contra cada ancestro que recorta. Si no
+      // queda nada, el control está enrollado, no tapado, y no se juzga; si
+      // queda algo, se juzga JUSTO AHÍ — que además es más estricto que antes:
+      // el pinchazo cae siempre dentro de la parte visible, nunca en un borde
+      // que el scroller ya se comió.
+      const recorteVisivel = (el: HTMLElement): DOMRect | null => {
+        let caixa = el.getBoundingClientRect()
+        // Un elemento `fixed` NO lo recorta ningún scroller: se posiciona
+        // contra la ventana. Es el caso del micrófono flotante y de todo lo
+        // que vive en la barra del Ventus, y recortarlo contra un ancestro
+        // sería inventar un recorte que el navegador no hace — justo en los
+        // controles que esta prueba más protege.
+        if (getComputedStyle(el).position === 'fixed') return caixa
+        for (let pai = el.parentElement; pai !== null; pai = pai.parentElement) {
+          const estilo = getComputedStyle(pai)
+          if (estilo.position === 'fixed') return caixa
+          if (estilo.overflowX === 'visible' && estilo.overflowY === 'visible') continue
+          const recorte = pai.getBoundingClientRect()
+          const esq = Math.max(caixa.left, recorte.left)
+          const cima = Math.max(caixa.top, recorte.top)
+          const dir = Math.min(caixa.right, recorte.right)
+          const baixo = Math.min(caixa.bottom, recorte.bottom)
+          if (dir - esq < 2 || baixo - cima < 2) return null
+          caixa = new DOMRect(esq, cima, dir - esq, baixo - cima)
+        }
+        return caixa
+      }
+
       // La nav es horizontal (BottomNav, abajo) o vertical (DesktopRail, a la
       // izquierda) según su propia forma — más ancha que alta, o al revés—, y
       // cada forma recorta un borde distinto de la franja limpia.
@@ -285,7 +325,8 @@ test('ningún control visible queda debajo de otra cosa', async ({ page }) => {
           el.closest('nav[aria-label="Navegação principal"]') !== null ||
           el.closest('header') !== null ||
           el.closest('.fixed.inset-x-0.z-30') !== null
-        const b = el.getBoundingClientRect()
+        const b = recorteVisivel(el)
+        if (b === null) continue
         if (b.width < 2 || b.height < 2) continue
         if (b.left < 0 || b.right > window.innerWidth) continue
         if (dentroDoChrome) {

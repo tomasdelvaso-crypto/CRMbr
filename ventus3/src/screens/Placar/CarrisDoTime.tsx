@@ -45,6 +45,7 @@ export function CarrisDoTime({ carris, metrica, onMetrica, onExplicar }: CarrisD
       </div>
 
       <SegmentedControl
+        className="lg:max-w-md"
         options={OPCOES}
         value={metrica}
         onChange={onMetrica}
@@ -52,7 +53,11 @@ export function CarrisDoTime({ carris, metrica, onMetrica, onExplicar }: CarrisD
         size="sm"
       />
 
-      <ul className="mt-3 space-y-2.5">
+      {/* Dos columnas en lg+: el equipo entero entra sin scrollear. El orden
+          sigue siendo alfabético y sigue leyéndose en columnas —arriba a
+          abajo, izquierda a derecha—, así que no aparece ninguna jerarquía
+          que este componente existe para no tener. */}
+      <ul className="mt-3 space-y-2.5 lg:grid lg:grid-cols-2 lg:gap-x-4 lg:gap-y-2.5 lg:space-y-0">
         {linhas.map((carril) => (
           <li key={carril.vendorName}>
             <Carril carril={carril} />

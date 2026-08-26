@@ -185,10 +185,17 @@ monitor eso es una columna de teléfono flotando en el medio. Ahora hay un
 **rail lateral fijo** (`src/app/DesktopRail.tsx`, `lg:` ≥1024 px) que reemplaza a
 la BottomNav, con los mismos 5 destinos más Gestor (si admin) y Ajustes, el
 micrófono como acción destacada y el perfil al pie; y cada ruta gana el ancho que
-le corresponde por densidad (Hoje `2xl`, Carteira/Cadência/Revisão/Placar `4xl`,
-Dossiê `3xl`, Gestor `5xl`). Los sheets pasan a **modal centrado** en `lg:` y
+le corresponde. Los sheets pasan a **modal centrado** en `lg:` y
 `Registrar` queda congelado en `max-w-lg` a propósito: su barra de acción es
 `fixed` y arma su propio ancho.
+
+> ⚠️ **Esta primera pasada puso el rail y los max-widths, pero NO la densidad, y
+> el dueño del producto la rechazó con una segunda captura en la mano:
+> «todavía no se ajusta bien a web».** El kanban de Cadência seguía metiendo
+> cuatro columnas de ~150 px en el centro de un área de 1.700, con los nombres
+> de empresa cortados, y la barra «Perguntar ao Ventus» flotaba desalineada de
+> la columna que dice comandar. **Lo que vale hoy es §0-ter**, no la lista de
+> anchos que había acá.
 
 **3 · «No sé si tengo perfil administrador» — el rol no se veía en ninguna parte.**
 `sessao.isAdmin` existía en el contexto y sólo lo usaba la entrada del Painel do
@@ -324,6 +331,143 @@ aserción: muestran un estado que la prueba ya verificó.
 
 ---
 
+## 0-ter · Densidad de escritorio (la segunda captura del dueño)
+
+> **26/08/2026, después de §0-bis.** Con el rail ya puesto, el dueño del
+> producto volvió con una captura de **1918 px de ancho en `/cadencia`** y un
+> veredicto de una línea: **«todavía no se ajusta bien a web»**. Tenía razón, y
+> el diagnóstico es preciso: la pasada anterior había arreglado el CHROME (rail,
+> nav, max-widths) pero no el CONTENIDO. Cuatro columnas de kanban de ~150 px
+> con las tarjetas cortadas —«TECADI Operador Logíst…», «Rodalog Soluções em
+> Lo…»— flotando en el medio de 1.700 px de blanco.
+>
+> **La regla que faltaba: un monitor tiene que mostrar MÁS INFORMACIÓN, no la
+> misma columna con más margen.**
+
+### El ancho por ruta vive en UN archivo
+
+`src/app/largura.ts` (`larguraDe(pathname)` + `TOPO_DA_BARRA`) es la única
+fuente. Lo leen **tres** consumidores: el header del Shell, el `<main>` del
+Shell y la `BarraDeComando` del Ventus. Mientras la barra tenía su propio
+`lg:max-w-2xl` y el contenido otro, en escritorio quedaban dos cajas centradas
+de anchos distintos y la barra flotaba **112 px a la derecha** de la columna que
+dice comandar. «Alineado con el contenido» no se puede garantizar si el número
+vive dos veces.
+
+| ruta | `lg:` (≥1024) | por qué |
+|---|---|---|
+| `/cadencia`, `/carteira` | `max-w-none` | son TABLAS: todo el área de contenido |
+| `/`, `/placar`, `/gestor`, `/carteira/:id` | `max-w-6xl` | la ganancia es de LAYOUT (4 carriles en fila, ficha en 2 columnas); a 1.700 px darían líneas de 200 caracteres |
+| `/revisao` | `max-w-5xl` | donde el diff «antigo → novo» entra en dos columnas sin volver la cita una plana |
+| `/registrar` | `max-w-lg` **en todo tamaño** | su barra de acción es `fixed` y centra su propio `max-w-lg` |
+| el resto | `max-w-2xl` | formularios y tarjetas sueltas |
+
+**Canaleta única `px-4` en las 14 rutas.** `lg:px-6` en las pantallas anchas se
+veía mejor, pero dejaba el título del header 8 px a la izquierda del contenido
+en todas las rutas que no tocaba. Gana la alineación al píxel.
+
+**La barra sigue la columna, pero el campo tiene tope.** La caja externa es
+exactamente la columna de la ruta; el campo de adentro lleva `TOPO_DA_BARRA`
+(`lg:max-w-4xl`) pegado al borde **izquierdo**. Un campo de texto de una línea
+de 1.700 px sería la caricatura opuesta al defecto que se arregla.
+
+### Lo que cambió en cada pantalla
+
+- **Cadência** — el kanban pasa a `grid-cols-4` (no `flex-1 min-w-[16rem]`: con
+  `min-w` de 260 px, cuatro columnas piden 1.040 y el área a 1024 son 784,
+  o sea desbordaba justo donde el kanban empieza a existir). El nombre de la
+  empresa **envuelve en `lg:` en vez de truncarse**, y cada tarjeta gana el
+  cargo del contacto, el canal del próximo toque y el atraso en palabras.
+- **Carteira** — la fila se vuelve tabla, con encabezado de columnas. Las 6
+  Smart View en una fila. Y el par **saúde declarada / com prova** en la misma
+  fila (`healthVerificado`, calculado en la misma pasada desde el jsonb
+  `scales` que ya está en memoria: **cero queries por fila**).
+- **Hoje** — grid 2fr/1fr: la corrente do time y la faixa de la racha se van a
+  un `<aside>` a la derecha. Es un **hook** (`useTelaEscritorio`) y no clases
+  `lg:` porque cambia QUÉ SE RENDERIZA — y por eso el teléfono ve el mismo árbol
+  de siempre.
+- **Placar** — `EuVsEu` deja de ser carrusel y pasa a `grid-cols-4`; los
+  carriles del equipo van a 2 columnas.
+- **Dossiê** — dos columnas: izquierda para DECIDIR (PPVVCC, gate, coaching,
+  stakeholders), derecha para VERIFICAR (histórico, compromissos, ficha).
+- **Revisão** — el diff «antigo → novo» en dos cajas lado a lado.
+- **Hexágono** — el `viewBox` arranca en **negativo** (`-36 0 312 208`):
+  «Controle 0» se ancla en x=37 con `text-anchor=end` y llega a x≈-25, así que
+  con el viewBox pegado a 0 salía cortado **en todos los tamaños, también en el
+  teléfono**. Defecto viejo, arreglado de paso.
+
+### Los dos defectos que encontró el verificador
+
+**1 · A 1024 px el nombre del negocio medía CERO píxeles.** No truncado:
+ausente. Anchos fijos más `flex-1 min-w-0` tienen un modo de falla que hay que
+decir con todas las letras — **cuando los fijos no entran, el que se encoge
+hasta cero es el flexible**. Con las seis columnas prendidas todas juntas en
+`lg:`, el área de contenido a 1024 son 752 px contra 842 px de columnas fijas.
+Medido, antes del arreglo:
+
+```
+W=1024  negócio =   0 px   ← la fila no decía DE QUÉ negocio se trata
+W=1152  negócio =  86 px
+W=1280  negócio =  38 px   ← el viewport del proyecto `desktop` de Playwright
+W=1366  negócio = 124 px   ← un portátil corriente
+W=1440  negócio = 198 px   ← «CD Guarulhos — caixa …», truncado
+W=1600  negócio = 358 px   ← recién acá se leía entero
+```
+
+Y el encabezado, que estaba en `lg:` con la fila revelando columnas más tarde,
+imprimía **«NEGÓCIO» y «ETAPA» uno encima del otro**.
+
+Arreglado revelando las columnas **de a pasos**, cuando el ancho alcanza y no
+antes: `lg` saúde y valor · `xl` modo tabla (etapa, contato, próxima ação) ·
+`2xl` cliente y próxima ação más ancha. El encabezado se mudó a `xl:` para
+moverse con la fila. Después:
+
+```
+W=1024  454 px · W=1152  582 · W=1280  262 · W=1366  348
+W=1440  422 px · W=1600  358 · W=1920  678      ninguno truncado
+```
+
+> **El subtítulo se apaga EN DOS TIEMPOS, uno por cada columna que lo
+> reemplaza.** Una versión intermedia del arreglo lo apagaba entero en `xl` y
+> dejaba la franja **1280–1536 sin el nombre del cliente en ningún lado**: ni en
+> el subtítulo, oculto, ni en su columna, que nace en `2xl`. La fila decía
+> «Prueba» y no «Prueba Tripolla», y con ella se cayeron cuatro pruebas que
+> buscan la fila por el nombre del cliente. Ahora « · etapa» se va en `xl` y el
+> cliente en `2xl`.
+
+**2 · La prueba de «controles tapados» daba un falso positivo.** Las tarjetas
+del kanban se hicieron más altas, así que a 1440×900 la columna 1B (seis leads,
+cinco que entran) empezó a scrollear. `sessao-real.spec.ts` lleva **todo
+scroller al fondo** y después pregunta, para cada control, quién está en el
+centro de su caja — pero `getBoundingClientRect()` devuelve dónde ESTARÍA el
+elemento, no dónde se lo ve: la primera tarjeta quedaba enrollada arriba y
+`elementFromPoint` contestaba el filtro de etapas, que está ahí pero varias
+capas por encima. Un «control tapado» que no se puede arreglar tocando la
+pantalla, porque no hay nada tapado.
+
+Arreglado en la prueba, no en la pantalla: `recorteVisivel()` recorta la caja
+contra cada ancestro que recorta (y **no** contra los de un elemento `fixed`,
+que ningún scroller recorta). Si no queda nada, el control está enrollado y no
+se juzga; si queda algo, el pinchazo cae **dentro de la parte visible**, que es
+más estricto que antes. Verificado en las dos direcciones: pasa con el árbol
+real, y sigue detectando una capa opaca inyectada a propósito sobre el kanban.
+
+### Lo que quedó abierto, dicho
+
+- El Dossiê deja la columna derecha más corta que la izquierda cuando la
+  oportunidad tiene poca historia. Equilibrarlo pide decidir qué sección se
+  muda, y eso es una decisión de producto sobre el orden de lectura de la ficha.
+- `ColetivoETemporada` y los 5 troféus del Placar siguen en una columna y en
+  carrusel. Entran en 1.152 px; el encargo nombraba «los 4 carriles».
+- La **Golden Hour no se tocó**: es modo foco declarado y ni pasa por
+  `larguraDe()`.
+- El `aside` de Hoje hereda el `text-center` de la línea «2 contatos de
+  largada…», que en una columna angosta a la derecha se lee un poco huérfano.
+  Es cosmético y el componente se comparte con el teléfono corto, donde
+  centrado sí está bien.
+
+---
+
 ## 1 · Verificación (salidas reales, no promesas)
 
 Corrida del **integrador final**, sobre el árbol con las cuatro entregas
@@ -449,6 +593,64 @@ Running 139 tests using 2 workers
 EXIT=0        ← 139 y no 117: se sumaron los dos proyectos de SESIÓN REAL
                 (1440×900 y 390×844, contra `dist/`) con sus 9 pruebas cada uno
 ```
+
+### La corrida del verificador de la densidad (26/08, la última de todas)
+
+Sobre el árbol de §0-ter, **después** de los dos arreglos que encontró el
+verificador (el nombre del negocio en cero y el falso positivo de «controles
+tapados»). Los cinco comandos, en verde:
+
+```
+$ npm run type-check
+(sin salida)                                                            EXIT=0
+
+$ npx tsc --noEmit -p tsconfig.e2e.json
+(sin salida)                                                            EXIT=0
+
+$ npx eslint . --max-warnings 0
+(sin salida: 0 errores, 0 warnings)                                     EXIT=0
+
+$ npx vitest run
+ Test Files  52 passed (52)
+      Tests  933 passed (933)
+   Duration  11.38s                                                     EXIT=0
+              ← 907 al cerrar §0-bis · 933 ahora, con los de la densidad
+
+$ npm run build
+✓ built · PWA injectManifest · precache 65 entries (1.596,87 KiB)        EXIT=0
+
+$ PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright test
+  23 skipped
+  143 passed (8.3m)                                                     EXIT=0
+              ← 133 al cerrar §0-bis · 143 ahora. Son 6 pruebas nuevas de
+                geometría de escritorio en `layout.spec.ts`, saltadas por
+                debajo de 1024 px. La sexta es la del nombre del negocio en
+                los seis anchos, y se verificó en las DOS direcciones: falla
+                con «nome do negócio cortado em 1024 px» si se devuelve la
+                columna «próxima ação» a `lg:`. Las 23 saltadas son las
+                vitrinas (CAPTURAS=1 / FASE_DENSIDADE) y las de escritorio
+                en los dos perfiles de teléfono.
+
+$ git status --porcelain -- src api     # el CRM v2 en producción, desde la raíz
+(sin salida: NO se tocó)                                                EXIT=0
+```
+
+**El ancho del nombre del negocio en la Carteira, medido en el navegador**
+(`scrollWidth > clientWidth` = truncado), antes y después del arreglo:
+
+```
+        1024   1152   1280   1366   1440   1600   1920
+antes      0 ✂     86 ✂    38 ✂   124 ✂   198 ✂   358     678
+depois   454    582    262    348    422    358     678
+                                              ↑ ninguno truncado
+```
+
+> ⚠️ **La revisión visual es parte de la verificación, no un extra.** Los dos
+> defectos de §0-ter no los encontró ninguna prueba: los encontró **mirar la
+> imagen**. `layout.spec.ts` afirmaba «la fila se vuelve tabla» y pasaba en
+> verde a 1280 px con el nombre del negocio en 38 px, porque comprobaba que las
+> columnas *existieran*, no que el nombre *se leyera*. Una prueba de geometría
+> que no mide el elemento flexible no ve el único elemento que se encoge.
 
 > **Lo que hace fallar Playwright y no es el código, otra vez.** La corrida
 > anterior a esta dio 131/2, y las dos fallas fueron del integrador escribiendo

@@ -30,6 +30,7 @@ import {
   detectRisks,
   getDaysSinceLastContact,
   getStageName,
+  healthVerificado,
   rankDay,
   todayBr,
   touchpointDelayDays,
@@ -56,6 +57,7 @@ import {
   gravarMeta,
   touchpointsDoLead,
 } from './db'
+import { evidenciasDoDossie } from './dossie'
 import { assinarMudancas, syncNow } from './sync'
 import { supabase, talvezOnline } from './supabase'
 import type { GoldenQueueEntry, SyncTable } from './local-types'
@@ -201,6 +203,21 @@ export interface CarteiraRow {
   nextAction: string | null
   nextActionDate: IsoDate | null
   healthScore: number
+  /**
+   * El health VERIFICADO: la misma media de 6 escalas, pero las que no tienen
+   * cita cuentan 0. Es la mitad honesta del par y en escritorio se muestra al
+   * lado del declarado —si el declarado está en 4,2 con el verificado en 0,8,
+   * el negocio es una opinión.
+   *
+   * Se calcula acá y no en la fila porque la regla de esta pantalla es CERO
+   * queries por fila: `evidenciasDoDossie(o)` sale del jsonb `scales` que ya
+   * está en memoria, así que el par no cuesta ni una lectura extra. Sin el
+   * historial local de movimientos puede quedar por DEBAJO del número de la
+   * ficha —una prueba vieja que el jsonb ya perdió no se ve desde acá—, que
+   * es el lado correcto para equivocarse en un número que existe para no
+   * mentir.
+   */
+  healthVerificado: number
   risks: DealRisk[]
   /**
    * Compromisos ya vencidos que siguen en 'pending': la Smart View
@@ -249,6 +266,7 @@ export async function fetchCarteira(vendor: string, hoje: IsoDate = todayBr()): 
         nextAction: o.next_action,
         nextActionDate: o.next_action_date,
         healthScore: calculateHealthScore(o.scales),
+        healthVerificado: healthVerificado(o.scales, evidenciasDoDossie(o), hoje).verificado,
         risks: detectRisks(o, suas, hoje),
         compromissosSemVeredicto: semVeredicto.get(o.id) ?? 0,
         busca: normalizarBusca(

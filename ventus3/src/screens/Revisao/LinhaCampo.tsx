@@ -59,15 +59,32 @@ export function LinhaCampo({
           </div>
 
           {/* valor antigo → valor novo. El «→» es el corazón de la tarjeta:
-              sin el valor viejo el vendedor no puede juzgar el cambio. */}
-          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
-            <span className="text-fg-muted line-through decoration-fg-subtle/60">
+              sin el valor viejo el vendedor no puede juzgar el cambio.
+
+              En el teléfono los dos valores comparten una línea que envuelve:
+              con 320 px no hay otra. En lg+ pasan a DOS COLUMNAS de verdad,
+              con el «→» en el medio y cada valor en su propia caja — que es
+              la forma en que un diff se lee sin tener que buscar dónde
+              termina uno y empieza el otro. Es la misma información con el
+              ancho que el monitor ya tenía y no usaba. */}
+          <div
+            className={cx(
+              'mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm',
+              'lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] lg:items-baseline lg:gap-x-3',
+            )}
+          >
+            <span className="text-fg-muted line-through decoration-fg-subtle/60 lg:min-w-0 lg:rounded-md lg:bg-surface-3/60 lg:px-2 lg:py-1">
               {valorLegivel(campo.field, campo.oldValue)}
             </span>
-            <span aria-hidden className="text-fg-subtle">
+            <span aria-hidden className="shrink-0 text-fg-subtle">
               →
             </span>
-            <span className={cx('font-semibold', aceito ? 'text-ok-soft-fg' : 'text-fg')}>
+            <span
+              className={cx(
+                'font-semibold lg:min-w-0 lg:rounded-md lg:px-2 lg:py-1',
+                aceito ? 'text-ok-soft-fg lg:bg-ok-soft' : 'text-fg lg:bg-surface-3/60',
+              )}
+            >
               {valorLegivel(campo.field, valorFinal)}
             </span>
             {editado && (

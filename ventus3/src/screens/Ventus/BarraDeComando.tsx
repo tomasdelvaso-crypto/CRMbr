@@ -15,6 +15,7 @@ import { useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Sparkles } from 'lucide-react'
 import { Sheet, cx, haptic } from '@/ui'
+import { TOPO_DA_BARRA, larguraDe } from '@/app/largura'
 import { useVendorDaSessao } from '@/app/useVendorDaSessao'
 import { barraDeComandoVisivel } from './rotas'
 import { useConversaVentus } from './useConversa'
@@ -83,14 +84,22 @@ export function BarraDeComando({
         // reserva—: ver el comentario junto a la variable en index.css.
         style={{ bottom: 'calc(var(--spacing-nav-visivel) + env(safe-area-inset-bottom, 0px))' }}
       >
-        {/* `lg:max-w-2xl`: un ancho cómodo para escribir, el mismo que Hoje.
-            No sigue el ancho de la ruta —896 px para preguntarle algo al
-            Ventus en una sola línea sería un campo de texto absurdo— porque
-            esta barra es chrome global, no contenido de la página. */}
-        <div className="mx-auto max-w-lg px-4 pb-2 lg:max-w-2xl">
+        {/* LA CAJA EXTERNA ES LA COLUMNA DE LA RUTA ACTIVA, al píxel: mismo
+            `mx-auto`, mismo `max-w-*`, mismo `px-4`. Antes tenía un ancho
+            propio (`lg:max-w-2xl`) y en escritorio quedaban dos cajas
+            centradas de anchos distintos — la barra flotaba 112 px a la
+            derecha de la columna que dice comandar. Ver src/app/largura.ts.
+
+            El CAMPO de adentro lleva un tope propio (`TOPO_DA_BARRA`) y se
+            alinea al borde izquierdo: en /cadencia y /carteira la columna
+            mide 1.700 px y un campo de una línea con ese ancho sería la
+            caricatura opuesta al defecto que se está arreglando. En las
+            rutas más angostas que el tope no cambia nada. */}
+        <div className={cx('mx-auto px-4 pb-2', larguraDe(location.pathname))}>
           <div
             className={cx(
-              'flex items-center gap-2 rounded-2xl border border-border bg-surface/95 p-1.5 shadow-lg backdrop-blur',
+              'flex w-full items-center gap-2 rounded-2xl border border-border bg-surface/95 p-1.5 shadow-lg backdrop-blur',
+              TOPO_DA_BARRA,
             )}
           >
             <button

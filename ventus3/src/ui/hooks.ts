@@ -51,6 +51,27 @@ export function useTelaLarga(): boolean {
 }
 
 /**
+ * Breakpoint `lg` de Tailwind: EXACTAMENTE el mismo en el que aparece el
+ * DesktopRail y desaparece la BottomNav (ver src/index.css). Arriba de esto
+ * hay una segunda columna de verdad, no dos mitades apretadas.
+ */
+export const CONSULTA_ESCRITORIO = '(min-width: 1024px)'
+
+/**
+ * `true` sólo en escritorio.
+ *
+ * Se usa donde el layout ancho no se puede expresar con clases `lg:` porque
+ * cambia QUÉ SE RENDERIZA y no sólo cómo se ve — la tela Hoje manda la
+ * corrente do time y la racha a una columna secundaria a la derecha, y eso es
+ * un árbol distinto, no un `display` distinto. Que sea un hook y no CSS es
+ * además la garantía de que el teléfono ve el MISMO árbol de siempre: por
+ * debajo de 1024 px esta rama ni existe.
+ */
+export function useTelaEscritorio(): boolean {
+  return useMediaQuery(CONSULTA_ESCRITORIO)
+}
+
+/**
  * Pantallas CORTAS, medidas por alto y no por ancho.
  *
  * El número no es un gusto: sale de la cuenta de la tela Hoje. Su ventana de

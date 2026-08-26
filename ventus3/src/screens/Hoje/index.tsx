@@ -51,6 +51,7 @@ import {
   haptic,
   toast,
   useTelaCurta,
+  useTelaEscritorio,
 } from '@/ui'
 import { useBotaoPrimario } from '@/host'
 import { SessaoSemVendedor } from '@/app/SessaoSemVendedor'
@@ -109,6 +110,18 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
   // la faixa da sequência) y dejar arriba lo que dice dónde estoy y qué hago.
   // En un teléfono largo `compacto` es false y no cambia nada.
   const compacto = useTelaCurta()
+
+  // ── Escritorio ────────────────────────────────────────────────────────
+  // Hoje se queda ANGOSTA a propósito: es la pantalla de foco, una decisión
+  // por vez, y estirarla al ancho de la Carteira le daría a una lista de tres
+  // ítems el mismo peso visual que a una tabla de 65 filas. Lo que cambia en
+  // un monitor es que el espacio lateral que sobraba deja de ser blanco: la
+  // corrente do time y el estado de la racha se van a una columna secundaria
+  // a la derecha (grid 2fr/1fr), y el centro respira sin perder el foco.
+  //
+  // Es un hook y no clases `lg:` porque cambia QUÉ SE RENDERIZA: por debajo de
+  // 1024 px esta rama ni existe y el teléfono ve el mismo árbol de siempre.
+  const escritorio = useTelaEscritorio()
 
   const plano = usePlanoFixado(vendorName, hoje)
   const aneis = useAneisDoDia(vendorName, hoje)
@@ -309,12 +322,17 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
         }}
       >
         <div className="px-4 pb-6">
+          {/* La grilla 2fr/1fr del escritorio. En móvil el contenedor es un
+              bloque común y el orden es el de siempre. */}
+          <div className="lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start lg:gap-8">
+          <div className="min-w-0 lg:max-w-3xl">
           <CabecalhoDoDia
             aneis={aneis.data?.aneis}
             largada={aneis.data?.largada ?? 0}
             sequencia={sequencia.data}
             carregando={aneis.isPending}
             compacto={compacto}
+            comContexto={!escritorio}
           />
 
           {/* El host ya lo dibuja abajo de todo cuando puede: dibujarlo acá
@@ -370,8 +388,14 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
           </section>
 
           {/* En teléfono corto, lo que explica y motiva vive acá abajo. Ver
-              CabecalhoDoDia. */}
-          {compacto && (
+              CabecalhoDoDia.
+
+              `&& !escritorio` NO es defensivo: un portátil de 1920×800 cumple
+              LAS DOS condiciones —es corto (≤880 px de alto) y es escritorio
+              (≥1024 px de ancho)—, y sin esta guardia la faixa de la racha se
+              pintaba dos veces: una acá y otra en la columna de la derecha.
+              En escritorio el reparto lo hace la grilla, no el alto. */}
+          {compacto && !escritorio && (
             <ContextoDoDia
               largada={aneis.data?.largada ?? 0}
               sequencia={sequencia.data}
@@ -379,9 +403,33 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
             />
           )}
 
-          <CorrenteDoTime elos={corrente.data} carregando={corrente.isPending} />
+          {/* En escritorio la corrente se va a la columna de al lado. */}
+          {!escritorio && (
+            <CorrenteDoTime elos={corrente.data} carregando={corrente.isPending} />
+          )}
 
           <VerTudo itens={resto} onAbrir={(item) => irParaRegistro(item.acao)} />
+          </div>
+
+          {/* ── La columna secundaria (só em lg+) ──────────────────────────
+              Lo que EXPLICA y MOTIVA: la largada regalada, la faixa de la
+              racha y los carriles del equipo. Es la misma regla del teléfono
+              corto —arriba estado y acción, aparte explicación y motivación—
+              aplicada al eje que en un monitor sobra, que es el horizontal.
+              `sticky`: la lista de la izquierda es la que scrollea. */}
+          {escritorio && (
+            <aside
+              aria-label="Contexto do dia"
+              className="min-w-0 lg:sticky lg:top-2 lg:pt-4"
+            >
+              <ContextoDoDia
+                largada={aneis.data?.largada ?? 0}
+                sequencia={sequencia.data}
+              />
+              <CorrenteDoTime elos={corrente.data} carregando={corrente.isPending} />
+            </aside>
+          )}
+          </div>
         </div>
       </PullToRefresh>
 

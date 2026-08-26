@@ -25,12 +25,22 @@ export function EuVsEu({ linhas, onExplicar }: EuVsEuProps) {
         <span className="text-2xs text-fg-subtle">contra a sua média de 4 semanas</span>
       </div>
 
+      {/* En el teléfono son tarjetas en carrusel con overscroll contenido: el
+          gesto lateral no puede arrastrar la página ni disparar el back del
+          navegador. En lg+ el carrusel DESAPARECE —`lg:grid`, sin snap y sin
+          overflow— y las cuatro métricas entran de una en una fila. Esconder
+          la cuarta detrás de un scroll horizontal en un monitor de 27" era
+          exactamente la vista de teléfono con márgenes gordos: acá la semana
+          entera se lee de un vistazo, que es para lo que existe la pantalla. */}
       <ul
-        className="flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-4 pb-2"
+        className={cx(
+          'flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-4 pb-2',
+          'lg:grid lg:grid-cols-4 lg:gap-4 lg:overflow-visible',
+        )}
         style={{ scrollbarWidth: 'none' }}
       >
         {linhas.map((linha) => (
-          <li key={linha.metrica} className="w-[15.5rem] shrink-0 snap-start">
+          <li key={linha.metrica} className="w-[15.5rem] shrink-0 snap-start lg:w-auto">
             <CartaoDeMetrica linha={linha} onExplicar={onExplicar} />
           </li>
         ))}

@@ -196,6 +196,11 @@ function Cadencia({ vendorName }: { vendorName: string | null }) {
 
   return (
     <div className="flex flex-col" style={{ height: ALTURA_TELA }}>
+      {/* `px-4` y no otro valor: es la MISMA canaleta que usan el header del
+          Shell y el Kanban de abajo. En escritorio esta pantalla usa todo el
+          ancho del área de contenido (ver src/app/largura.ts), así que el
+          título «Cadência», el chip de atrasados, el botón «Mapa» y las
+          cuatro columnas comparten el eje al píxel. */}
       <div className="shrink-0 space-y-2 px-4 pb-2 pt-3">
         <div className="flex items-center gap-2">
           <Badge tone={atrasados > 0 ? 'perigo' : 'ok'} aria-label={`${String(atrasados)} toques atrasados`}>
@@ -215,8 +220,11 @@ function Cadencia({ vendorName }: { vendorName: string | null }) {
           </Button>
         </div>
 
-        {/* Filtra, não empilha. */}
+        {/* Filtra, não empilha. En escritorio va con tope y pegado a la
+            izquierda: estirar cinco segmentos a 1.700 px daría botones de
+            340 px para etiquetas de dos caracteres. */}
         <SegmentedControl<FiltroEtapa>
+          className="lg:max-w-2xl"
           label="Filtrar por etapa do funil"
           size="sm"
           value={etapa}
