@@ -132,6 +132,11 @@ function tagsAbertas(fragmento: string): string[] {
   return pilha
 }
 
+/** Las etiquetas de cierre para una pila de abiertas, de adentro hacia afuera. */
+function cierreDe(abertas: readonly string[]): string {
+  return [...abertas].reverse().map((t) => `</${t}>`).join('')
+}
+
 /**
  * Mayor corte ≤ `limite` que no cae dentro de una etiqueta `<…>` ni de una
  * entidad `&…;`, y que preferentemente cae en un espacio.
@@ -188,17 +193,45 @@ export function trocear(texto: string, limite: number = LIMITE_MENSAGEM): string
     }
 
     // Línea sola más larga que el límite: corte duro con reapertura de tags.
+    //
+    // EL CIERRE TAMBIÉN CUENTA CONTRA LOS 4096. Antes el trozo se armaba
+    // llenando hasta `limite` y RECIÉN AHÍ se le pegaba el `</b>`: el
+    // resultado medía 4100 y Telegram lo rechazaba con «message is too long»,
+    // que es el bug nº 1 del encabezado de este archivo, reintroducido por el
+    // mismo código que lo arregla. Ahora el cierre se descuenta del
+    // presupuesto ANTES de cortar.
     let resto = linha
     let prefixo = ''
     while (prefixo.length + resto.length > limite) {
-      const espaco = limite - prefixo.length
-      const corte = corteSeguro(resto, espaco)
-      const cabeca = prefixo + resto.slice(0, corte)
-      const abertas = tagsAbertas(cabeca)
-      const fecho = [...abertas].reverse().map((t) => `</${t}>`).join('')
+      // Cortar más temprano puede dejar una etiqueta abierta que antes se
+      // cerraba sola dentro del trozo, y entonces el cierre CRECE. Por eso se
+      // reajusta en vez de calcularlo una sola vez; dos vueltas alcanzan y el
+      // tope existe para que ningún HTML raro cuelgue el bucle.
+      let corte = 0
+      let cabeca = ''
+      let fecho = ''
+      for (let tentativa = 0; tentativa < 4; tentativa += 1) {
+        const espaco = Math.max(1, limite - prefixo.length - fecho.length)
+        corte = corteSeguro(resto, espaco)
+        cabeca = prefixo + resto.slice(0, corte)
+        const proximo = cierreDe(tagsAbertas(cabeca))
+        if (proximo === fecho) break
+        fecho = proximo
+      }
+
+      // Red de seguridad: si el reajuste no convergió por debajo del límite,
+      // se corta duro. Un trozo con una etiqueta desbalanceada es un mensaje
+      // feo; un trozo de 4100 caracteres es un mensaje que no llega.
+      if (cabeca.length + fecho.length > limite) {
+        corte = Math.max(1, limite - prefixo.length - fecho.length)
+        cabeca = prefixo + resto.slice(0, corte)
+      }
+
       pedacos.push(cabeca + fecho)
       resto = resto.slice(corte)
-      prefixo = abertas.map((t) => `<${t}>`).join('')
+      // Lo que quedó abierto en la cabeza se REABRE en el trozo siguiente, y
+      // su largo ya está descontado del presupuesto de la próxima vuelta.
+      prefixo = tagsAbertas(cabeca).map((t) => `<${t}>`).join('')
     }
     atual = prefixo + resto
   }
