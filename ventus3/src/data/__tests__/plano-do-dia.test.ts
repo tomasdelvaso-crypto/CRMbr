@@ -18,7 +18,7 @@ import {
   selarDiaDeHoraCheia,
 } from '../plano-do-dia'
 import { definirTransporte } from '../outbox'
-import { opp, lead } from '@/core/__tests__/fixtures'
+import { opp, lead, tarefa } from '@/core/__tests__/fixtures'
 import type { Opportunity, Vendor } from '@/core'
 
 const VENDOR = 'Renata'
@@ -211,6 +211,80 @@ describe('resolver uma ação deixa registro real', () => {
     // no_response é o que de verdade aconteceu ao mandar o toque: 'interested'
     // seria fabricar uma conversa que ninguém teve.
     expect(toques[0]?.result).toBe('no_response')
+  })
+})
+
+describe('o cartão que nasce de uma task opera sobre ELA', () => {
+  // La regresión que cubren estos tres: con el backfill, casi toda tarjeta de
+  // Hoje nace de una task pendiente. «Adiar» creaba una SEGUNDA task (dos
+  // filas por la misma acción, y el planner eligiendo cualquiera al día
+  // siguiente) y «Feito» dejaba la original 'pending' — la tarjeta volvía
+  // mañana como fantasma de lo ya hecho.
+
+  async function plantarOppComTask() {
+    await db.opportunities.put(oppVencida(1, 'Tetra Pak'))
+    const t = tarefa({ kind: 'opportunity', id: 1 }, HOJE, {
+      vendor: VENDOR,
+      title: 'Mandar a proposta revisada',
+    })
+    await db.tasks.put(t)
+    const plano = await fetchPlanoFixado(VENDOR, HOJE)
+    const item = plano.fixadas.find((f) => f.acao.entidade.id === 1)
+    expect(item).toBeDefined()
+    return { t, item: item! }
+  }
+
+  it('o planner carrega o id da task na tarjeta', async () => {
+    const { t, item } = await plantarOppComTask()
+    expect(item.acao.tarefaId).toBe(t.id)
+    expect(item.acao.acao).toBe('Mandar a proposta revisada')
+  })
+
+  it('«Adiar» pospõe a task original — não fabrica uma segunda', async () => {
+    const { t, item } = await plantarOppComTask()
+
+    await adiarAcaoDoDia({ vendor: VENDOR, dia: HOJE, acao: item.acao, ate: '2026-08-27' })
+
+    const tarefas = await db.tasks.toArray()
+    expect(tarefas).toHaveLength(1) // la misma fila, ninguna nueva
+    expect(tarefas[0]?.id).toBe(t.id)
+    expect(tarefas[0]?.status).toBe('snoozed')
+    expect(tarefas[0]?.snoozed_until).toBe('2026-08-27')
+    expect(tarefas[0]?.due_date).toBe('2026-08-27')
+
+    const depois = await fetchPlanoFixado(VENDOR, HOJE)
+    expect(depois.fixadas.find((f) => f.acao.id === item.acao.id)?.resolucao?.motivo).toBe(
+      'adiado',
+    )
+  })
+
+  it('«Feito» conclui a task original e registra a activity no mesmo gesto', async () => {
+    const { t, item } = await plantarOppComTask()
+
+    await concluirAcaoDoDia({ vendor: VENDOR, dia: HOJE, acao: item.acao })
+
+    const fila = await db.tasks.get(t.id)
+    expect(fila?.status).toBe('done')
+    expect(fila?.done_at).toBeTruthy()
+
+    const atividades = await db.activities.toArray()
+    expect(atividades).toHaveLength(1)
+    expect(atividades[0]?.opportunity_id).toBe(1)
+
+    // Nada duplicado: sigue habiendo UNA task, ahora cerrada.
+    expect(await db.tasks.count()).toBe(1)
+  })
+
+  it('sem task de origem, «Adiar» segue criando a task nova de sempre', async () => {
+    await db.opportunities.put(oppVencida(2, 'Ambev'))
+    const plano = await fetchPlanoFixado(VENDOR, HOJE)
+    const item = plano.fixadas.find((f) => f.acao.entidade.id === 2)!
+    expect(item.acao.tarefaId).toBeUndefined()
+
+    await adiarAcaoDoDia({ vendor: VENDOR, dia: HOJE, acao: item.acao, ate: '2026-08-27' })
+    const tarefas = await db.tasks.toArray()
+    expect(tarefas).toHaveLength(1)
+    expect(tarefas[0]?.status).toBe('pending')
   })
 })
 

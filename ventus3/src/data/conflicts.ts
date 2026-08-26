@@ -389,7 +389,204 @@ export function normalizarRemoto(tabla: SyncTable, remoto: LinhaGenerica): Linha
     // exactamente lo que `next_action` significa acá.
     kind: typeof remoto['kind'] === 'string' ? remoto['kind'] : 'next_action',
     snoozed_until: remoto['snoozed_until'] ?? remoto['snoozed_to'] ?? null,
+    // El otro rename, el que no se ve porque no cambia de nombre sino de
+    // VALOR: la tabla dice 'cancelled' y el modelo local dice 'dismissed'.
+    // Ver STATUS_PARA_O_SERVIDOR, que hace el camino de vuelta.
+    ...(remoto['status'] === 'cancelled' ? { status: 'dismissed' } : {}),
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Desnormalización: el ESPEJO de normalizarRemoto, para el camino de SALIDA
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Columnas REALES de `public.tasks`, verificadas contra el esquema por MCP el
+ * 2026-08-26 (project wtrbvgqxgcfjacqcndmb).
+ *
+ * Es la lista que decide qué puede viajar. PostgREST rechaza con 400 cualquier
+ * clave que no sea una columna —`{"code":"PGRST204","message":"Could not find
+ * the 'kind' column of 'tasks' in the schema cache"}`— y el outbox clasifica
+ * ese 4xx como 'permanente': el ítem se queda en la cola del teléfono para
+ * siempre y el vendedor ve un badge de pendientes que no baja nunca.
+ */
+export const COLUNAS_TASKS = [
+  'id',
+  'client_uuid',
+  'vendor',
+  'vendor_id',
+  'opportunity_id',
+  'lead_id',
+  'titulo',
+  'canal',
+  'due_date',
+  'due_time',
+  'prioridade',
+  'target_scale',
+  'draft_content',
+  'expected_outcome',
+  'status',
+  'origem',
+  'done_at',
+  'snoozed_to',
+  'resolved_activity_id',
+  'created_by',
+  'created_at',
+  'updated_at',
+] as const
+
+const SET_COLUNAS_TASKS: ReadonlySet<string> = new Set(COLUNAS_TASKS)
+
+/**
+ * Campo local → columna de Postgres. Es literalmente la inversa de lo que
+ * normalizarRemoto() construye al entrar.
+ */
+const RENOMES_TASKS: Readonly<Record<string, string>> = {
+  title: 'titulo',
+  snoozed_until: 'snoozed_to',
+}
+
+/**
+ * El rename que no cambia de NOMBRE sino de VALOR.
+ *
+ * `core/types.TaskStatus` dice 'dismissed'; el CHECK `tasks_status_chk` solo
+ * acepta pending/done/snoozed/**cancelled**. Es la misma trampa que `title` vs
+ * `titulo`, escondida un nivel más abajo: la clave `status` SÍ es columna, así
+ * que la lista de columnas la deja pasar y recién Postgres se queja —
+ * 400 23514, que el outbox clasifica como permanente y el ítem se queda en el
+ * teléfono para siempre.
+ *
+ * Quien lo manda es el Ritual da Sexta: un veredicto 'parcial' o 'nao_rolou'
+ * sobre una tarea la deja 'dismissed' (ver rituais.registrarVeredicto).
+ */
+const STATUS_PARA_O_SERVIDOR: Readonly<Record<string, string>> = {
+  dismissed: 'cancelled',
+}
+
+/**
+ * Campos que SOLO existen en el modelo local: `kind` (TaskKind del motor, sin
+ * columna en Postgres), `target` —que se abre en opportunity_id/lead_id— y los
+ * metadatos de Dexie. Se descartan al salir, en silencio y a propósito.
+ */
+const SEM_COLUNA_TASKS: ReadonlySet<string> = new Set(['kind', 'uid', 'pendente'])
+
+export interface SaidaDesnormalizada {
+  /** Cuerpo listo para PostgREST: solo columnas que existen. */
+  payload: Record<string, unknown>
+  /** Los mismos campos tocados, con el nombre que tienen en Postgres. */
+  campos_tocados: string[]
+}
+
+/** Abre un EntityRef local en el par de columnas del servidor. */
+function alvoParaColunas(valor: unknown): { opportunity_id: number | null; lead_id: number | null } {
+  const alvo = (typeof valor === 'object' && valor !== null ? valor : {}) as {
+    kind?: unknown
+    id?: unknown
+  }
+  const id = typeof alvo.id === 'number' ? alvo.id : null
+  return {
+    opportunity_id: alvo.kind === 'opportunity' ? id : null,
+    lead_id: alvo.kind === 'lead' ? id : null,
+  }
+}
+
+/**
+ * Traduce una fila local a la forma de Postgres. Es el espejo exacto de
+ * normalizarRemoto(): `title`→`titulo`, `snoozed_until`→`snoozed_to`,
+ * `target`→`opportunity_id`/`lead_id`, y todo lo que no sea columna se cae.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * POR QUÉ VIVE EN EL FLUSH Y NO EN EL ENQUEUE
+ * ══════════════════════════════════════════════════════════════════════════
+ * Porque hay ítems YA ENCOLADOS con la forma vieja —en los teléfonos del
+ * equipo y en producción ahora mismo— que nadie va a poder tocar. Un
+ * `criarTask` de ayer dejó en IndexedDB un payload con `kind`/`title`/
+ * `snoozed_until`; si la traducción viviera solo en mutations.ts, esos ítems
+ * seguirían saliendo mal para siempre: el arreglo llegaría por la actualización
+ * de la app pero la cola quedaría envenenada igual. Traduciendo en el camino de
+ * salida, el próximo flush los SANA solos sin que nadie los reescriba.
+ *
+ * Nota sobre `kind`: no hay columna que lo guarde. Al volver del servidor,
+ * normalizarRemoto() lo reconstruye como 'next_action', que es lo que una
+ * próxima acción de un negocio significa. La ida y vuelta es identidad para
+ * ese kind y lossy para los demás — está cubierto por los tests.
+ */
+export function desnormalizarLocal(
+  tabla: string,
+  payload: Record<string, unknown>,
+  camposTocados: readonly string[] = [],
+): SaidaDesnormalizada {
+  if (tabla !== 'tasks') {
+    return { payload: { ...payload }, campos_tocados: [...camposTocados] }
+  }
+
+  const saida: Record<string, unknown> = {}
+
+  // Dos pasadas: primero los alias locales, después los nombres de columna
+  // reales. Así, si una fila trae `title` Y `titulo` —pasa con las que
+  // vinieron del servidor y se editaron acá—, gana el nombre de la columna.
+  for (const [chave, valor] of Object.entries(payload)) {
+    if (valor === undefined) continue
+    if (chave === 'target') {
+      const { opportunity_id, lead_id } = alvoParaColunas(valor)
+      saida['opportunity_id'] = opportunity_id
+      saida['lead_id'] = lead_id
+      continue
+    }
+    const renome = RENOMES_TASKS[chave]
+    if (renome !== undefined) saida[renome] = valor
+  }
+  for (const [chave, valor] of Object.entries(payload)) {
+    if (valor === undefined) continue
+    if (SEM_COLUNA_TASKS.has(chave) || chave === 'target') continue
+    if (!SET_COLUNAS_TASKS.has(chave)) continue
+    saida[chave] = valor
+  }
+
+  // El vocabulario, después de los nombres. Ver STATUS_PARA_O_SERVIDOR.
+  const status = saida['status']
+  if (typeof status === 'string') {
+    const traduzido = STATUS_PARA_O_SERVIDOR[status]
+    if (traduzido !== undefined) saida['status'] = traduzido
+  }
+
+  const campos: string[] = []
+  for (const campo of camposTocados) {
+    for (const traduzido of colunasDoCampo(campo)) {
+      if (!campos.includes(traduzido)) campos.push(traduzido)
+    }
+  }
+
+  return { payload: saida, campos_tocados: campos }
+}
+
+/** Columnas de Postgres que representan a UN campo local de `tasks`. */
+function colunasDoCampo(campo: string): string[] {
+  if (campo === 'target') return ['opportunity_id', 'lead_id']
+  const renome = RENOMES_TASKS[campo]
+  if (renome !== undefined) return [renome]
+  return SET_COLUNAS_TASKS.has(campo) ? [campo] : []
+}
+
+/**
+ * Todos los nombres con los que un campo puede aparecer: el local y el de la
+ * columna. Es lo que hace que la REGLA DURA no se escape por el rename.
+ *
+ * Sin esto: el vendedor adia una tarea (mutación pendiente sobre
+ * `snoozed_until`), llega por realtime la fila del servidor con `snoozed_to`,
+ * mergeByField no encuentra `snoozed_to` en la lista de pendientes y el valor
+ * viejo del servidor pisa el adiamiento. Es exactamente el bug «mi cambio se
+ * revirtió solo», que es el que no se perdona.
+ */
+export function nomesEquivalentes(tabla: string, campo: string): string[] {
+  if (tabla !== 'tasks') return [campo]
+  const nomes = new Set<string>([campo])
+  for (const c of colunasDoCampo(campo)) nomes.add(c)
+  for (const [local, coluna] of Object.entries(RENOMES_TASKS)) {
+    if (coluna === campo) nomes.add(local)
+  }
+  if (campo === 'opportunity_id' || campo === 'lead_id') nomes.add('target')
+  return [...nomes]
 }
 
 export type ResultadoAplicacao = 'inserido' | 'mesclado' | 'sem_mudanca'
@@ -430,14 +627,26 @@ export async function aplicarRemoto(
     relogioPendente(tabla, id as string | number),
   ])
 
+  // El outbox habla en nombres LOCALES ('snoozed_until') y la fila remota trae
+  // los dos ('snoozed_to' crudo + 'snoozed_until' normalizado). Sin expandir,
+  // la regla dura no cubriría la columna cruda. Ver nomesEquivalentes().
+  const pendentesExpandidos = camposPendentes.flatMap((c) => nomesEquivalentes(tabla, c))
+  const relogioExpandido: RelogioDeCampos = {}
+  for (const [campo, ts] of Object.entries(relogioLocal)) {
+    for (const nome of nomesEquivalentes(tabla, campo)) {
+      const anterior = relogioExpandido[nome]
+      if (anterior === undefined || anterior < ts) relogioExpandido[nome] = ts
+    }
+  }
+
   const { merged, conflitos, mudou } = mergeByField({
     tabla,
     rowId: id as string | number,
     local,
     remoto,
-    relogioLocal,
+    relogioLocal: relogioExpandido,
     relogioRemoto: relogioRemotoDe(remoto),
-    camposPendentes,
+    camposPendentes: pendentesExpandidos,
     vendor,
   })
 

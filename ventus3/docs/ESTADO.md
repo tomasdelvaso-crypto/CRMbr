@@ -246,7 +246,7 @@ host de Supabase sin que nada salga del proceso.
 
 | archivo | qué prueba |
 |---|---|
-| `e2e/sessao-real.spec.ts` | los tres arreglos por separado: login real → vendedor → las 3 tarjetas; ningún control tapado (9 rutas × 2 viewports); pull parcial; sesión sin vendedor; vendedor lento; rol admin vs. vendedora, con las dos filas reales (Tomás y Renata) |
+| `e2e/sessao-real.spec.ts` | los tres arreglos por separado: login real → vendedor → las 3 tarjetas; ningún control tapado (9 rutas × 2 viewports); pull parcial; sesión sin vendedor; vendedor lento; rol admin vs. vendedora, con las dos filas reales (Tomás y Renata) — **y las dos del camino de escritura**: qué cuerpo viajó a `tasks` al adiar y al registrar, y que el outbox del aparato vuelva a cero |
 | `e2e/fluxo-completo.sessao-real.spec.ts` | **el recorrido entero, 21 clicks reales en cada viewport**, cada uno con su efecto verificado — y la regresión del sheet que se va de la pantalla |
 | `e2e/capturas-desktop.sessao-real.spec.ts` | el rail presente, la BottomNav ausente y los anchos por ruta, en 1440×900 y 1920×1080 |
 
@@ -256,18 +256,52 @@ aserción: muestran un estado que la prueba ya verificó.
 
 ### Lo que sigue abierto de esta vuelta
 
-> ⚠️ **El camino de ESCRITURA de `tasks` sigue roto, y es lo próximo que hay que
-> mirar.** `mutations.criarTask` encola un payload con `kind`, `title` y
-> `snoozed_until`; la tabla real **no tiene ninguna de las tres** (verificado
-> contra `information_schema` el 26/08: las columnas son `titulo`, `snoozed_to`,
-> `origem`, y `client_uuid`/`due_date` son `NOT NULL`). Cada «Registrar» crea una
-> tarea que PostgREST rechaza: queda en Dexie y en el outbox reintentando para
-> siempre. No causa el bug de los botones —por eso no se tocó acá— pero decide si
-> la próxima acción del vendedor llega al servidor. **Ojo al arreglarlo:**
-> `campos_tocados` se compara contra nombres de campo LOCALES en `mergeByField`,
-> así que la traducción tiene que ir en el transporte, no en el payload, o se
-> rompe la regla dura de «el remoto no pisa un campo con mutación pendiente».
+> ✅ **El camino de ESCRITURA de `tasks` quedó cerrado el mismo 26/08.** Lo que
+> este recuadro anunciaba —`criarTask` encolando `kind`/`title`/`snoozed_until`,
+> que no son columnas— era real, y eran **cinco** defectos y no uno: los dos
+> renames de nombre, el `done_at` que `tasks_done_chk` le exige a `concluirTask`,
+> y otros dos en `rituais.registrarVeredicto()` —el **tercer** escritor de
+> `tasks`, que nadie había mirado— donde el veredicto «cumprido» mandaba `done`
+> sin `done_at` y «parcial»/«não rolou» mandaba `status:'dismissed'`, que
+> `tasks_status_chk` no acepta (la tabla dice `cancelled`). Los cinco eran `400`
+> que el outbox clasifica como **permanentes**: el ítem se queda en el teléfono
+> para siempre y el badge de pendientes no baja nunca, sin un solo error en
+> pantalla.
+>
+> El arreglo es `desnormalizarLocal()` (`src/data/conflicts.ts`), el espejo
+> exacto de `normalizarRemoto()`, aplicada en `transport.ts` — **en el flush, no
+> en el enqueue**. Ésa es la parte que importa: hay ítems ya encolados con la
+> forma vieja en los teléfonos del equipo, y traducir en el camino de salida los
+> **sana solos** en el próximo flush sin que nadie los reescriba. El aviso que
+> este recuadro dejaba escrito («`campos_tocados` se compara contra nombres
+> LOCALES en `mergeByField`») se respetó: `nomesEquivalentes()` expande los dos
+> nombres de cada campo renombrado dentro de `aplicarRemoto()`, así que la regla
+> dura sigue cubriendo el adiamiento pendiente cuando llega por realtime la fila
+> con `snoozed_to`. Detalle completo, con los cuerpos que viajan hoy, en
+> `QA.md` §3.16.
 
+> ⚠️ **«Adiar» en la tela Hoje CREA una tarea nueva en vez de adiar la que
+> originó la tarjeta.** Es lo próximo que hay que mirar de este camino.
+> `PlannedAction` (`src/core/types.ts`) no lleva el id de la task —el planner le
+> arma ids sintéticos tipo `opp-89-2026-08-26`—, así que `adiarAcaoDoDia()` sólo
+> puede llamar a `criarTask()`. Si la tarjeta venía de una task `pending`, ésa
+> **sigue pending** y ahora hay dos. La tarea nueva ya sale bien formada, así que
+> el síntoma no es un 400: son tareas duplicadas creciendo en silencio. Arreglarlo
+> pide llevar el `taskId` hasta `PlannedAction`, que es un cambio del planner y de
+> todo lo que lo consume. El PATCH con `snoozed_to` sí está cubierto en e2e por el
+> camino real que hoy existe: «Reagendar» del bloque Próximo Passo del Dossiê
+> (`adiarTask`).
+
+- `tasks.vendor_id` (FK a `vendors`) viaja **null** en todo lo que crea la app:
+  `criarTask` recibe el **nombre** del vendedor, no su id. Las filas del backfill
+  sí lo tienen (`vendor_id=4`). Si el Painel do Gestor llega a agrupar por esa
+  FK, hay que threadear `sessao.vendor.id` hasta las mutaciones.
+- `transport.enviarInsert` agrega `client_uuid` a **todo** insert. Hoy los tres
+  inserts de la app van a `activities`, `tasks` y `golden_hour_sessions`, y las
+  tres tienen la columna; `touchpoints` **no** la tiene (los toques entran por la
+  RPC `registrar_touchpoint`, que recibe `p_client_uuid`). Nadie la inserta
+  directo hoy, pero el día que alguien lo haga es un 400 — y el doble de red ya
+  lo detectaría.
 - Las otras pantallas gateadas por `vendorName` (Carteira, Revisão, Placar,
   Cadência, Gestor) ya no tienen la ventana transitoria ni el limbo permanente
   —el Shell las cubre a todas—, pero ninguna dice nada por su cuenta. Si se
@@ -276,14 +310,17 @@ aserción: muestran un estado que la prueba ya verificó.
   rechaza y el reporte no llega a `aoSincronizar`: «Última sincronização» en
   Ajustes puede no actualizarse aunque haya bajado casi todo. Preexistente y
   menor, pero ahora es visible.
-- `OfertaDeAtalho.tsx` (el banner del Mini App de Telegram) vive
-  `fixed inset-x-0 bottom-0` sin el corrimiento `lg:left-60` del rail. Sólo se
-  ofrece dentro de Telegram, casi siempre móvil: quedó fuera de alcance a
-  propósito.
+- ~~`OfertaDeAtalho.tsx` sin el corrimiento del rail~~ — **hecho**: lleva
+  `lg:pl-60`, la misma clase con la que el Shell reserva los 240 px del
+  `DesktopRail`. Se verificó por build limpio y por analogía exacta con el mismo
+  mecanismo ya confirmado visualmente en `Sheet.tsx`; **no** por captura propia,
+  porque el banner sólo se renderiza con un cliente Telegram 8.0+ vía
+  `deveOferecerAtalho()` y no hay arnés que lo monte fuera del Mini App.
 - `e2e/fixtures/supabase-red.ts` lleva una copia literal de las filas de
-  producción del 26/08. Si cambia el esquema hay que refrescarla por MCP, nunca
-  inventar columnas — el bug de este día fue exactamente una forma de fila que
-  nadie había mirado.
+  producción del 26/08 **y ahora también de las columnas y los CHECK** de
+  `tasks`, `activities` y `touchpoints`. Si cambia el esquema hay que refrescarlo
+  por MCP, nunca inventar una columna para que un test pase — los dos bugs de
+  este día fueron exactamente formas de fila que nadie había mirado.
 
 ---
 
@@ -463,6 +500,58 @@ dejar rastro observable (URL, diálogo, `aria-checked`, texto nuevo):
 >
 > `scripts/medir-arranque.mjs` **estaba roto** al empezar esta vuelta y lo
 > arregló el integrador: ver §3.6.
+
+### La corrida del verificador final (26/08, la de cierre)
+
+Sobre el árbol con las dos entregas de la ola del camino de escritura ya juntas,
+más los dos defectos del Ritual da Sexta que encontró el propio verificador
+(`QA.md` §3.16). **Todo en verde:**
+
+```
+$ npm run type-check
+> tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.worker.json
+(sin salida)
+EXIT=0
+
+$ npx tsc --noEmit -p tsconfig.e2e.json
+EXIT=0
+
+$ npx eslint . --max-warnings 0
+(sin salida: 0 errores, 0 warnings)
+EXIT=0
+
+$ npx vitest run
+ Test Files  52 passed (52)
+      Tests  929 passed (929)
+   Duration  12.63s
+EXIT=0        ← 907 al cerrar la vuelta anterior · 925 con la entrega de la
+                escritura de `tasks` · 929 con los 4 del Ritual da Sexta
+
+$ npm run build
+✓ built in 2.03s · PWA · precache 65 entries (1.589,34 KiB)
+EXIT=0
+
+$ npx playwright test
+Running 143 tests using 2 workers
+  6 skipped
+  137 passed (8.1m)
+EXIT=0        ← 143 y no 139: las dos pruebas nuevas del camino de escritura,
+                × los 2 proyectos de sesión real
+
+$ git status --porcelain -- src api      # el CRM v2, desde la raíz del repo
+(sin salida: NO se tocó)
+```
+
+**8,1 min contra 9,4.** La suite se acortó aun con cuatro pruebas más porque
+`golden.spec.ts:111` dejó de esperar 60 segundos de reloj de pared: ahora usa
+`page.clock`, instalado **después** de que el temporizador de `Fechamento` ya
+está corriendo. Era la prueba más frágil de la suite y el aviso que pedía subirla
+a 90 s o marcarla serial queda cerrado.
+
+**La base de producción no se tocó**, verificado por MCP al terminar (SOLO
+LECTURA): `public.tasks` tiene 36 filas, las 36 del backfill de la mañana, y
+**cero** creadas en las últimas 6 horas. Las pruebas nuevas escriben tareas de
+verdad y ninguna salió del proceso.
 
 **Las 15 rutas responden y montan**, verificado por
 `src/app/__tests__/routes.test.tsx`, que monta **cada ruta de verdad con
@@ -1363,7 +1452,11 @@ del repositorio es cero; lo que queda es de cuenta, de secretos y de manos.
     evento de telemetría donde dejarlo.
 42. `useDiaVigente()` hace rollover de medianoche cada 60s y no está cubierto
     por test (necesitaría fake timers sobre el huso de SP).
-43. Corriendo la suite completa aparece un unhandled rejection
+43-bis. **Llevar el `taskId` hasta `PlannedAction`.** Sin él, el «Adiar» de la
+    tela Hoje crea una tarea nueva y deja la original `pending`: duplica en
+    silencio. Es lo único que quedó abierto del camino de escritura de `tasks`
+    (§0-bis) y toca el planner, así que va como cambio propio.
+44. Corriendo la suite completa aparece un unhandled rejection
     (`window is not defined`) originado en `src/app/__tests__/boot.test.tsx`: es
     una carrera de teardown de `PersistQueryClientProvider` entre archivos. No
     hace fallar nada y ese test corrido solo pasa limpio, pero conviene cerrarlo.
@@ -1379,6 +1472,25 @@ del repositorio es cero; lo que queda es de cuenta, de secretos y de manos.
   motor, y esa diferencia dejó la tela Hoje muerta para el equipo entero (§0-bis).
   El único lugar donde se traduce es `normalizarRemoto()`, al tope de
   `aplicarRemoto()`. Si aparece otra tabla así, va ahí y no en el pull.
+- **Y su espejo: no mandes a Postgres una fila local sin desnormalizarla.** Lo
+  hace `desnormalizarLocal()` desde `transport.ts`, en el **flush**. Ponerla en
+  `mutations.ts` parece más prolijo y es peor: los ítems que YA están encolados
+  con la forma vieja —en los teléfonos del equipo, ahora mismo— nadie los va a
+  reescribir, y traducir al salir es lo único que los sana solos.
+- **Una clave que SÍ es columna igual puede estar mal: mirá el valor.** `status`
+  es columna, y `'dismissed'` —que es lo que dice `TaskStatus`— no está en
+  `tasks_status_chk`; la tabla dice `'cancelled'`. Un filtro por lista de
+  columnas no atrapa eso. Los renames de VALOR viven en `STATUS_PARA_O_SERVIDOR`,
+  al lado de los de nombre, y tienen que ser simétricos con `normalizarRemoto()`.
+- **Si renombrás un campo en el camino de salida, agregalo a
+  `nomesEquivalentes()`.** `mergeByField` compara `campos_tocados` —nombres
+  LOCALES— contra la fila remota, que trae el nombre de la columna. Un rename sin
+  su equivalencia hace que un cambio con mutación pendiente sea pisado por el
+  valor viejo del servidor: el bug «mi cambio se revirtió solo».
+- **`tasks` tiene tres escritores, no uno.** `mutations.ts` (crear, concluir,
+  adiar), `plano-do-dia.ts` (el «Adiar» de Hoje) y `rituais.ts` (el veredicto de
+  la sexta). El tercero se olvidó dos veces; si agregás una regla de escritura,
+  buscá `tabla: 'tasks'` y mirá los tres.
 - **No pongas un `ReactNode` en las dependencias de un efecto que MUEVE algo.**
   Un `footer={<Button …/>}` es un objeto nuevo en cada render del padre, así que
   el efecto corre en cada render. Si además coloca una posición de arranque, la

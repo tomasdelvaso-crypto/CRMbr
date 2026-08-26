@@ -37,6 +37,8 @@ import {
   canalExecutavel,
   todayBr,
   type ActivityType,
+  type Canal,
+  type CanalTarefa,
   type EntityRef,
   type EstadoSequencia,
   type IsoDate,
@@ -48,7 +50,7 @@ import {
   type Vendor,
 } from '@/core'
 import { carregarCarteira, getDb, gravarMeta, lerMeta } from './db'
-import { criarTask, registrarAtividade, registrarTouchpoint } from './mutations'
+import { adiarTask, concluirTask, criarTask, registrarAtividade, registrarTouchpoint } from './mutations'
 
 /* ══════════════════════════════════════════════════════════════════════════
    1 · El estado del día en `meta`
@@ -451,14 +453,23 @@ export async function concluirAcaoDoDia(entrada: EntradaResolucao): Promise<void
   const { vendor, dia, acao } = entrada
 
   if (acao.entidade.kind === 'opportunity') {
-    await registrarAtividade({
+    const atividade = {
       vendor,
       opportunityId: acao.entidade.id,
       tipo: ATIVIDADE_POR_TIPO[acao.tipo],
       descricao: acao.acao,
       data: dia,
-      origem: 'manual',
-    })
+      origem: 'manual' as const,
+    }
+    if (acao.tarefaId !== undefined) {
+      // La tarjeta ES una task pendiente: se concluye esa task (status done +
+      // done_at, con la actividad en el mismo gesto). Sin esto la task seguía
+      // 'pending', el espejo next_action no se limpiaba y la tarjeta volvía
+      // mañana como un fantasma de lo ya hecho.
+      await concluirTask({ taskId: acao.tarefaId, atividade })
+    } else {
+      await registrarAtividade(atividade)
+    }
   } else {
     const lead = await getDb().leads.get(acao.entidade.id)
     const passo = lead ? proximoTouchpoint(lead) : null
@@ -481,6 +492,32 @@ export async function concluirAcaoDoDia(entrada: EntradaResolucao): Promise<void
   })
 }
 
+/**
+ * Canal de la tarea que deja «Adiar», en el vocabulario de `tasks.canal`
+ * (CHECK `tasks_canal_chk` — 'phone' NO existe ahí, 'visit' y 'meeting' sí).
+ * Se deriva del tipo de acción: adiar una visita deja una tarea de visita.
+ */
+const CANAL_POR_TIPO: Readonly<Record<TipoAcao, CanalTarefa>> = {
+  ligar: 'call',
+  mensagem: 'whatsapp',
+  email: 'email',
+  reuniao: 'meeting',
+  visita: 'visit',
+  proposta: 'proposal',
+  evidencia: 'other',
+  tarefa: 'other',
+  compromisso: 'other',
+  reativar: 'call',
+}
+
+/** El canal del toque (Channel) traducido al de la tarea. 'phone' → 'call'. */
+const CANAL_DA_CADENCIA: Readonly<Record<Canal, CanalTarefa>> = {
+  linkedin: 'linkedin',
+  whatsapp: 'whatsapp',
+  email: 'email',
+  phone: 'call',
+}
+
 export interface EntradaAdiamento extends EntradaResolucao {
   /** Nueva fecha. La pantalla ofrece Hoje / Amanhã / Segunda / +7d. */
   ate: IsoDate
@@ -493,6 +530,22 @@ export interface EntradaAdiamento extends EntradaResolucao {
  */
 export async function adiarAcaoDoDia(entrada: EntradaAdiamento): Promise<void> {
   const { vendor, dia, acao, ate } = entrada
+
+  if (acao.tarefaId !== undefined) {
+    // La tarjeta nació de una task pendiente: adiar significa correr ESA task
+    // (snoozed_to + due_date), no fabricar una segunda. Crear otra era
+    // duplicación silenciosa: dos filas por la misma acción, y el planner
+    // eligiendo cualquiera de las dos al día siguiente.
+    await adiarTask({ taskId: acao.tarefaId, ate })
+    await anotarResolucao(vendor, dia, {
+      acaoId: acao.id,
+      motivo: 'adiado',
+      em: new Date().toISOString(),
+      ate,
+    })
+    return
+  }
+
   const target: EntityRef = { kind: acao.entidade.kind, id: acao.entidade.id }
 
   await criarTask({
@@ -501,6 +554,12 @@ export async function adiarAcaoDoDia(entrada: EntradaAdiamento): Promise<void> {
     target,
     title: acao.acao,
     dueDate: ate,
+    // La tarjeta ya sabe por dónde se hace y qué escala busca mover: se lo
+    // lleva puesto, así mañana no hay que volver a decidirlo.
+    canal: acao.canal ? CANAL_DA_CADENCIA[acao.canal] : CANAL_POR_TIPO[acao.tipo],
+    escalaAlvo: acao.escalaAlvo ?? null,
+    // La escribió el motor, no una persona tecleando.
+    origem: 'planner',
   })
 
   await anotarResolucao(vendor, dia, {

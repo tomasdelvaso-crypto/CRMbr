@@ -109,16 +109,27 @@ test.describe('Golden Hour', () => {
   })
 
   test('o fechamento se destrava sozinho aos 60 segundos', async ({ app }) => {
-    // Es una prueba que espera un minuto de reloj a propósito: el número está
-    // escrito en el producto y no se puede simular sin dejar de probarlo.
-    test.setTimeout(120_000)
     await entrarEmFoco(app)
     await app.getByRole('button', { name: /Encerrar|Fechar/ }).click()
     const selo = app.getByRole('button', { name: /Selar a Hora Cheia|Encerrar a hora/ })
     await expect(selo).toBeDisabled()
 
+    // `Fechamento` mide el minuto con `Date.now()` dentro de un `setInterval`
+    // real de 250ms (ver Fechamento.tsx), así que instalar el reloj falso DE
+    // ENTRADA freezaría las transições de foco/sheet que llevan hasta acá
+    // (page.clock también reemplaza requestAnimationFrame). Se instala recién
+    // ACÁ, con el temporizador de Fechamento ya corriendo: ese intervalo
+    // sigue latiendo de verdad cada 250ms —page.clock no toca un timer que ya
+    // estaba armado antes de instalarse— pero lo que lee en cada latido es
+    // `Date.now()`, y ESE sí queda bajo control. Adelantar 60s de reloj falso
+    // hace que el próximo latido real (a lo sumo 250ms después) vea que ya
+    // pasó la ventana y destrabe el botón — la misma prueba, sin esperar el
+    // minuto de pared.
+    await app.clock.install()
+    await app.clock.fastForward(60_000)
+
     // «No salteable» no puede significar «encerrado en la propia app».
-    await expect(selo).toBeEnabled({ timeout: 70_000 })
+    await expect(selo).toBeEnabled()
   })
 
   test('o back do sistema pede confirmação', async ({ app }) => {

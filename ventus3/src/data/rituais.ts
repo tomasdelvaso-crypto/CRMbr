@@ -51,6 +51,7 @@ import {
   type MetasDosAneis,
   type PlannedAction,
   type Task,
+  type TaskStatus,
 } from '@/core'
 import { carregarCarteira, getDb, gravarMeta, lerMeta } from './db'
 import { criarTask } from './mutations'
@@ -831,14 +832,20 @@ export async function registrarVeredicto(entrada: EntradaVeredicto): Promise<voi
     const db = getDb()
     const task = await db.tasks.get(entrada.item.id)
     if (task) {
-      const status = entrada.veredicto === 'cumprido' ? 'done' : 'dismissed'
-      await db.tasks.put({ ...task, status })
+      const status: TaskStatus = entrada.veredicto === 'cumprido' ? 'done' : 'dismissed'
+      // `done_at` viaja SIEMPRE junto al status, igual que en concluirTask: el
+      // CHECK `tasks_done_chk` exige que una fila 'done' lo tenga, y mandar
+      // solo el status era un 400 permanente que dejaba el veredicto de la
+      // sexta clavado en la cola del teléfono. ('dismissed' sale como
+      // 'cancelled' — lo traduce el flush, ver STATUS_PARA_O_SERVIDOR.)
+      const feitoEm = status === 'done' ? new Date().toISOString() : null
+      await db.tasks.put({ ...task, status, done_at: feitoEm })
       await enqueue({
         tabla: 'tasks',
         op: 'update',
         row_id: entrada.item.id,
-        campos_tocados: ['status'],
-        payload: { status },
+        campos_tocados: ['status', 'done_at'],
+        payload: { status, done_at: feitoEm },
       })
       void flush().catch(() => undefined)
     }

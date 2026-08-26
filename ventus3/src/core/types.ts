@@ -362,6 +362,31 @@ export type TaskKind =
 
 export type TaskStatus = 'pending' | 'done' | 'snoozed' | 'dismissed'
 
+/**
+ * Vocabulario de `tasks.canal` en Postgres (CHECK `tasks_canal_chk`).
+ *
+ * NO es `Channel`: aquel es el canal de un toque de cadencia ('phone' incluido,
+ * 'meeting' no) y éste es el medio por el que se hace la próxima acción. Que se
+ * parezcan es la trampa — mandar 'phone' acá viola el CHECK y el ítem del
+ * outbox queda en 'erro' para siempre.
+ */
+export type CanalTarefa =
+  | 'call'
+  | 'whatsapp'
+  | 'email'
+  | 'linkedin'
+  | 'meeting'
+  | 'visit'
+  | 'demo'
+  | 'proposal'
+  | 'other'
+
+/** Vocabulario de `tasks.origem` (CHECK `tasks_origem_chk`). Quién la creó. */
+export type OrigemTarefa = 'manual' | 'ia' | 'bot' | 'cron' | 'planner'
+
+/** Prioridad de `tasks.prioridade`: 1 = arriba de todo (CHECK 1..3). */
+export type PrioridadeTarefa = 1 | 2 | 3
+
 /** Referencia polimórfica a la entidad sobre la que se actúa. */
 export type EntityRef =
   | { kind: 'opportunity'; id: number }
@@ -379,6 +404,24 @@ export interface Task {
   status: TaskStatus
   snoozed_until: string | null
   created_at: string
+
+  /* ── Columnas de public.tasks que el motor no usa para rankear ──────────
+     Viajan intactas en los dos sentidos: el pull las deja como vinieron y el
+     outbox las manda cuando la mutación las tiene. Opcionales porque una fila
+     vieja —o una recién creada offline— puede no traerlas. */
+  /** Medio por el que se hace la próxima acción. */
+  canal?: CanalTarefa | null
+  prioridade?: PrioridadeTarefa | null
+  /** Escala del cookbook que esta tarea busca subir. */
+  target_scale?: ScaleKey | null
+  /** Borrador del mensaje/e-mail, listo para copiar. */
+  draft_content?: string | null
+  /** Qué tiene que quedar cierto cuando esté hecha. */
+  expected_outcome?: string | null
+  origem?: OrigemTarefa | null
+  created_by?: string | null
+  /** Instante en que se marcó hecha. Obligatorio si status='done' (CHECK). */
+  done_at?: IsoDateTime | null
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -752,6 +795,13 @@ export interface PlannedAction {
   score: number
   /** Fecha límite en PT-BR humano: 'hoje', 'atrasada há 3 dias'. */
   prazo?: string
+  /**
+   * Id de la task pendiente que ORIGINÓ esta tarjeta, cuando la hay.
+   * Es lo que permite que «Adiar» posponga esa task y «Feito» la concluya,
+   * en vez de crear una segunda: sin este campo, adiar una tarjeta nacida
+   * de una task duplicaba la task en silencio y la tarjeta volvía mañana.
+   */
+  tarefaId?: string
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

@@ -611,7 +611,7 @@ function acaoDeOportunidade(
   opp: Opportunity,
   av: Avaliacao,
   hoje: IsoDate,
-): { acao: string; tipo: TipoAcao; prazo?: string } {
+): { acao: string; tipo: TipoAcao; prazo?: string; tarefaId?: string } {
   const contato = contatoDe(opp)
   const stage = (opp.stage ?? 1) as StageId
 
@@ -622,6 +622,8 @@ function acaoDeOportunidade(
       prazo: av.tarefaVencida.due_date
         ? formatarDataCurta(av.tarefaVencida.due_date, hoje)
         : undefined,
+      // La tarjeta ES esta task: Adiar y Feito operan sobre ella, no crean otra.
+      tarefaId: av.tarefaVencida.id,
     }
   }
 
@@ -751,7 +753,7 @@ export function rankAll(
     const av = avaliarOportunidade(opp, input, weights, ctx)
     if (av.score <= 0) continue
 
-    const { acao, tipo, prazo } = acaoDeOportunidade(opp, av, hoje)
+    const { acao, tipo, prazo, tarefaId } = acaoDeOportunidade(opp, av, hoje)
     const entidade: EntidadeRef = {
       kind: 'opportunity',
       id: opp.id,
@@ -775,6 +777,7 @@ export function rankAll(
       urgencia: urgenciaDe(av.score, av.atrasoMax),
       score: av.score,
       ...(prazo !== undefined ? { prazo } : {}),
+      ...(tarefaId !== undefined ? { tarefaId } : {}),
     })
   }
 

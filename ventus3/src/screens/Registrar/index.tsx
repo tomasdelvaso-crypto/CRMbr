@@ -34,6 +34,7 @@ import {
   ACTIVITY_TYPE_CONFIG,
   todayBr,
   type ActivityType,
+  type CanalTarefa,
   type Channel,
   type ScaleKey,
   type TouchpointResult,
@@ -498,12 +499,19 @@ export default function RegistrarScreen() {
       }
 
       // El gate: la tarea con fecha es lo que hace que esto aparezca en Hoje.
+      // `canal` sale del tipo de lo que se acaba de registrar: si la última
+      // conversa fue por WhatsApp, la próxima acción nace con ese medio puesto
+      // y mañana la tarjeta ya sabe por dónde se hace.
       await criarTask({
         vendor: vendorName,
         kind: 'next_action',
         target: { kind: alvo.kind, id: alvo.id },
         title: rascunho.proximaAcao.trim(),
         dueDate: data,
+        canal: canalDaTarefa(rascunho.tipo),
+        // 'ia' solo si el modelo de verdad participó — el mismo criterio que
+        // `origem` de la actividad, unas líneas más arriba.
+        origem: rascunho.pendenteDeTranscricao ? 'manual' : 'ia',
       })
 
       // Escalas aceptadas, una por una. Un fallo de la regra da prova no puede
@@ -1032,6 +1040,31 @@ function canalDoTipo(tipo: ActivityType): Channel {
   // presencial entra como 'phone' hasta que se amplíe touchpoints_channel_check
   // (TODO 5.1.7 de ESTADO.md).
   return canal ?? 'phone'
+}
+
+/**
+ * El canal de la TAREA que deja el gate. Es otro vocabulario que el de los
+ * toques de cadencia: `tasks.canal` acepta 'meeting'/'visit'/'demo' y NO acepta
+ * 'phone' (CHECK `tasks_canal_chk`). Traducir acá es lo que evita un 400 que el
+ * outbox reintentaría para siempre.
+ */
+const CANAL_DA_TAREFA: Readonly<Record<ActivityType, CanalTarefa>> = {
+  call: 'call',
+  email: 'email',
+  meeting: 'meeting',
+  whatsapp: 'whatsapp',
+  linkedin: 'linkedin',
+  demo: 'demo',
+  test: 'demo',
+  proposal: 'proposal',
+  negotiation: 'meeting',
+  note: 'other',
+  ai_suggestion: 'other',
+  stage_change: 'other',
+}
+
+function canalDaTarefa(tipo: ActivityType): CanalTarefa {
+  return CANAL_DA_TAREFA[tipo]
 }
 
 function proximaSequencia(toquesFeitos: number): TouchpointSeq {

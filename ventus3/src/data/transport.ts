@@ -12,6 +12,7 @@
 
 import type { PostgrestError } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import { desnormalizarLocal } from './conflicts'
 import { ErroOutbox, type OutboxMutation, type TransporteOutbox } from './local-types'
 
 /** Código de violación de UNIQUE en Postgres. */
@@ -55,8 +56,30 @@ function erroDeRede(erro: unknown): ErroOutbox {
   return new ErroOutbox(`Sem conexão: ${mensagem}`, 'rede', erro)
 }
 
+/**
+ * EL CUELLO. Todo lo que sale del outbox hacia Supabase pasa por acá, y acá se
+ * traduce de la forma local a la forma de Postgres.
+ *
+ * Está en el flush y no en el enqueue a propósito: los teléfonos del equipo ya
+ * tienen ítems encolados con la forma vieja (`kind`, `title`, `snoozed_until`),
+ * y esos ítems nadie los va a reescribir. Traduciendo acá, el próximo flush
+ * después de actualizar la app los sana solos. Ver desnormalizarLocal().
+ */
+function traduzir(m: OutboxMutation): OutboxMutation {
+  // Las RPC reciben ARGUMENTOS de función, no columnas: sus nombres los define
+  // la propia función de Postgres y traducirlos sería romperlos.
+  if (m.op === 'rpc') return m
+  const { payload, campos_tocados } = desnormalizarLocal(m.tabla, m.payload, m.campos_tocados)
+  return { ...m, payload, campos_tocados }
+}
+
 async function enviarInsert(m: OutboxMutation): Promise<void> {
-  // client_uuid viaja SIEMPRE: es el anti-duplicado del servidor.
+  // client_uuid viaja SIEMPRE: es el anti-duplicado del servidor (UNIQUE en
+  // public.tasks igual que en las append-only). El `id` que ya trae el payload
+  // es el MISMO uuid, y eso también es a propósito: `aplicarRemoto` indexa la
+  // copia local de tasks por `id`, así que dejar que Postgres generara el suyo
+  // con gen_random_uuid() haría que la fila volviera del pull como una SEGUNDA
+  // tarea, al lado de la optimista que ya está en pantalla.
   const linha = { ...m.payload, client_uuid: m.id }
   const { error, status } = await supabase.from(m.tabla).insert(linha)
   const classificado = classificarErroPostgrest(error, status)
@@ -112,7 +135,8 @@ async function enviarRpc(m: OutboxMutation): Promise<void> {
 
 /** El transporte que usa la app. */
 export const transporteSupabase: TransporteOutbox = {
-  async enviar(m: OutboxMutation): Promise<void> {
+  async enviar(mutacao: OutboxMutation): Promise<void> {
+    const m = traduzir(mutacao)
     try {
       if (m.op === 'insert') return await enviarInsert(m)
       if (m.op === 'update') return await enviarUpdate(m)

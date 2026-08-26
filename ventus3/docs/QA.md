@@ -12,6 +12,12 @@
 > contra el **build de producción**. Esa prueba existe ahora (§2,
 > `sessao-real.spec.ts` y `fluxo-completo.sessao-real.spec.ts`) y encontró dos
 > defectos que ninguna otra podía ver: §3.14 y §3.15.
+>
+> **Y una vuelta más: el camino de vuelta.** El §3.14 arregló cómo ENTRAN las
+> filas de `tasks`; la SALIDA seguía rota y ninguna prueba podía verlo, porque
+> el doble de red contestaba `201` a cualquier POST. Ahora **valida cada cuerpo
+> contra el esquema real** y eso destapó **cinco** escrituras que Postgres
+> rechazaba con un 400 que nadie veía: §3.16.
 
 ---
 
@@ -24,7 +30,7 @@ npm install                       # @playwright/test ya está en devDependencies
 # El binario NO se baja: esta máquina no tiene salida. Ver «El navegador».
 export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 
-npx playwright test               # los 5 proyectos (139 pruebas, ~9,5 min)
+npx playwright test               # los 5 proyectos (143 pruebas, ~8 min)
 npx playwright test --project=mobile --project=desktop   # sin rebuild de dist/
 npx playwright test hoje.spec.ts -g "Pronto por hoje"
 
@@ -41,6 +47,11 @@ server en el puerto 5288 con su propio ambiente y lo apaga al terminar. Si ya
 hay uno escuchando ahí, lo reusa. El segundo servidor —`npm run build && vite
 preview` en el 5289, para los dos proyectos de sesión real— **nunca** se reusa,
 a propósito: ver §7.
+
+> ⚠️ **Si una corrida anterior dejó un `vite preview` vivo en el 5289, la suite
+> no arranca**: falla de entrada con `http://127.0.0.1:5289 is already used`.
+> Justamente porque ese servidor **no** se reusa. Matá el árbol de procesos de
+> los puertos 5288 y 5289 antes de correr. Ver §7.
 
 > ⚠️ **No toques ningún archivo del repo mientras la suite corre.** El watcher
 > de Vite recarga la página en medio de las pruebas y mueren con «Execution
@@ -309,7 +320,7 @@ Con la red cortada de verdad (`context.setOffline`), no con un mock de
 
 Ver la sección 4.
 
-### `sessao-real.spec.ts` — el primer login del dueño del producto (7 pruebas × 2 tamaños)
+### `sessao-real.spec.ts` — el primer login del dueño del producto (9 pruebas × 2 tamaños)
 
 El único archivo que arranca con el aparato **vacío** y hace que todo —sesión,
 vendedor, cartera— llegue por la red, contra el build de producción. El resto de
@@ -334,6 +345,13 @@ siembra Dexie con tareas ya construidas **con la forma local**, así que salta e
   `/gestor`; Renata ve «Vendedor», no ve la entrada del Painel, y si escribe
   `/gestor` a mano ve la guardia con su botón «Voltar». Las dos son las filas
   **reales** de `vendors`.
+- **Lo que sale hacia Postgres tiene la forma de la tabla** (las dos últimas, de
+  §3.16). No miran la pantalla: miran **el cuerpo que viajó**. «Adiar» de Hoje y
+  el gate de Registrar tienen que producir un INSERT que el doble acepte —con
+  `titulo`, `client_uuid` = `id`, y sin `kind`/`title`/`snoozed_until`/`target`—,
+  «Reagendar» del Dossiê un PATCH con `snoozed_to`, y el **outbox del aparato
+  tiene que volver a cero**, leído del IndexedDB real. Un ítem que sobrevive ahí
+  es exactamente el badge que no baja nunca.
 
 ### `fluxo-completo.sessao-real.spec.ts` — el recorrido entero (2 pruebas × 2 tamaños)
 
@@ -378,7 +396,7 @@ No afirma nada: escribe `docs/capturas/`. Corre solo con `CAPTURAS=1`.
 
 ---
 
-## 3 · Qué encontró: 15 defectos, arreglados
+## 3 · Qué encontró: 16 defectos, arreglados
 
 Todos se encontraron con el navegador, no leyendo el código, y todos están
 corregidos en esta rama. Del 3.1 al 3.7 son de la primera pasada; del 3.8 al
@@ -386,7 +404,10 @@ corregidos en esta rama. Del 3.1 al 3.7 son de la primera pasada; del 3.8 al
 tres que aparecieron al escribir la cobertura que faltaba—. El 3.14 y el 3.15
 son de la vuelta de la **sesión real**: el primero es el que el dueño del
 producto reportó como «no puedo accionar ningún botón», el segundo apareció
-recorriendo el camino entero para comprobar que el primero estaba cerrado.
+recorriendo el camino entero para comprobar que el primero estaba cerrado. El
+3.16 es la otra mitad del 3.14 —el camino de **escritura**— y son cinco
+escrituras rotas contadas como una: ninguna se veía en pantalla, porque el 400
+de Postgres muere adentro del outbox.
 
 ### 3.1 · `src/data/realtime.ts` — la app rompía al no poder conectar el socket
 
@@ -739,6 +760,132 @@ eso da verde con el sheet roto. Sin el arreglo, la prueba falla en los dos
 tamaños con «o botão do rodapé não recebe o clique: nada: o centro do alvo cai
 fora da janela».
 
+### 3.16 · El camino de ESCRITURA de `tasks` — cada tarea nueva moría en un 400
+
+La otra mitad del §3.14, y la más cara de las dos. Aquel arregló la **entrada**:
+la fila que llega del servidor (`titulo`, `opportunity_id`, `snoozed_to`) se
+traduce a la forma que el motor lee. La **salida** hacía lo inverso mal.
+
+`public.tasks` tiene 22 columnas y ninguna se llama `kind`, `title` ni
+`snoozed_until`. `mutations.criarTask` encolaba las tres:
+
+```
+POST /rest/v1/tasks
+{"kind":"next_action","title":"Levar a prova…","opportunity_id":89,…}
+→ 400 {"code":"PGRST204",
+       "message":"Could not find the 'kind' column of 'tasks' in the schema cache"}
+```
+
+**Y ese 400 no se ve en ninguna parte.** `outbox.ts` clasifica un 4xx como
+`permanente`: el ítem no se descarta, se queda en la cola del teléfono con su
+`ultimo_error` y el badge de pendientes que ya no baja **nunca**. El vendedor
+registra la visita, la pantalla le dice que sí y la tarjeta aparece en Hoje
+—todo eso es la copia optimista de Dexie— y el servidor no se entera jamás. Es
+peor que un error visible: la app miente y el equipo le cree.
+
+Eran **cinco** defectos del mismo camino, no uno:
+
+| # | qué salía | qué dice la tabla | resultado |
+|---|---|---|---|
+| 1 | `kind`, `title` (`criarTask`) | no existen: la columna es `titulo`, y `kind` no tiene ninguna | `400 PGRST204` |
+| 2 | `snoozed_until` (`adiarTask`) | la columna es `snoozed_to` | `400 PGRST204` |
+| 3 | `status:'done'` solo (`concluirTask`) | CHECK `tasks_done_chk` exige `done_at` | `400 23514` |
+| 4 | `status:'done'` solo (Ritual da Sexta) | el mismo CHECK | `400 23514` |
+| 5 | `status:'dismissed'` (Ritual da Sexta) | `tasks_status_chk` sólo acepta `pending/done/snoozed/cancelled` | `400 23514` |
+
+Los dos últimos los encontró el verificador final: `rituais.registrarVeredicto()`
+es el **tercer** escritor de `tasks` y nadie lo había mirado. El 5 es el más
+traicionero de los cinco, porque `status` **sí** es una columna: la lista de
+columnas lo deja pasar y lo que no encaja es el **valor**. El veredicto
+«parcial» o «não rolou» de la sexta se quedaba clavado en el teléfono.
+
+**Arreglo: `desnormalizarLocal()` (`src/data/conflicts.ts`), el espejo exacto de
+`normalizarRemoto()`, aplicada en `transport.ts` — en el FLUSH, no en el
+enqueue.** Esa elección es el corazón del arreglo: hay ítems **ya encolados con
+la forma vieja** en los teléfonos del equipo, y nadie los va a reescribir.
+Traduciendo en el camino de salida, el próximo flush después de actualizar la
+app los **sana solos**. Si la traducción viviera en `mutations.ts`, el arreglo
+llegaría con la versión nueva y la cola quedaría envenenada igual.
+
+Traduce cuatro cosas y descarta una quinta:
+
+```
+title            → titulo                    (rename de NOMBRE)
+snoozed_until    → snoozed_to                (rename de NOMBRE)
+target:{kind,id} → opportunity_id / lead_id  (un campo local, dos columnas)
+status:'dismissed' → 'cancelled'             (rename de VALOR)
+kind, uid, pendente → se caen: no tienen columna
+```
+
+Lo demás se filtra contra `COLUNAS_TASKS`, la lista de las 22 columnas reales
+leída por MCP contra `information_schema` el 26/08. Nada que no esté ahí viaja.
+
+**La segunda mitad del arreglo, que es la que no se ve:** `campos_tocados`
+también se traduce, y `nomesEquivalentes()` expande los dos nombres de cada
+campo renombrado dentro de `aplicarRemoto()`. Sin eso se rompía la **regla
+dura**: el vendedor adia una tarea (mutación pendiente sobre `snoozed_until`),
+llega por realtime la fila del servidor con `snoozed_to`, `mergeByField` no
+encuentra `snoozed_to` entre los pendientes y el valor viejo **pisa el
+adiamiento**. O sea: arreglar el 400 sin esto habría comprado el bug «mi cambio
+se revirtió solo», que es el que no se perdona.
+
+**Por qué la suite no lo veía, y qué se cambió para que no vuelva a pasar.** El
+doble de red contestaba `201` a cualquier POST y `200` a cualquier PATCH: con
+eso, las cinco escrituras rotas daban verde. Ahora
+`e2e/fixtures/supabase-red.ts` **valida cada cuerpo contra el esquema real** —
+una clave que no es columna vuelve como `400 PGRST204` y un CHECK violado como
+`400 23514`, con la misma forma de error que PostgREST. Las listas de columnas y
+los CHECK son copia literal de `information_schema` y `pg_constraint`,
+verificadas por MCP el 26/08 contra `tasks`, `activities` y `touchpoints` — no
+se inventa una columna para que un test pase.
+
+**Lo que viaja hoy**, capturado del doble en el build de producción (Tomás,
+1440×900): «Adiar» de Hoje, el gate de Registrar y «Reagendar» del Dossiê.
+
+```
+POST /rest/v1/tasks → 201
+{ "opportunity_id": 89, "lead_id": null,
+  "titulo": "Conversar com Mora para levar Poder de 0 para 1: …",
+  "id": "07b1cde3-8661-405e-a509-8e4d04f0e7f1",
+  "vendor": "Tomás", "due_date": "2026-08-27", "status": "pending",
+  "prioridade": 2, "origem": "planner", "canal": "meeting",
+  "target_scale": "poder",
+  "client_uuid": "07b1cde3-8661-405e-a509-8e4d04f0e7f1" }
+
+POST /rest/v1/tasks → 201
+{ "opportunity_id": 89, "lead_id": null,
+  "titulo": "Levar a prova de 1000 caixas",
+  "id": "8de6c4ab-1ab4-4678-86ae-950c0fc12dcb",
+  "vendor": "Tomás", "due_date": "2026-08-27", "status": "pending",
+  "prioridade": 2, "origem": "ia", "canal": "call",
+  "client_uuid": "8de6c4ab-1ab4-4678-86ae-950c0fc12dcb" }
+
+PATCH /rest/v1/tasks?id=eq.… → 200
+{ "snoozed_to": "2026-09-02", "status": "snoozed", "due_date": "2026-09-02" }
+
+RECHAZADAS POR EL DOBLE: []
+OUTBOX DEL APARATO:      []
+```
+
+Las tres cosas que había que ver están ahí: **ninguna clave inventada** (`kind`,
+`title`, `snoozed_until` y `target` no aparecen), **`id` = `client_uuid`** —el
+mismo uuid local, para que la fila que vuelva del pull sea la MISMA tarea y no
+una segunda al lado de la optimista— y el **PATCH con `snoozed_to`**. El outbox
+vuelve a **cero**: el badge de pendientes baja.
+
+Regresión cubierta en tres capas:
+
+- `src/data/__tests__/tasks-para-o-servidor.test.ts` (22 pruebas): la traducción
+  campo por campo, la **ida y vuelta** local→pg→local, los ítems ya encolados
+  con la forma vieja sanando en el flush, y los tres escritores.
+- `e2e/sessao-real.spec.ts` (2 pruebas × 2 tamaños): los dos caminos reales del
+  vendedor mirando **el cuerpo que viajó**, no la pantalla, y exigiendo que el
+  outbox del aparato quede vacío.
+- El doble, que ahora rompe solo si alguien vuelve a mandar una clave inventada.
+
+Se comprobó que las pruebas **fallan sin el arreglo** antes de darlas por
+buenas: desactivando las dos líneas del mapeo, `3 failed | 19 passed`.
+
 ---
 
 ## 4 · Los números
@@ -941,28 +1088,47 @@ estado que la prueba ya verificó, no una pose.
 
 ## 7 · Salida real de la última corrida
 
+Corrida del **verificador final** (26/08), sobre el árbol con las dos entregas
+de la ola del camino de escritura ya juntas, más los dos defectos del Ritual da
+Sexta que encontró él (§3.16).
+
 ```
-$ PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright test
-Running 139 tests using 2 workers
+$ npx playwright test
+Running 143 tests using 2 workers
 ...
   6 skipped
-  133 passed (9.4m)
+  137 passed (8.1m)
 EXIT=0
 ```
 
-Los 6 salteados son `capturas.spec.ts`, que solo corre con `CAPTURAS=1`. Los 133
-son 39 pruebas × 3 perfiles de dev server, más 8 × 2 perfiles de **sesión real**
-(contra `dist/`).
+Los 6 salteados son `capturas.spec.ts`, que sólo corre con `CAPTURAS=1`. Los 137
+son 39 pruebas × 3 perfiles de dev server, más **10 × 2** perfiles de sesión real
+(contra `dist/`): 8 de antes más las dos de §3.16.
+
+**8,1 min contra los 9,4 de la corrida anterior**, con cuatro pruebas más. La
+diferencia es `golden.spec.ts:111` («o fechamento se destrava sozinho aos 60
+segundos»), que era la prueba más frágil de la suite porque esperaba **60
+segundos de reloj de pared** con 70 de presupuesto. Ahora usa `page.clock`: se
+instala **después** de que el temporizador de `Fechamento` ya está corriendo
+—instalarlo antes freezaría también las transiciones que llevan hasta ahí,
+porque `page.clock` reemplaza `requestAnimationFrame`— y adelanta 60 s de reloj
+falso. El intervalo real de 250 ms sigue latiendo y lee un `Date.now()` que ya
+pasó la ventana. Misma prueba, un minuto menos, y deja de ser candidata a que
+alguien la etiquete de *flaky*.
 
 ```
 $ npm run type-check
+> tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.worker.json
+(sin salida)
 EXIT=0   (los 3 proyectos: app, node/api, service worker)
 
 $ npx vitest run
- Test Files  51 passed (51)
-      Tests  907 passed (907)
-   Duration  12.81s
-EXIT=0
+ Test Files  52 passed (52)
+      Tests  929 passed (929)
+   Duration  12.63s
+EXIT=0        ← 907 al cerrar la vuelta anterior · 925 con la entrega de la
+                escritura de `tasks` · 929 con los 4 que el verificador sumó
+                por los dos defectos del Ritual da Sexta
 
 $ npx eslint . --max-warnings 0
 (sin salida)
@@ -972,9 +1138,39 @@ $ npx tsc --noEmit -p tsconfig.e2e.json
 EXIT=0
 
 $ npm run build
-✓ built in 1.72s · PWA · precache 65 entries (1.586,19 KiB)
+✓ built in 2.03s · PWA · precache 65 entries (1.589,34 KiB)
 EXIT=0
+
+$ git status --porcelain -- src api     # el CRM v2, desde la raíz del repo
+(sin salida: NO se tocó)
 ```
+
+**La base de producción tampoco se tocó**, verificado por MCP después de correr
+todo (`SOLO LECTURA`):
+
+```sql
+select count(*), count(*) filter (where created_by='backfill-v2') as backfill,
+       count(*) filter (where created_at > now() - interval '6 hours') as ultimas_6h
+  from public.tasks;
+→ total 36 · backfill 36 · ultimas_6h 0
+```
+
+Las 36 son las del backfill de la mañana. Las pruebas de §3.16 escriben tareas
+de verdad —POST y PATCH con cuerpos reales— y **ninguna** salió del proceso: las
+tres capas de candado (el host inexistente del dev server, el `route()` que
+intercepta a nivel de contexto, y la máquina sin salida a `*.supabase.co`)
+hicieron su trabajo.
+
+### Dos cosas que impiden que la suite ARRANQUE, y no son el código
+
+- **Un `vite preview` olvidado en el 5289.** El segundo servidor tiene
+  `reuseExistingServer: false` **a propósito** (un `dist/` viejo probaría código
+  que ya no existe), así que si quedó uno de una corrida anterior la suite entera
+  se niega a empezar con `http://127.0.0.1:5289 is already used`. Pasó al abrir
+  esta verificación. Se limpia matando el árbol de procesos de los puertos 5288
+  y 5289 antes de correr; no se arregla poniendo `reuseExistingServer: true`.
+- **Editar cualquier archivo del repo mientras la suite corre.** Sigue vigente,
+  ver el aviso de §1.
 
 ### La corrida anterior a esta, y por qué no contaba
 

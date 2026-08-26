@@ -22,12 +22,16 @@ import {
   todayBr,
   type ActivitySource,
   type ActivityType,
+  type CanalTarefa,
   type Channel,
   type EntityRef,
   type IsoDate,
   type Opportunity,
+  type OrigemTarefa,
+  type PrioridadeTarefa,
   type ScaleKey,
   type StageId,
+  type Task,
   type TaskKind,
   type TouchpointResult,
   type TouchpointSeq,
@@ -171,29 +175,87 @@ export async function registrarAtividade(entrada: EntradaAtividade): Promise<str
 export interface EntradaTask {
   vendor: string
   kind: TaskKind
+  /**
+   * Sobre qué se actúa. `public.tasks` exige opportunity_id O lead_id
+   * (CHECK `tasks_owner_chk`): una tarea sin negocio detrás no tiene dónde
+   * guardarse, así que un EntityRef de otro tipo se rechaza acá y no envenena
+   * la cola con un 400 que reintentaría para siempre.
+   */
   target: EntityRef
   /** Texto imperativo en PT-BR: 'Ligar para o Marcelo da Tetra'. */
   title: string
   /** Fecha obligatoria: una tarea sin fecha no existe (51 de 54 en el v2). */
   dueDate: IsoDate
+
+  /* ── Lo que el modelo local no usa pero la tabla sí guarda ─────────────
+     Todos opcionales: solo viajan cuando quien llama de verdad los tiene.
+     Ninguna clave inventada sale de acá — la lista de columnas reales vive en
+     COLUNAS_TASKS (src/data/conflicts.ts) y el flush la aplica. */
+  /** Medio de la próxima acción. Lo pasa el gate de Registrar. */
+  canal?: CanalTarefa | null
+  prioridade?: PrioridadeTarefa | null
+  /** Escala del cookbook que la tarea busca mover. */
+  escalaAlvo?: ScaleKey | null
+  /** Borrador listo para copiar (mensaje, e-mail). */
+  rascunho?: string | null
+  /** Qué queda cierto cuando esté hecha. */
+  resultadoEsperado?: string | null
+  /** Quién la generó. Default 'manual': la escribió una persona. */
+  origem?: OrigemTarefa
+  /** Marca de procedencia, como el 'backfill-v2' de las filas del v2. */
+  criadoPor?: string | null
 }
 
+/** Prioridad por defecto de `tasks.prioridade` en Postgres. */
+const PRIORIDADE_PADRAO: PrioridadeTarefa = 2
+
 export async function criarTask(entrada: EntradaTask): Promise<string> {
+  const alvo = entrada.target
+  if (alvo.kind !== 'opportunity' && alvo.kind !== 'lead') {
+    throw new Error('Uma tarefa precisa estar ligada a uma oportunidade ou a um lead.')
+  }
+  const titulo = entrada.title.trim()
+  if (titulo === '') {
+    // CHECK `tasks_titulo_chk`. Mejor fallar acá, donde la pantalla lo puede
+    // mostrar, que dejar un ítem muerto en la cola.
+    throw new Error('A tarefa precisa de um título.')
+  }
+
   const id = novoClientUuid()
   const criadoEm = agora()
 
-  await getDb().tasks.put({
+  // El resto de las columnas solo existen en la fila si quien llamó las trajo:
+  // undefined nunca llega al payload (lo corta desnormalizarLocal) y así el
+  // default de Postgres sigue mandando.
+  const extras = {
+    ...(entrada.canal !== undefined ? { canal: entrada.canal } : {}),
+    ...(entrada.escalaAlvo !== undefined ? { target_scale: entrada.escalaAlvo } : {}),
+    ...(entrada.rascunho !== undefined ? { draft_content: entrada.rascunho } : {}),
+    ...(entrada.resultadoEsperado !== undefined
+      ? { expected_outcome: entrada.resultadoEsperado }
+      : {}),
+    ...(entrada.criadoPor !== undefined ? { created_by: entrada.criadoPor } : {}),
+  }
+
+  const linha: Task = {
     id,
     vendor: entrada.vendor,
     kind: entrada.kind,
-    target: entrada.target,
-    title: entrada.title,
+    target: alvo,
+    title: titulo,
     due_date: entrada.dueDate,
     status: 'pending',
     snoozed_until: null,
     created_at: criadoEm,
-  })
+    prioridade: entrada.prioridade ?? PRIORIDADE_PADRAO,
+    origem: entrada.origem ?? 'manual',
+    ...extras,
+  }
+  await getDb().tasks.put(linha)
 
+  // El payload sale con la forma LOCAL a propósito: la traducción a columnas
+  // vive en el flush (desnormalizarLocal), que es el único lugar donde también
+  // alcanza a los ítems que ya estaban encolados con la forma vieja.
   await encolarEDisparar({
     id,
     tabla: 'tasks',
@@ -201,14 +263,19 @@ export async function criarTask(entrada: EntradaTask): Promise<string> {
     row_id: id,
     campos_tocados: [],
     payload: {
+      // `id` = `client_uuid` = el uuid local. La copia optimista de Dexie se
+      // indexa por `id`, así que dejar que gen_random_uuid() invente otro
+      // haría que el pull trajera la MISMA tarea como una segunda fila.
       id,
       vendor: entrada.vendor,
       kind: entrada.kind,
-      opportunity_id: entrada.target.kind === 'opportunity' ? entrada.target.id : null,
-      lead_id: entrada.target.kind === 'lead' ? entrada.target.id : null,
-      title: entrada.title,
+      target: alvo,
+      title: titulo,
       due_date: entrada.dueDate,
       status: 'pending',
+      prioridade: linha.prioridade,
+      origem: linha.origem,
+      ...extras,
     },
   })
   return id
@@ -222,8 +289,11 @@ export interface EntradaConcluirTask {
 
 export async function concluirTask(entrada: EntradaConcluirTask): Promise<void> {
   const db = getDb()
+  // `done_at` no es decoración: el CHECK `tasks_done_chk` exige que una fila
+  // 'done' lo tenga. Mandar solo `status` es un 23514 permanente.
+  const feitoEm = agora()
   const task = await db.tasks.get(entrada.taskId)
-  if (task) await db.tasks.put({ ...task, status: 'done' })
+  if (task) await db.tasks.put({ ...task, status: 'done', done_at: feitoEm })
 
   if (entrada.atividade) await registrarAtividade(entrada.atividade)
 
@@ -231,8 +301,8 @@ export async function concluirTask(entrada: EntradaConcluirTask): Promise<void> 
     tabla: 'tasks',
     op: 'update',
     row_id: entrada.taskId,
-    campos_tocados: ['status'],
-    payload: { status: 'done' },
+    campos_tocados: ['status', 'done_at'],
+    payload: { status: 'done', done_at: feitoEm },
   })
 }
 
@@ -254,6 +324,10 @@ export async function adiarTask(entrada: EntradaAdiarTask): Promise<void> {
     })
   }
 
+  // `snoozed_until` es el nombre LOCAL; en Postgres la columna se llama
+  // `snoozed_to` y el CHECK `tasks_snooze_chk` exige que no sea null cuando el
+  // status es 'snoozed'. La traducción la hace el flush, no esta función: así
+  // los adiamientos que quedaron encolados antes del arreglo también salen bien.
   await encolarEDisparar({
     tabla: 'tasks',
     op: 'update',

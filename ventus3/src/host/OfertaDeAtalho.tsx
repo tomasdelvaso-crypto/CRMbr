@@ -27,7 +27,11 @@ export function OfertaDeAtalho() {
 
   return (
     <div
-      className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(var(--safe-bottom)+0.75rem)]"
+      // `lg:pl-60`: el Shell reserva los 240px del DesktopRail con la misma
+      // clase (ver Shell.tsx). Sin ella, este banner —fijo al ancho de TODA
+      // la ventana— se centra sobre el rail incluido y queda corrido a la
+      // izquierda del área de contenido, igual que le pasaba al Sheet.
+      className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(var(--safe-bottom)+0.75rem)] lg:pl-60"
       role="region"
       aria-label="Adicionar o Ventus à tela de início"
     >

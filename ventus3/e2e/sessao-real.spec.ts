@@ -37,6 +37,8 @@ import {
   HOST_SUPABASE,
   entrarComo,
   entrarComoTomas,
+  escritasEm,
+  escritasRejeitadas,
   instalarSupabaseDeRede,
   type RegistroDeRede,
 } from './fixtures/supabase-red'
@@ -423,4 +425,207 @@ test('Renata (vendedora): o chip diz «Vendedor», sem «Painel do Gestor», e /
   await expect(voltar).toBeVisible()
   await voltar.click()
   await expect(page).toHaveURL(/\/$/)
+})
+
+/* ══════════════════════════════════════════════════════════════════════════
+   7 · Lo que sale hacia Postgres tiene la forma de la tabla
+   ══════════════════════════════════════════════════════════════════════════
+   La otra mitad del mismo bug. `normalizarRemoto()` arregló la ENTRADA: la
+   fila de `tasks` que llega del servidor (`titulo`, `opportunity_id`,
+   `snoozed_to`) se traduce a la forma que el motor lee. La SALIDA hacía lo
+   inverso MAL — `criarTask` encolaba `kind`, `title` y `snoozed_until`, que no
+   son columnas — y el resultado no se ve en pantalla: PostgREST contesta 400,
+   el outbox clasifica el 4xx como permanente, y la nota del vendedor se queda
+   en el teléfono con un badge de pendientes que ya no baja nunca.
+
+   Estas pruebas no miran la pantalla: miran QUÉ CUERPO viajó por la red. El
+   doble de `supabase-red.ts` ahora valida cada POST/PATCH contra las columnas
+   y los CHECK reales de la base, así que una clave inventada vuelve como el
+   400 de verdad y deja el ítem en la cola — que es exactamente lo que estas
+   dos pruebas miden al final. */
+
+/** Todo lo que quedó en el outbox del aparato, leído del IndexedDB real. */
+async function outboxDoAparelho(
+  page: Page,
+): Promise<Array<{ tabla: string; op: string; estado: string; erro: string | null }>> {
+  return page.evaluate(
+    () =>
+      new Promise<Array<{ tabla: string; op: string; estado: string; erro: string | null }>>(
+        (resolve, reject) => {
+          const pedido = indexedDB.open('ventus3')
+          pedido.onerror = () => {
+            reject(new Error('não deu para abrir o IndexedDB do aparelho'))
+          }
+          pedido.onsuccess = () => {
+            const db = pedido.result
+            if (!db.objectStoreNames.contains('outbox')) {
+              db.close()
+              resolve([])
+              return
+            }
+            const tudo = db.transaction('outbox', 'readonly').objectStore('outbox').getAll()
+            tudo.onsuccess = () => {
+              const linhas = tudo.result as Array<Record<string, unknown>>
+              resolve(
+                linhas.map((m) => ({
+                  tabla: String(m['tabla']),
+                  op: String(m['op']),
+                  estado: String(m['estado']),
+                  erro: m['ultimo_error'] === null ? null : String(m['ultimo_error']),
+                })),
+              )
+              db.close()
+            }
+            tudo.onerror = () => {
+              reject(new Error('não deu para ler o outbox'))
+            }
+          }
+        },
+      ),
+  )
+}
+
+/**
+ * La cola tiene que quedar VACÍA. Si algo salió con una clave que Postgres no
+ * conoce, el ítem sobrevive acá con su `ultimo_error` — y ese texto es el que
+ * hace que el rojo se pueda leer sin abrir el trace.
+ */
+async function esperarOutboxVazio(page: Page): Promise<void> {
+  await expect
+    .poll(async () => JSON.stringify(await outboxDoAparelho(page)), { timeout: 20_000 })
+    .toBe('[]')
+}
+
+/** El mock de /api/ingest, encendido en el aparato: en el preview no hay backend. */
+async function ligarMockDeIngest(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('ventus.ingest.mock', 'on')
+    } catch {
+      /* Safari en modo privado lanza al escribir; no es el caso acá. */
+    }
+  })
+}
+
+test('«Adiar» uma tarjeta para amanhã escreve uma tarefa que a tabela aceita', async ({
+  page,
+}) => {
+  const erros = vigiarErros(page)
+  const registro = await instalarSupabaseDeRede(page)
+  await entrarComoTomas(page)
+
+  const adiar = page.getByRole('button', { name: 'Adiar', exact: true })
+  await expect(adiar.first()).toBeVisible({ timeout: 20_000 })
+  await adiar.first().click()
+
+  const sheet = page.getByRole('dialog')
+  await expect(sheet.getByText('Adiar para quando?')).toBeVisible()
+  // «Amanhã» es el default del sheet: se confirma tal cual, que es el gesto de
+  // un toque que la pantalla existe para dar.
+  await expect(sheet.getByRole('radio', { name: 'Amanhã', exact: true })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  )
+  await sheet.getByRole('button', { name: /^Adiar para / }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  // ── Lo que viajó ───────────────────────────────────────────────────────
+  await expect
+    .poll(() => escritasEm(registro, 'tasks', 'POST').length, { timeout: 20_000 })
+    .toBeGreaterThan(0)
+
+  const insert = escritasEm(registro, 'tasks', 'POST')[0]
+  expect(insert, 'nenhum INSERT de tarefa chegou ao servidor').toBeDefined()
+  // El doble valida contra las columnas reales: si sobreviviera una clave
+  // inventada («kind», «title», «snoozed_until») esto sería un 400.
+  expect(insert?.erro, `o servidor recusou o INSERT: ${JSON.stringify(insert?.erro)}`).toBe(null)
+  expect(insert?.status).toBe(201)
+
+  const corpo = insert?.corpo ?? {}
+  expect(corpo['titulo']).toEqual(expect.any(String))
+  expect(corpo['title']).toBeUndefined()
+  expect(corpo['kind']).toBeUndefined()
+  expect(corpo['snoozed_until']).toBeUndefined()
+  // `id` = `client_uuid` = el uuid local: la fila que vuelva del pull es la
+  // MISMA tarea que ya está en pantalla, no una segunda.
+  expect(corpo['client_uuid']).toEqual(expect.any(String))
+  expect(corpo['id']).toBe(corpo['client_uuid'])
+  // Y apunta a un negocio de verdad, que es lo que exige `tasks_owner_chk`.
+  expect(corpo['opportunity_id'] ?? corpo['lead_id']).not.toBe(null)
+
+  await esperarOutboxVazio(page)
+  expect(escritasRejeitadas(registro)).toEqual([])
+  expect(errosDaApp(erros)).toEqual([])
+})
+
+test('o gate de Registrar cria a tarefa com canal, e «Reagendar» manda snoozed_to', async ({
+  page,
+}) => {
+  const erros = vigiarErros(page)
+  const registro = await instalarSupabaseDeRede(page)
+  await ligarMockDeIngest(page)
+  await entrarComoTomas(page)
+  await expect(page.getByRole('button', { name: 'Fazer agora' }).first()).toBeVisible({
+    timeout: 20_000,
+  })
+
+  /* ── El gate: registrar en la Prueba Tripolla deja una próxima acción ──── */
+  // Se entra por teclado y no por micrófono: el mismo motor, sin depender de
+  // cuánto dura un hold del mouse.
+  await page.goto('/registrar?opportunityId=89', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: 'Teclado' }).click()
+  await page
+    .getByRole('dialog')
+    .getByRole('textbox')
+    .fill('Liguei para o Fernando da Prueba Tripolla. Quer a prova de 1000 caixas.')
+  await page.getByRole('button', { name: 'Analisar' }).click()
+
+  const confirmar = page.getByRole('button', { name: 'Confirmar' })
+  await expect(confirmar).toBeVisible({ timeout: 30_000 })
+  await page.getByLabel('O que você vai fazer').fill('Levar a prova de 1000 caixas')
+  await page.getByRole('radio', { name: 'Amanhã', exact: true }).first().click()
+  await expect(confirmar).toBeEnabled()
+  await confirmar.click()
+
+  // Termina en el Dossiê del cliente, que es donde el registro se ve.
+  await expect(page).toHaveURL(/\/carteira\/89$/, { timeout: 30_000 })
+
+  await expect
+    .poll(() => escritasEm(registro, 'tasks', 'POST').length, { timeout: 20_000 })
+    .toBeGreaterThan(0)
+  const insert = escritasEm(registro, 'tasks', 'POST')[0]
+  expect(insert?.erro, `o servidor recusou o INSERT: ${JSON.stringify(insert?.erro)}`).toBe(null)
+  const corpo = insert?.corpo ?? {}
+  expect(corpo['titulo']).toBe('Levar a prova de 1000 caixas')
+  expect(corpo['opportunity_id']).toBe(89)
+  // El gate pasa el canal, y en el vocabulario de la tabla (CHECK
+  // `tasks_canal_chk`) — no en el de los toques de cadencia, donde existe
+  // 'phone' y no existe 'meeting'.
+  expect(['call', 'whatsapp', 'email', 'linkedin', 'meeting', 'visit', 'demo', 'proposal', 'other'])
+    .toContain(corpo['canal'])
+  expect(Object.keys(corpo)).not.toContain('kind')
+  expect(Object.keys(corpo)).not.toContain('target')
+
+  /* ── «Reagendar» la tarea que quedó: el PATCH ─────────────────────────── */
+  const reagendar = page.getByRole('button', { name: 'Reagendar' })
+  await expect(reagendar).toBeVisible({ timeout: 20_000 })
+  await reagendar.click()
+  const sheet = page.getByRole('dialog')
+  await expect(sheet.getByText('Quando você vai realmente fazer isto?')).toBeVisible()
+  await sheet.getByRole('radio', { name: '+7d', exact: true }).click()
+
+  await expect
+    .poll(() => escritasEm(registro, 'tasks', 'PATCH').length, { timeout: 20_000 })
+    .toBeGreaterThan(0)
+  const patch = escritasEm(registro, 'tasks', 'PATCH')[0]
+  expect(patch?.erro, `o servidor recusou o PATCH: ${JSON.stringify(patch?.erro)}`).toBe(null)
+  // LA REGRESIÓN, en una línea: la columna se llama `snoozed_to`. Y el CHECK
+  // `tasks_snooze_chk` exige que no sea null cuando el status es 'snoozed'.
+  expect(patch?.corpo['snoozed_to']).toEqual(expect.any(String))
+  expect(patch?.corpo['snoozed_until']).toBeUndefined()
+  expect(patch?.corpo['status']).toBe('snoozed')
+
+  await esperarOutboxVazio(page)
+  expect(escritasRejeitadas(registro)).toEqual([])
+  expect(errosDaApp(erros)).toEqual([])
 })

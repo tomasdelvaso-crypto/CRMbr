@@ -94,6 +94,120 @@ const TOUCHPOINTS = [
   { id: 177, notes: null, result: 'meeting_scheduled', channel: 'whatsapp', lead_id: 56, executed_at: '2026-08-10T16:41:25.304+00:00', sequence_number: 7 },
 ]
 
+/* ══════════════════════════════════════════════════════════════════════════
+   EL DOBLE VALIDA LAS ESCRITURAS
+   ══════════════════════════════════════════════════════════════════════════
+   Antes contestaba 201 a cualquier POST y 200 a cualquier PATCH. Por eso pasó
+   inadvertido el bug de la ola anterior: `criarTask` mandaba `kind`, `title` y
+   `snoozed_until` —columnas que NO EXISTEN en Postgres—, PostgREST contestaba
+   400 en producción, y el ítem del outbox reintentaba para siempre mientras la
+   suite entera seguía en verde.
+
+   A partir de acá el doble se comporta como PostgREST: una clave que no es
+   columna es 400 PGRST204, y un CHECK violado es 400 23514, con la MISMA forma
+   de error. Cualquier regresión del camino de escritura sale roja en el acto.
+
+   Las listas y los CHECK son copia literal del esquema real, leído por MCP el
+   2026-08-26 (project wtrbvgqxgcfjacqcndmb). Si el esquema cambia, se refresca
+   esto — nunca se inventa una columna para que un test pase.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const COLUNAS_REAIS: Readonly<Record<string, readonly string[]>> = {
+  tasks: [
+    'id', 'client_uuid', 'vendor', 'vendor_id', 'opportunity_id', 'lead_id', 'titulo',
+    'canal', 'due_date', 'due_time', 'prioridade', 'target_scale', 'draft_content',
+    'expected_outcome', 'status', 'origem', 'done_at', 'snoozed_to',
+    'resolved_activity_id', 'created_by', 'created_at', 'updated_at',
+  ],
+  activities: [
+    'id', 'opportunity_id', 'vendor', 'created_at', 'activity_type', 'description',
+    'result', 'stage_at_time', 'methodology_code', 'ai_suggested_action',
+    'ai_suggested_scales', 'ai_confidence', 'next_action', 'next_action_date',
+    'next_action_done', 'source', 'activity_date', 'client_uuid',
+  ],
+  touchpoints: [
+    'id', 'lead_id', 'sequence_number', 'channel', 'result', 'notes', 'executed_at',
+  ],
+}
+
+const CANAIS_TAREFA = ['call', 'whatsapp', 'email', 'linkedin', 'meeting', 'visit', 'demo', 'proposal', 'other']
+const ORIGENS_TAREFA = ['manual', 'ia', 'bot', 'cron', 'planner']
+const STATUS_TAREFA = ['pending', 'done', 'snoozed', 'cancelled']
+const ESCALAS = ['dor', 'poder', 'visao', 'valor', 'controle', 'compras']
+
+/** Un error con la forma EXACTA que devuelve PostgREST. */
+export interface ErroPostgrest {
+  code: string
+  message: string
+  details: string | null
+  hint: string | null
+}
+
+function erroDeColuna(tabela: string, coluna: string): ErroPostgrest {
+  return {
+    code: 'PGRST204',
+    message: `Could not find the '${coluna}' column of '${tabela}' in the schema cache`,
+    details: null,
+    hint: null,
+  }
+}
+
+function erroDeCheck(tabela: string, restricao: string, linha: Record<string, unknown>): ErroPostgrest {
+  return {
+    code: '23514',
+    message: `new row for relation "${tabela}" violates check constraint "${restricao}"`,
+    details: `Failing row contains ${JSON.stringify(linha)}.`,
+    hint: null,
+  }
+}
+
+/**
+ * Los CHECK de `public.tasks` que el camino de escritura de la app puede violar
+ * de verdad. `inserindo` distingue INSERT de PATCH: un PATCH parcial no ve la
+ * fila entera, así que las reglas que necesitan las dos columnas solo se
+ * aplican cuando las dos están en el cuerpo (o cuando es un INSERT).
+ */
+function violacaoDeTasks(linha: Record<string, unknown>, inserindo: boolean): string | null {
+  const tem = (c: string): boolean => Object.hasOwn(linha, c) && linha[c] !== null
+  const enumOk = (c: string, valores: readonly string[]): boolean =>
+    !tem(c) || valores.includes(String(linha[c]))
+
+  if (inserindo && !tem('opportunity_id') && !tem('lead_id')) return 'tasks_owner_chk'
+  if (inserindo && String(linha['titulo'] ?? '').trim() === '') return 'tasks_titulo_chk'
+  if (!enumOk('status', STATUS_TAREFA)) return 'tasks_status_chk'
+  if (!enumOk('canal', CANAIS_TAREFA)) return 'tasks_canal_chk'
+  if (!enumOk('origem', ORIGENS_TAREFA)) return 'tasks_origem_chk'
+  if (!enumOk('target_scale', ESCALAS)) return 'tasks_target_scale_chk'
+  if (tem('prioridade')) {
+    const p = Number(linha['prioridade'])
+    if (!Number.isInteger(p) || p < 1 || p > 3) return 'tasks_prioridade_chk'
+  }
+  if (linha['status'] === 'done' && !tem('done_at')) return 'tasks_done_chk'
+  if (linha['status'] === 'snoozed' && !tem('snoozed_to')) return 'tasks_snooze_chk'
+  return null
+}
+
+/**
+ * Valida un cuerpo de escritura contra el esquema real. Devuelve el error de
+ * PostgREST, o null si la fila puede entrar.
+ */
+export function validarEscrita(
+  tabela: string,
+  linha: Record<string, unknown>,
+  inserindo: boolean,
+): ErroPostgrest | null {
+  const colunas = COLUNAS_REAIS[tabela]
+  if (!colunas) return null
+  for (const chave of Object.keys(linha)) {
+    if (!colunas.includes(chave)) return erroDeColuna(tabela, chave)
+  }
+  if (tabela === 'tasks') {
+    const restricao = violacaoDeTasks(linha, inserindo)
+    if (restricao) return erroDeCheck(tabela, restricao, linha)
+  }
+  return null
+}
+
 /** Las tablas que el doble sabe contestar. Lo demás responde []. */
 const TABELAS: Record<string, ReadonlyArray<Record<string, unknown>>> = {
   vendors: VENDORS,
@@ -257,9 +371,38 @@ export interface OpcoesSupabaseRede {
   tabelasComFalha?: readonly string[]
 }
 
+/** Una escritura que la app intentó, ya juzgada contra el esquema real. */
+export interface EscritaRegistrada {
+  metodo: 'POST' | 'PATCH'
+  tabela: string
+  /** El cuerpo tal cual salió del outbox. */
+  corpo: Record<string, unknown>
+  status: number
+  /** null si entró; el error de PostgREST si el doble la rechazó. */
+  erro: ErroPostgrest | null
+}
+
 export interface RegistroDeRede {
   /** Todo lo que la app le pidió al «servidor». */
   pedidos: Array<{ metodo: string; url: string }>
+  /** Solo los POST/PATCH de /rest/v1, con su cuerpo y su veredicto. */
+  escritas: EscritaRegistrada[]
+}
+
+/** Las escrituras de una tabla, en orden. Azúcar para las aserciones. */
+export function escritasEm(
+  registro: RegistroDeRede,
+  tabela: string,
+  metodo?: 'POST' | 'PATCH',
+): EscritaRegistrada[] {
+  return registro.escritas.filter(
+    (e) => e.tabela === tabela && (metodo === undefined || e.metodo === metodo),
+  )
+}
+
+/** Las que el doble rechazó. En una corrida sana tiene que quedar vacía. */
+export function escritasRejeitadas(registro: RegistroDeRede): EscritaRegistrada[] {
+  return registro.escritas.filter((e) => e.erro !== null)
 }
 
 /**
@@ -270,7 +413,7 @@ export async function instalarSupabaseDeRede(
   page: Page,
   opcoes: OpcoesSupabaseRede = {},
 ): Promise<RegistroDeRede> {
-  const registro: RegistroDeRede = { pedidos: [] }
+  const registro: RegistroDeRede = { pedidos: [], escritas: [] }
   // Quién «está logueado» en ESTE doble — se actualiza en el login y la usa
   // /auth/v1/user después, para que la sesión sea consistente con QUIEN sea
   // que entró (Tomás, Renata, o cualquier otro vendor seedeado), y no siempre
@@ -336,12 +479,40 @@ export async function instalarSupabaseDeRede(
       await json({})
       return
     }
-    if (pedido.method() === 'POST') {
-      await json([], 201)
-      return
-    }
-    if (pedido.method() === 'PATCH') {
-      await json([{ id: 1 }])
+    // ── Escrituras: se validan contra el esquema real ────────────────────
+    const metodo = pedido.method()
+    if (metodo === 'POST' || metodo === 'PATCH') {
+      const tabela = /\/rest\/v1\/([a-zA-Z_]+)/.exec(url.pathname)?.[1] ?? ''
+      const corpoCru = pedido.postDataJSON() as unknown
+      // PostgREST acepta una fila o un array; el cliente manda una sola.
+      const linhas = (Array.isArray(corpoCru) ? corpoCru : [corpoCru]).filter(
+        (l): l is Record<string, unknown> => typeof l === 'object' && l !== null,
+      )
+
+      let erro: ErroPostgrest | null = null
+      for (const linha of linhas) {
+        erro = validarEscrita(tabela, linha, metodo === 'POST')
+        if (erro) break
+      }
+      const status = erro ? 400 : metodo === 'POST' ? 201 : 200
+      for (const linha of linhas) {
+        registro.escritas.push({ metodo, tabela, corpo: linha, status, erro })
+      }
+      if (erro) {
+        await json(erro, 400)
+        return
+      }
+      if (metodo === 'POST') {
+        await json([], 201)
+        return
+      }
+      // Un PATCH con 2xx y cero filas es «la fila no existe» para el outbox
+      // (ver transport.enviarUpdate). Se devuelve el id que el propio filtro
+      // `id=eq.…` nombra: el doble no lleva estado, pero la respuesta tiene que
+      // ser coherente con lo que se le pidió actualizar.
+      const filtroId = url.searchParams.get('id') ?? ''
+      const id = filtroId.startsWith('eq.') ? filtroId.slice(3) : null
+      await json([{ id: id ?? 1 }])
       return
     }
 

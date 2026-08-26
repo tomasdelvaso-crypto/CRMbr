@@ -388,7 +388,19 @@ export function Sheet({
     // gesto que lo abre; acá se convierte en modal centrado. El backdrop
     // sigue `absolute inset-0` —no participa del centrado, ya cubre todo— y
     // es el panel el que pasa de anclado abajo a ítem centrado por flexbox.
-    <div className="fixed inset-0 z-50 lg:flex lg:items-center lg:justify-center lg:p-6" data-ventus-sheet="">
+    //
+    // `lg:pl-[16.5rem]` y no `lg:p-6` parejo: el Shell reserva los 240px del
+    // DesktopRail con `lg:pl-60` (ver Shell.tsx), así que centrar sobre la
+    // VENTANA entera —lo que hacía `p-6` con el mismo padding en las cuatro
+    // patas— deja el panel corrido hacia la izquierda, montado sobre el rail,
+    // en vez de sobre el área de contenido. 16.5rem = 15rem del rail + el
+    // 1.5rem de aire que ya tenían los otros tres lados. El backdrop no lo
+    // nota: `absolute inset-0` mide contra la caja completa, no contra el
+    // padding, así que sigue cubriendo pantalla entera con el rail incluido.
+    <div
+      className="fixed inset-0 z-50 lg:flex lg:items-center lg:justify-center lg:py-6 lg:pr-6 lg:pl-[16.5rem]"
+      data-ventus-sheet=""
+    >
       <motion.div
         aria-hidden
         onPointerDown={dismissible ? fechar : undefined}
