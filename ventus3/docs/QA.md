@@ -1,6 +1,6 @@
 # QA de punta a punta — Ventus v3
 
-> Fecha de corte: **2026-08-25** · rama `claude/crm-web-app-redesign-f7tu7g`
+> Fecha de corte: **2026-08-26** · rama `claude/crm-web-app-redesign-f7tu7g`
 >
 > Este documento dice **qué se prueba**, **cómo se corre** y **qué encontró**.
 > Los números son salidas reales pegadas de la corrida, no estimaciones.
@@ -254,12 +254,12 @@ No afirma nada: escribe `docs/capturas/`. Corre solo con `CAPTURAS=1`.
 
 ---
 
-## 3 · Qué encontró: 12 defectos, arreglados
+## 3 · Qué encontró: 13 defectos, arreglados
 
 Todos se encontraron con el navegador, no leyendo el código, y todos están
 corregidos en esta rama. Del 3.1 al 3.7 son de la primera pasada; del 3.8 al
-3.12, de la segunda —los tres de superficie que habían quedado anotados en §5 y
-dos que aparecieron al escribir la cobertura que faltaba—.
+3.13, de la segunda —los tres de superficie que habían quedado anotados en §5 y
+tres que aparecieron al escribir la cobertura que faltaba—.
 
 ### 3.1 · `src/data/realtime.ts` — la app rompía al no poder conectar el socket
 
@@ -497,6 +497,34 @@ servidor con `for update`—, pero el espejo quedaba mal hasta el siguiente pull
 
 **Arreglo:** se toma el máximo de las dos fuentes, con tope en 7.
 
+### 3.13 · `src/data/outbox.ts` — lo encolado durante un flush se quedaba en la cola
+
+El más serio de la segunda pasada, y el que menos se ve: **una escritura podía
+quedarse en la cola indefinidamente**.
+
+`executarFlush()` lee la cola UNA vez, al principio. Y `flush()`, si ya hay uno
+corriendo, devuelve el promise del que corre —correcto para no duplicar
+intentos y no desordenar la cola, pero **pierde el pedido**: la mutación que se
+encoló después de esa lectura no entra en la pasada, y quien la encoló recibe
+un promise que resuelve «bien» sin haberla mandado. Se queda esperando el
+siguiente disparador (otra escritura, la vuelta de la red), que puede no llegar
+en toda la sesión.
+
+No es hipotético: es el patrón normal de la app. `aceitarProposta` encola el
+recorte del payload y **enseguida** el commit; `registrarTouchpoint` y las
+demás hacen lo mismo cuando se disparan una atrás de la otra. Apareció como un
+parpadeo de `revisao.spec.ts` —el outbox no se vaciaba en 30 segundos— y
+resultó ser esto.
+
+**Arreglo:** un pedido pendiente. Si alguien llama a `flush()` con otro
+corriendo, se anota (con las opciones más permisivas de todo lo que se pidió) y
+el `finally` del que está corriendo arranca una vuelta más. Sigue habiendo un
+solo flush a la vez.
+
+Regresión cubierta en dos niveles: `outbox.test.ts` traba el transporte en la
+primera mutación, encola una segunda y comprueba que sale igual; y
+`revisao.spec.ts` lo ejerce por el camino real de la pantalla.
+
 ---
 
 ## 4 · Los números
@@ -525,13 +553,13 @@ instalado y quieto. Nueve recargas seguidas:
 
 ```
 ╭─ Arranque com a carteira já no aparelho (build de produção) ─
-│ Amostras: 85 ms · 86 ms · 89 ms · 91 ms · 93 ms · 98 ms · 99 ms · 105 ms · 109 ms
-│ Até os 3 cartões pintados — melhor 85 ms · mediana 93 ms · pior 109 ms
-│ Recursos baixados no arranque: 13
+│ Amostras: 88 ms · 91 ms · 92 ms · 95 ms · 97 ms · 97 ms · 111 ms · 112 ms · 115 ms
+│ Até os 3 cartões pintados — melhor 88 ms · mediana 97 ms · pior 115 ms
+│ Recursos baixados no arranque: 14
 ╰──────────────────────────────────────────────────────────────
 ```
 
-**Mediana 93 ms: el objetivo se cumple.** Es de punta a punta —bajar el
+**Mediana 97 ms: el objetivo se cumple.** Es de punta a punta —bajar el
 bundle del cache, evaluarlo, montar React, leer Dexie y pintar— no solo el
 render.
 
@@ -635,10 +663,10 @@ comparar contra lo que había.
 
 | | |
 |---|---|
-| `01-hoje` | Las 3 tarjetas, los anillos, la racha y el botón de la Golden Hour |
+| `01-hoje` | Los anillos, el botón de la Golden Hour y la primera tarjeta ENTERA (ver 3.8). En teléfono corto la racha bajó debajo de la lista |
 | `02-hoje-por-que` | El chip «Por que isto?» abierto, con la cuenta señal por señal |
 | `03-carteira` · `04-dossie` | La lista y la ficha con el hexágono PPVVCC |
-| `05-editor-de-escala` | El editor con la regra da prova (y el botón Salvar visible, ver 3.6) |
+| `05-editor-de-escala` | El editor con la regra da prova (botón Salvar visible, ver 3.6; sin desborde horizontal, ver 3.9) |
 | `06-golden-abertura` · `07-golden-foco` · `08-golden-fechamento` | El bloque entero |
 | `09-registrar-confirmacao` | La tarjeta de confirmación con el gate de fecha |
 | `10-cadencia` … `15-ajustes` | Cadência, Placar, Rituais, Ventus, Mais, Ajustes |
@@ -649,13 +677,15 @@ comparar contra lo que había.
 
 ```
 $ npx playwright test
-Running 93 tests using 2 workers
+Running 117 tests using 2 workers
 ...
   6 skipped
-  87 passed (6.1m)
+  111 passed (7.9m)
+EXIT=0
 ```
 
-Los 6 salteados son las capturas, que solo corren con `CAPTURAS=1`.
+Los 6 salteados son las capturas, que solo corren con `CAPTURAS=1`. Los 111 son
+37 pruebas × 3 perfiles.
 
 ```
 $ npx tsc --noEmit -p tsconfig.e2e.json
@@ -665,9 +695,25 @@ $ npm run type-check
 EXIT=0   (los 3 proyectos)
 
 $ npx vitest run
- Test Files  39 passed (39)
-      Tests  777 passed (777)
+ Test Files  45 passed (45)
+      Tests  869 passed (869)
 
 $ npx eslint . --max-warnings 0
 EXIT=0
 ```
+
+### Antes de este trabajo, con la misma máquina y el mismo comando
+
+```
+$ npx playwright test
+  3 failed
+    [mobile] › e2e/dossie.spec.ts:42:3 › acima de 5 não passa sem evidência
+    [mobile-pixel7] › e2e/golden.spec.ts:111:3 › o fechamento se destrava sozinho aos 60 segundos
+    [desktop] › e2e/golden.spec.ts:111:3 › o fechamento se destrava sozinho aos 60 segundos
+  6 skipped
+  84 passed (7.1m)
+```
+
+Las tres eran parpadeos, no regresiones: las tres pasan corriendo su archivo
+solo. Se dejan escritas igual, porque la comparación honesta es contra lo que
+la máquina devolvió de verdad y no contra lo que el documento decía.

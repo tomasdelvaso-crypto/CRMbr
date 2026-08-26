@@ -842,10 +842,18 @@ del repositorio es cero; lo que queda es de cuenta, de secretos y de manos.
     `useAlturaDoTeclado` ya está en `src/ui` esperando: el teclado de Android
     tapa los inputs del editor de escala del Dossiê y del «Converter» de
     Cadência.
-27. **Diferir `supabase-js` del arranque** (209 kB del camino crítico). Hoy no
-    se puede sin más: `SessionProvider` llama a `auth.getSession()` al montar
-    para decidir login vs shell. Requiere una ruta de arranque que lea la sesión
-    de Dexie primero y cargue el cliente después.
+27. **Diferir `supabase-js` del arranque** (204 kB / 52 kB gzip del camino
+    crítico). Se miró en serio en la segunda pasada de QA y **no se hizo**: el
+    problema no es sólo `SessionProvider`, es que `src/data/supabase.ts` crea el
+    cliente en el cuerpo del módulo y **diez** módulos lo importan de forma
+    síncrona (transport, sync, queries, revisao, realtime, auth, ajustes,
+    gestor, SessionProvider, host/auth), con 26 puntos de uso encadenados. La
+    tela Hoje arrastra el chunk por el barril `@/data` aunque no haga una sola
+    llamada. Pide convertirlo en `getSupabase(): Promise<SupabaseClient>` y
+    `await` en los diez, o sea tocar el outbox, el pull, el realtime y la
+    guardia de sesión — justo lo que sostiene el arranque sin señal. Antes de
+    intentarlo hace falta una prueba de arranque en frío sin red. Detalle en
+    `docs/QA.md` §4.3.
 28. Un `SearchField` en `src/ui`: la Carteira usa un `<input type="search">` a
     mano porque `TextField` no tiene botón de limpiar ni ícono a la izquierda.
     Si aparece un tercer buscador, la primitiva se vuelve obligatoria.
@@ -872,28 +880,41 @@ del repositorio es cero; lo que queda es de cuenta, de secretos y de manos.
 
 ### 5.5 · Calidad
 
-35. ~~Sin tests de interacción (Playwright)~~ — **hecho**: 87 pruebas verdes
-    sobre iPhone 14, Pixel 7 y desktop, con los tres flujos que el plano pide.
-    Encontraron **siete defectos reales**, todos arreglados y todos de
-    producción, no de la prueba. Los dos peores: el pie del `Sheet` quedaba
-    156 px **por debajo** del borde inferior en todos los teléfonos —el editor
-    de escala PPVVCC abría sin ningún botón para guardar, y alcanzaba al menos a
-    5 sheets—, y el día congelado de Hoje perdía tarjetas porque el id de una
+35. ~~Sin tests de interacción (Playwright)~~ — **hecho**: 111 pruebas verdes
+    (37 × 3 perfiles) sobre iPhone 14, Pixel 7 y desktop. Encontraron **trece
+    defectos reales**, todos arreglados y todos de producción, no de la prueba.
+    Los dos peores de la primera pasada: el pie del `Sheet` quedaba 156 px **por
+    debajo** del borde inferior en todos los teléfonos —el editor de escala
+    PPVVCC abría sin ningún botón para guardar, y alcanzaba al menos a 5
+    sheets—, y el día congelado de Hoje perdía tarjetas porque el id de una
     `PlannedAction` depende del estado de la entidad: registrar algo cambiaba el
     id, «Suas 3 de hoje» pasaba a «As 2 de hoje estão resolvidas» y el día podía
     darse por cerrado con trabajo pendiente adentro.
     Lo que la suite **no** cubre y sigue abierto: el arranque en frío **sin
     red** (el dev server tiene el service worker apagado, así que nadie sirve el
-    `index.html`), y las 8 pantallas sin spec propia —Carteira, Revisão,
-    Cadência, Placar, Rituais, Ventus, Gestor y Ajustes—, que hoy sólo pasan por
-    el barrido de a11y y por las capturas.
-35-bis. Dos cosas que la suite encontró y **no** se arreglaron, anotadas en
-    `docs/QA.md` §5: en el Dossiê hay dos botones con el mismo nombre accesible
-    («Registrar por voz», el de la ficha y el FAB del Shell), y el contenido del
-    editor de escala desborda ~31 px en horizontal en un iPhone 14, así que al
-    enfocar «Cargo» el sheet se corre de costado. Además, en teléfonos cortos la
-    barra de comando del Ventus + el FAB tapan ~150 px y cortan la primera
-    tarjeta de Hoje: se ve en `docs/capturas/01-hoje-claro.png`.
+    `index.html`), y las 5 pantallas sin spec propia —Carteira, Placar, Rituais,
+    Gestor y Ajustes—, que hoy sólo pasan por el barrido de a11y y por las
+    capturas.
+35-bis. ~~Dos cosas que la suite encontró y no se arreglaron~~ — **hechas**, y
+    con dos más que aparecieron al escribir la cobertura que faltaba. Todo el
+    detalle está en `docs/QA.md` §3.8–3.13:
+    · La barra de comando + el FAB tapaban 122 px de la primera tarjeta de Hoje
+      en teléfonos cortos. El micrófono de Registrar se mudó **adentro** de la
+      barra (que ya tenía uno redundante), el token `--spacing-chrome` saca la
+      barra de encima del scroll, y `useTelaCurta()` compacta el cabezal de Hoje
+      mandando la largada y la faixa da sequência debajo de las tres tarjetas.
+      La primera tarjeta ahora entra entera con 40 px de sobra, medido en los
+      tres perfiles por `e2e/layout.spec.ts`.
+    · El desborde horizontal del editor de escala **no era** la grilla de
+      evidencia (356 px, entra): era `SegmentedControl` sin `min-w-0`.
+    · Los dos «Registrar por voz» del Dossiê ya se llaman distinto, y de paso
+      los cinco «Marcar como já perguntada» de las perguntas SPIN también.
+    · `Revisão` entraba en bucle de render infinito con una sola propuesta en la
+      bandeja.
+    · `LeadSheet` abría diciendo «toque 1 de 7» para un lead con 2 toques.
+    · **`flush()` perdía lo que se encolaba mientras corría**: la segunda
+      escritura de un par (recorte + commit, por ejemplo) se quedaba en la cola
+      hasta el siguiente disparador. Es el más serio de los seis.
 36. **Calibrar los umbrales de gesto con los 4 vendedores en teléfono real**
     antes de congelarlos: swipe 96px, pull 72px, velocidad de cierre
     0,55 px/ms. Hoy están puestos a ojo.
