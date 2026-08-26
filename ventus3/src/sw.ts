@@ -262,6 +262,27 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 
 clientsClaim()
 
+// ── Limpeza de caches alheios ───────────────────────────────────────────────
+// Este domínio pode ter sido servido antes por OUTRA app: o projeto Vercel do
+// Ventus fez o primeiro deploy a partir da raiz do repositório — o CRM v2, que
+// também é uma PWA — antes de o Root Directory apontar para ventus3/. O service
+// worker daquele build registrou-se nesta origem e deixou os caches dele para
+// trás. Sem esta varredura eles ficam ocupando quota para sempre.
+//
+// Conservador de propósito: só sobrevive o que a gente reconhece.
+self.addEventListener('activate', (event: ExtendableEvent) => {
+  event.waitUntil(
+    (async () => {
+      const nomes = await caches.keys()
+      await Promise.all(
+        nomes
+          .filter((nome) => !nome.startsWith('workbox-precache') && nome !== CACHE_COMPARTILHADO)
+          .map((nome) => caches.delete(nome)),
+      )
+    })(),
+  )
+})
+
 // ── Background Sync del outbox ──────────────────────────────────────────────
 // Solo existe en Chromium. En iOS no hay Background Sync ni Periodic Sync, y
 // el flush real lo dispara 'visibilitychange' desde la app (ver src/data/sync.ts).

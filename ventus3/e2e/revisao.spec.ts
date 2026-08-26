@@ -12,9 +12,21 @@
 
 import { abrir, expect, PROPOSTA_ID, sementeComProposta, test } from './fixtures/app'
 
-/** Los pedidos que salieron a `ventus_actions`, en orden. */
-function pedidosDaProposta(pedidos: readonly { metodo: string; url: string; corpo: string | null }[]) {
-  return pedidos.filter((p) => p.url.includes('ventus_actions') || p.url.includes('/rpc/ventus_commit_action'))
+/**
+ * Las ESCRITURAS que salieron a `ventus_actions`, en orden.
+ *
+ * Sólo PATCH y POST: el doble de PostgREST también registra los GET del pull y
+ * los OPTIONS del preflight que supabase-js manda antes de cada uno, y ninguno
+ * de los dos es una decisión del vendedor.
+ */
+function escritasDaProposta(
+  pedidos: readonly { metodo: string; url: string; corpo: string | null }[],
+) {
+  return pedidos.filter(
+    (p) =>
+      (p.metodo === 'PATCH' || p.metodo === 'POST') &&
+      (p.url.includes('ventus_actions') || p.url.includes('/rpc/ventus_commit_action')),
+  )
 }
 
 test.describe('Revisão · aceitar por campo', () => {
@@ -44,7 +56,7 @@ test.describe('Revisão · aceitar por campo', () => {
     await expect(cartao.getByRole('button', { name: 'Aceitar Canal' })).toBeVisible()
 
     // Antes de confirmar, NADA salió del teléfono para esta propuesta.
-    expect(pedidosDaProposta(ventus.pedidos).filter((p) => p.metodo !== 'GET')).toHaveLength(0)
+    expect(escritasDaProposta(ventus.pedidos)).toHaveLength(0)
 
     await confirmar.click()
 
@@ -52,13 +64,13 @@ test.describe('Revisão · aceitar por campo', () => {
     await expect(cartao).toHaveCount(0, { timeout: 15_000 })
 
     await expect
-      .poll(() => pedidosDaProposta(ventus.pedidos).filter((p) => p.metodo !== 'GET').length, {
+      .poll(() => escritasDaProposta(ventus.pedidos).length, {
         timeout: 15_000,
         message: 'a decisão nunca saiu para o servidor',
       })
       .toBeGreaterThanOrEqual(2)
 
-    const escritas = pedidosDaProposta(ventus.pedidos).filter((p) => p.metodo !== 'GET')
+    const escritas = escritasDaProposta(ventus.pedidos)
 
     // 1) El recorte: un PATCH que reescribe el payload SIN el campo rechazado.
     const recorte = escritas.find((p) => p.metodo === 'PATCH')
@@ -96,7 +108,7 @@ test.describe('Revisão · aceitar por campo', () => {
     await expect
       .poll(
         () =>
-          pedidosDaProposta(ventus.pedidos).filter((p) =>
+          escritasDaProposta(ventus.pedidos).filter((p) =>
             p.url.includes('/rpc/ventus_commit_action'),
           ).length,
         { timeout: 15_000 },
@@ -105,7 +117,7 @@ test.describe('Revisão · aceitar por campo', () => {
 
     // Sin recorte no hay PATCH: escribir el mismo payload de vuelta sería una
     // escritura sin sentido y una carrera contra el propio commit.
-    const patches = pedidosDaProposta(ventus.pedidos).filter((p) => p.metodo === 'PATCH')
+    const patches = escritasDaProposta(ventus.pedidos).filter((p) => p.metodo === 'PATCH')
     expect(patches).toHaveLength(0)
   })
 })
