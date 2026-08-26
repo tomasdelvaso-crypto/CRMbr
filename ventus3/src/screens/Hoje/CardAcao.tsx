@@ -28,12 +28,26 @@ export interface CardAcaoProps {
   /** Posición 1-3, solo para el lector de pantalla. */
   posicao: number
   total: number
+  /**
+   * Teléfono corto. Aprieta los espacios y manda «Por que isto?» a la misma
+   * fila de los otros chips —es un chip, siempre lo fue—, que son 40 px menos
+   * sin sacar nada de la tarjeta. Ver src/screens/Hoje/index.tsx.
+   */
+  compacto?: boolean
   onFazerAgora: (acao: PlannedAction) => void
   onFeito: (acao: PlannedAction) => void
   onAdiar: (acao: PlannedAction) => void
 }
 
-export function CardAcao({ item, posicao, total, onFazerAgora, onFeito, onAdiar }: CardAcaoProps) {
+export function CardAcao({
+  item,
+  posicao,
+  total,
+  compacto = false,
+  onFazerAgora,
+  onFeito,
+  onAdiar,
+}: CardAcaoProps) {
   const [porqueAberto, setPorqueAberto] = useState(false)
   const { acao, resolucao } = item
 
@@ -60,7 +74,7 @@ export function CardAcao({ item, posicao, total, onFazerAgora, onFeito, onAdiar 
       className="rounded-card"
     >
       <Card
-        padding="md"
+        padding={compacto ? 'sm' : 'md'}
         accent={acao.urgencia === 'critica' || acao.urgencia === 'alta' ? tomUrgencia : undefined}
         className="w-full"
       >
@@ -80,7 +94,7 @@ export function CardAcao({ item, posicao, total, onFazerAgora, onFeito, onAdiar 
 
         {/* La acción. Es lo más grande de la tarjeta porque es lo único que
             hay que leer para saber qué hacer. */}
-        <div className="mt-3 flex items-start gap-2.5">
+        <div className={cx(compacto ? 'mt-2' : 'mt-3', 'flex items-start gap-2.5')}>
           <span
             aria-hidden
             className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-pill bg-brand-soft text-brand-soft-fg"
@@ -90,7 +104,10 @@ export function CardAcao({ item, posicao, total, onFazerAgora, onFeito, onAdiar 
           <p className="text-base font-semibold leading-snug text-fg">{acao.acao}</p>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        {/* Los chips de contexto y, en teléfono corto, también el de «Por que
+            isto?»: en una fila de 358 px entran los cuatro y se ahorra una
+            fila entera. */}
+        <div className={cx(compacto ? 'mt-2' : 'mt-3', 'flex flex-wrap items-center gap-1.5')}>
           <Chip size="sm" tone={TOM_DA_ZONA[item.zona]} icon={<IconeZona size={13} aria-hidden />}>
             {ROTULO_DA_ZONA[item.zona]}
           </Chip>
@@ -104,20 +121,13 @@ export function CardAcao({ item, posicao, total, onFazerAgora, onFeito, onAdiar 
               {formatarBRL(item.valor)}
             </Chip>
           )}
+          {compacto && <ChipPorque aberto={porqueAberto} onAlternar={setPorqueAberto} />}
         </div>
 
         {/* «Por que isto?»: la cuenta completa, señal por señal. Sin esto el
             vendedor no le cree al ranking — y con razón. */}
-        <div className="mt-3">
-          <Chip
-            size="sm"
-            tone="neutro"
-            selected={porqueAberto}
-            icon={<HelpCircle size={13} aria-hidden />}
-            onClick={() => setPorqueAberto((v) => !v)}
-          >
-            Por que isto?
-          </Chip>
+        <div className={compacto ? '' : 'mt-3'}>
+          {!compacto && <ChipPorque aberto={porqueAberto} onAlternar={setPorqueAberto} />}
 
           {porqueAberto && (
             <div className="mt-2 rounded-lg border border-border bg-surface-2 p-3">
@@ -148,7 +158,7 @@ export function CardAcao({ item, posicao, total, onFazerAgora, onFeito, onAdiar 
           )}
         </div>
 
-        <div className="mt-4 flex gap-2">
+        <div className={cx(compacto ? 'mt-3' : 'mt-4', 'flex gap-2')}>
           <Button block onClick={() => onFazerAgora(acao)} hapticPattern="impact">
             Fazer agora
           </Button>
@@ -162,6 +172,31 @@ export function CardAcao({ item, posicao, total, onFazerAgora, onFeito, onAdiar 
         </div>
       </Card>
     </SwipeRow>
+  )
+}
+
+/**
+ * El chip que despliega la cuenta del ranking. Es el MISMO en las dos
+ * disposiciones —fila de chips en teléfono corto, fila propia en el largo—:
+ * duplicar el JSX sería duplicar el nombre accesible.
+ */
+function ChipPorque({
+  aberto,
+  onAlternar,
+}: {
+  aberto: boolean
+  onAlternar: (fn: (v: boolean) => boolean) => void
+}) {
+  return (
+    <Chip
+      size="sm"
+      tone="neutro"
+      selected={aberto}
+      icon={<HelpCircle size={13} aria-hidden />}
+      onClick={() => onAlternar((v) => !v)}
+    >
+      Por que isto?
+    </Chip>
   )
 }
 

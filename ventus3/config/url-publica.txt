@@ -1,0 +1,31 @@
+# ══════════════════════════════════════════════════════════════════════════
+# A URL PÚBLICA DO VENTUS — ESTE É O ÚNICO LUGAR QUE SE MUDA
+# ══════════════════════════════════════════════════════════════════════════
+#
+# Es el único valor a cambiar el día que exista el dominio propio. De acá lo
+# leen, en este orden de precedencia (env > este archivo):
+#
+#   · vite.config.ts        → reemplaza %VENTUS_URL% en index.html (og:image,
+#                             og:url) durante el build
+#   · scripts/build-apk.sh  → la URL que el APK abre, si no se le pasa una
+#   · scripts/gerar-assetlinks.mjs --verificar   (sin valor)
+#   · scripts/url-publica.mjs --check            (guarda android/twa-manifest.json
+#                             alineado; corre en `npm test`)
+#   · .github/workflows/apk.yml  → fallback cuando no hay la variable
+#                             VENTUS_URL ni el input del Run workflow
+#
+# La variable de entorno VENTUS_URL pisa este archivo en cualquiera de ellos.
+#
+# ── El día que exista ventus.ventapel.com.br ──────────────────────────────
+#   1. cambiar la línea de abajo
+#   2. `node scripts/url-publica.mjs --sync`   → android/twa-manifest.json
+#   3. `npm run build` y deploy               → og:image y og:url nuevos
+#   4. `node scripts/gerar-assetlinks.mjs --verificar`  → tiene que pasar
+#   5. `git tag v1.1.0 && git push origin v1.1.0`       → APK nuevo
+#   6. reinstalar el APK en los 6 teléfonos: el host va FIRMADO adentro
+#
+# Formato: una sola línea, https://, sin barra al final. Las líneas que
+# empiezan con # y las vacías se ignoran.
+# ══════════════════════════════════════════════════════════════════════════
+
+https://ventus3.vercel.app

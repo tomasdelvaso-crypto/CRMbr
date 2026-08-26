@@ -162,6 +162,52 @@ recorren el camino de producción.
 - El **preview de la saúde verificada** cuenta la prueba hipotética antes de
   guardar (0,0 → 1,5).
 
+### `revisao.spec.ts` — la puerta del agente (2 pruebas)
+
+La bandeja Revisão es el único lugar por donde lo que el agente propone entra a
+la base. La decisión es **por campo**, y esa es la prueba:
+
+- Con una propuesta `criar_task` de tres campos (título, prazo, canal), rechazar
+  «Canal» cambia el botón a «Aceitar 2 de 3», y al confirmar salen **dos**
+  pedidos en este orden: un `PATCH` que reescribe el `payload` **sin** el campo
+  rechazado y recién después la RPC `ventus_commit_action` con su único
+  argumento. El orden importa: commitear antes de recortar ejecutaría el campo
+  que el vendedor dijo que no. Antes de confirmar no sale nada del teléfono.
+- Aceptando los tres no hay `PATCH`: escribir el mismo payload de vuelta sería
+  una escritura al pedo y una carrera contra el propio commit.
+
+La propuesta se siembra en el **doble de PostgREST**, no en Dexie:
+`sincronizarRevisao()` corre al montar y pisa el `meta` local con lo que
+conteste el servidor, así que una propuesta sembrada sólo en Dexie desaparece
+en el primer render. Para eso `Semente` acepta ahora `servidor`.
+
+### `cadencia.spec.ts` — los dos caminos que mueven un lead (2 pruebas)
+
+- **Registrar un toque**: «Respondeu interessado» escribe el touchpoint en el
+  espejo con el vendedor y el resultado, sube el contador a 3, **mueve la etapa
+  sola** (1B → 1C, sin arrastrar nada), agenda la próxima fecha, y manda la RPC
+  `registrar_touchpoint` con su firma exacta —cinco argumentos, y el número de
+  secuencia **no** viaja: lo calcula el servidor con `for update`—.
+- **Convertir en oportunidad**: el nombre viene propuesto con el de la empresa,
+  el lead queda `converted` en el espejo, sale de la fila de la cadencia, y la
+  RPC `converter_lead` viaja con sus cinco argumentos **sin** el vendedor, que
+  sale de `leads.vendor` del lado del servidor.
+
+### `layout.spec.ts` — geometría, no clases de CSS (4 pruebas × 3 perfiles)
+
+Los tres defectos de superficie de §5 se cerraron acá, y la prueba mide el
+rectángulo real del navegador:
+
+- La **primera tarjeta de Hoje entra entera** en la ventana de scroll con
+  `scrollTop === 0`, y ninguna capa fija (barra del Ventus, bottom nav,
+  micrófono) la intersecta.
+- El **fondo de la lista es alcanzable**: scrolleando al final, el último
+  elemento queda por encima del borde del scroll, y la barra empieza donde el
+  scroll termina.
+- El **editor de escala no desborda**: `scrollWidth <= clientWidth`, y enfocar
+  «Cargo» deja `scrollLeft` en 0.
+- En el Dossiê **ningún control visible repite su nombre accesible**.
+
 ### `offline.spec.ts` — modo avión (3 pruebas)
 
 Con la red cortada de verdad (`context.setOffline`), no con un mock de
@@ -208,10 +254,12 @@ No afirma nada: escribe `docs/capturas/`. Corre solo con `CAPTURAS=1`.
 
 ---
 
-## 3 · Qué encontró: 7 defectos, arreglados
+## 3 · Qué encontró: 12 defectos, arreglados
 
-Los siete se encontraron con el navegador, no leyendo el código, y los siete
-están corregidos en esta rama. Los cambios en la app son estos y solo estos.
+Todos se encontraron con el navegador, no leyendo el código, y todos están
+corregidos en esta rama. Del 3.1 al 3.7 son de la primera pasada; del 3.8 al
+3.12, de la segunda —los tres de superficie que habían quedado anotados en §5 y
+dos que aparecieron al escribir la cobertura que faltaba—.
 
 ### 3.1 · `src/data/realtime.ts` — la app rompía al no poder conectar el socket
 
@@ -334,6 +382,123 @@ es el único que sabe que la condición que hacía fallar la cola cambió.
 
 ---
 
+### 3.8 · Chrome fijo sobre la primera tarjeta de Hoje — 122 px en dos capas
+
+**El peor de los tres de superficie**, porque Hoje es la pantalla que define el
+producto y la tarjeta cortada es su primera impresión. En un iPhone 14 (664 px)
+la ventana de scroll de Hoje terminaba en la bottom nav, y **adentro** de esa
+ventana flotaban dos capas más: la barra de comando del Ventus (66 px) y el FAB
+del micrófono (56 px), justo encima del texto de la acción.
+
+Medido antes: viewport 664 · header 57 · nav 65 · scroll de Hoje 57→601 · barra
+534→600 · FAB 464→520 · **primera tarjeta 430→741**. O sea: la tarjeta no
+entraba ni en el viewport entero, mucho menos arriba del chrome. Esa es la
+parte que la nota original no decía y que cambia el diagnóstico: **esconder el
+chrome no alcanzaba**, porque el contenido de la pantalla ya pedía 684 px de
+alto (373 de bloque superior + 311 de tarjeta) contra 607 de viewport libre.
+
+El arreglo tiene tres piezas, y ninguna sola alcanzaba:
+
+1. **Un micrófono, no dos.** La barra de comando ya tenía un botón de micrófono
+   que abría el MISMO sheet que su campo de texto —redundante— y encima el FAB
+   de Registrar flotaba 4rem por arriba. Ahora el de Registrar **vive dentro de
+   la barra**, con su badge de outbox. Donde no hay barra (`/ventus`,
+   `/instalar`) sigue flotando como antes. Menos chrome, un solo micrófono, y
+   cero superposición sobre el contenido.
+2. **`--spacing-chrome`: la barra deja de apoyarse sobre el scroll.** Es un
+   token nuevo que el Shell escribe en `<html>` en cada navegación (el alto de
+   la barra, o `0px` donde no se pinta). Lo restan las tres pantallas de altura
+   fija —Hoje, Carteira, Cadência— y la utilidad `pb-nav-safe`. Va en `<html>` y
+   no en el `<div>` del Shell porque los portales (Sheet, Toast, Confirm)
+   cuelgan de `<body>`.
+3. **Modo compacto en pantallas cortas** (`useTelaCurta`, `max-height: 880px` —
+   el número sale de la cuenta: el layout completo necesita `100svh >= 872`).
+   No es «achicar todo un poco»: es **mover abajo lo que explica y motiva**. Los
+   anéis se quedan arriba, más chicos (82 → 56 px); la explicación de la largada
+   y la faixa da sequência bajan **debajo de las tres tarjetas**, al lado de la
+   corrente do time. Y en la tarjeta, «Por que isto?» —que siempre fue un chip—
+   pasa a la misma fila de los otros chips. En un teléfono largo o en el
+   escritorio nada de esto se activa.
+
+| | Antes | Después |
+|---|---|---|
+| Bloque sobre la tarjeta | 373 px | 187 px |
+| Alto de la tarjeta | 311 px | 251 px |
+| Ventana de scroll | 544 px (con 122 px de chrome adentro) | 478 px, limpia |
+| Primera tarjeta | 430 → **741** (cortada a los 534) | 244 → **495**, con 40 px de sobra |
+
+En el Pixel 7 (839 px de viewport real con la barra de Chrome puesta) el
+problema era el mismo pero más chico: la tarjeta terminaba 15 px por debajo del
+borde. Por eso el umbral es 880 y no 700.
+
+`layout.spec.ts` lo mide en los tres perfiles: la tarjeta entera adentro de la
+ventana con `scrollTop === 0` y sin intersección con ninguna capa fija.
+
+### 3.9 · `src/ui/SegmentedControl.tsx` — 31 px de desborde horizontal
+
+El editor de escala medía `scrollWidth` 419 contra `clientWidth` 388 en un
+iPhone 14, así que al enfocar «Cargo» el sheet se corría de costado.
+
+**La sospechosa de la nota original era la grilla de dos columnas del bloque de
+evidencia, y era inocente**: mide 356 px y entra. El culpable es el control
+segmentado de la categoría SPIN. Sus botones son `flex-1` con el rótulo en un
+`<span class="truncate">` —una sola línea, sin cortes—, y sin `min-w-0` un ítem
+flex conserva `min-width: auto`, que resuelve al ancho intrínseco de ese texto.
+Con «Necessidade de solução» (138 px) el radiogroup se negaba a encoger. El
+`truncate` estaba puesto desde el principio; lo que faltaba era dejarlo actuar.
+
+Dos cambios: `min-w-0` en el botón (arregla el desborde en **todos** los usos
+del control) y, para que nada quede recortado en este de cuatro segmentos, el
+rótulo corto («Necessidade») en el segmento con el nombre completo mudado a la
+línea de ayuda que ya estaba justo arriba. El `sm` además pasa de `px-3` a
+`px-2`, que son los 8 px que separan a un rótulo de once letras de entrar
+entero.
+
+### 3.10 · Dos botones con el mismo nombre accesible en el Dossiê
+
+El «Voz» de la ficha y el micrófono del Shell se llamaban los dos «Registrar
+por voz». Ahora el de la ficha dice **a quién** registra —«Registrar conversa
+por voz em Tetra Pak»— y el del Shell queda como la captura genérica, sin
+cliente. El rótulo visible («Voz») sigue contenido en el nombre, como pide el
+criterio 2.5.3.
+
+Y ya que estábamos, el barrido de nombres repetidos encontró otro que la nota
+no mencionaba: la lista de perguntas SPIN pintaba **cinco** botones llamados
+«Marcar como já perguntada», uno por pregunta. Ahora cada uno lleva su pregunta
+adentro del nombre. Pasa en `BlocoGate` y en `EditorEscala`.
+
+### 3.11 · `src/screens/Revisao/index.tsx` — bucle de render infinito
+
+Apareció al escribir `revisao.spec.ts`: con **una sola propuesta en la
+bandeja**, la consola escupía `Maximum update depth exceeded` en cada visita.
+
+`onDecisao` se le pasa a la tarjeta como una flecha inline, así que cambia de
+identidad en cada render; el efecto de `CartaoProposta` que la llama depende de
+ella y por lo tanto corre en cada render. `registrarDecisao` guardaba
+**siempre** un objeto de estado nuevo, aunque la decisión fuera idéntica, así
+que ese efecto pedía otro render, que pedía otro efecto, hasta que React
+llegaba al tope de profundidad y abandonaba.
+
+**Arreglo:** el updater devuelve el MISMO objeto cuando la decisión no cambió.
+React descarta el render y el ciclo se corta en la primera vuelta.
+
+### 3.12 · `src/screens/Cadencia/LeadSheet.tsx` — el toque nacía con el número equivocado
+
+Apareció al escribir `cadencia.spec.ts`. Abriendo Embalagens Vale —2 toques
+hechos— la fila decía «Toque 3 de 7» y el sheet, un centímetro más abajo,
+«toque 1 de 7».
+
+`nextSequenceNumber(touchpoints)` devuelve **1** cuando el espejo local no tiene
+ninguna fila de toques, que no significa «es el primer toque» sino «todavía no
+bajé los toques de este lead»; el `??` con el contador del lead nunca llegaba a
+dispararse. Y no era sólo el rótulo: ese 1 es el `sequence_number` que se
+escribía en la copia local del toque nuevo (la RPC no lo manda —lo calcula el
+servidor con `for update`—, pero el espejo quedaba mal hasta el siguiente pull).
+
+**Arreglo:** se toma el máximo de las dos fuentes, con tope en 7.
+
+---
+
 ## 4 · Los números
 
 ### 4.1 · Leer el día de Dexie — objetivo < 100 ms
@@ -385,52 +550,73 @@ precargados + CSS + html):
 
 | Archivo | Sin comprimir | gzip |
 |---|---:|---:|
-| `assets/index-*.js` (entrada) | 284,8 kB | 89,4 kB |
-| `assets/ui-*.js` (design system) | 268,2 kB | 86,5 kB |
-| `assets/session-context-*.js` (router + query + contexto) | 226,7 kB | 71,6 kB |
+| `assets/index-*.js` (entrada) | 285,6 kB | 89,9 kB |
+| `assets/ui-*.js` (design system) | 268,3 kB | 86,5 kB |
+| `assets/session-context-*.js` (router + query + contexto) | 227,0 kB | 71,7 kB |
 | `assets/supabase-*.js` | 204,4 kB | 52,4 kB |
 | `assets/chunk-*.js` | 88,6 kB | 29,0 kB |
-| `assets/index-*.css` | 63,1 kB | 12,6 kB |
-| `index.html` | 3,9 kB | 1,5 kB |
-| **TOTAL** | **1.139,7 kB** | **343,1 kB** |
+| `assets/index-*.css` | 63,2 kB | 12,7 kB |
+| `index.html` | 4,3 kB | 1,7 kB |
+| `assets/deteccao-*.js` | 1,3 kB | 0,6 kB |
+| **TOTAL** | **1.142,7 kB** | **344,5 kB** |
 
-El `dist` entero son **41 archivos JS, 1.448,1 kB** entre todos los chunks por
-ruta; el service worker precachea **63 entradas, 1.562 KiB**, que es lo que
+El `dist` entero son **42 archivos JS, 1.453,9 kB** entre todos los chunks por
+ruta; el service worker precachea **64 entradas, 1.568 KiB**, que es lo que
 hace que la app siga navegable entera en modo avión.
 
-El camino crítico es el 79 % del JS del proyecto. El bulto son cuatro chunks
-que no se pueden partir más sin romper el arranque, y el más grande evitable es
-`supabase-*.js` (52 kB gzip) — que hoy entra en el arranque aunque la primera
-pantalla no le pida nada a la red.
+#### Por qué `supabase-*.js` sigue en el arranque
+
+Es el chunk evitable más grande (52 kB gzip) y la primera pantalla no le pide
+nada a la red, así que se miró en serio. **No se sacó, y el motivo importa
+más que el número**: no es un `manualChunks` mal puesto, es la forma del
+import.
+
+`src/data/supabase.ts` crea el cliente en el cuerpo del módulo con un
+`import` estático de `@supabase/supabase-js`, y **diez módulos lo importan de
+forma síncrona** (`transport`, `sync`, `queries`, `revisao`, `realtime`,
+`auth`, `ajustes`, `gestor`, `SessionProvider`, `host/auth`), con 26 puntos de
+uso encadenados (`supabase.from(...).select().eq()`, `supabase.auth.…`). La
+tela Hoje importa `@/data` para leer Dexie, así que el chunk entra por el
+barril aunque no se haga una sola llamada.
+
+Sacarlo pide convertir el singleton en un acceso asíncrono y tocar los diez
+módulos — o sea, la cola del outbox, el pull, el realtime y la guardia de
+sesión: exactamente el código del que depende el arranque sin señal. Un Proxy
+que difiera la carga no sirve: los llamadores encadenan el builder de
+PostgREST de forma síncrona.
+
+La condición de la tarea era «sólo si no rompe el arranque offline», y esto no
+se puede afirmar sin rehacer y volver a probar esas cuatro capas. Queda
+anotado con el plan: cliente perezoso (`getSupabase(): Promise<SupabaseClient>`)
++ `await` en los diez consumidores + una prueba nueva de arranque en frío sin
+red antes de tocar nada.
 
 ---
 
 ## 5 · Lo que se vio y NO se tocó
 
-Está anotado, no arreglado. Nada de esto rompe un flujo.
+Los tres defectos de superficie que estaban acá se arreglaron: son 3.8, 3.9 y
+3.10. Lo que queda anotado es esto, y nada de esto rompe un flujo.
 
-1. **Dos botones con el mismo nombre accesible en el Dossiê.** El de la ficha
-   («Voz», `aria-label="Registrar por voz"`) y el FAB del Shell. Un lector de
-   pantalla anuncia dos veces lo mismo en la misma pantalla. Las pruebas lo
-   sortean con `.last()`; el arreglo natural es que el de la ficha diga
-   «Registrar por voz nesta oportunidade».
-2. **El contenido del editor de escala desborda ~31 px en horizontal**
-   (`scrollWidth` 419 contra `clientWidth` 388 en un iPhone 14), así que al
-   enfocar «Cargo» el sheet se corre de costado y el texto queda pegado al
-   borde. La grilla de dos columnas del bloque de evidencia es la sospechosa.
-3. **En teléfonos cortos, la barra de comando del Ventus y el FAB tapan la
-   parte de abajo de la primera tarjeta de Hoje** (unos 150 px sobre 664). Se
-   resuelve scrolleando, pero la primera impresión de la pantalla más
-   importante del producto es una tarjeta cortada. Se ve en
-   `docs/capturas/01-hoje-claro.png`.
-4. **El service worker está apagado en desarrollo** (`devOptions.enabled:
+1. **El chunk de Supabase sigue en el camino crítico.** 52 kB gzip que la
+   primera pantalla no usa. Por qué no se sacó y qué haría falta, en 4.3.
+2. **El service worker está apagado en desarrollo** (`devOptions.enabled:
    false`), así que ninguna prueba del dev server puede ejercitar el arranque
    en frío sin red. El precache se verifica en el build.
-5. **Sembrar en Dexie por atrás no mueve el cache de TanStack Query**, que la
+3. **Sembrar en Dexie por atrás no mueve el cache de TanStack Query**, que la
    app persiste y trata como fresco 60 s. No es un defecto —en producción solo
    escriben el sync y las mutaciones, y las dos invalidan lo que tocan— pero es
    una trampa para cualquiera que escriba una prueba nueva. El fixture lo
    documenta y lo evita arrancando en `/instalar`.
+4. **La bandeja Revisão se siembra por el servidor y no por Dexie.** No es un
+   defecto: `sincronizarRevisao()` pisa el `meta` local con lo que conteste el
+   servidor, que es lo correcto en producción. Pero cualquiera que escriba una
+   prueba nueva de esa pantalla tiene que usar `Semente.servidor` o va a ver la
+   bandeja vaciarse sola en el primer render.
+5. **La prueba del cierre de 60 s de la Golden Hour es la más frágil de la
+   suite.** Espera un minuto de reloj de verdad, a propósito, y con dos workers
+   peleando por el mismo dev server a veces no llega. Falla igual antes y
+   después de este trabajo; se arregla corriendo `golden.spec.ts` sola.
 
 ---
 

@@ -5,4 +5,15 @@ e2e/
 playwright.config.ts
 docs/
 android/
-scripts/
+
+# scripts/ fica fora do deploy — MENOS o resolvedor da URL pública, que o
+# vite.config.ts importa em tempo de build. Sem ele o build da Vercel falha
+# com "Cannot find module './scripts/url-publica.mjs'".
+#
+# Tem que ser `scripts/*` e não `scripts/`: na semântica de .gitignore (que é a
+# que a Vercel usa), um `!` NÃO consegue re-incluir um arquivo cujo diretório
+# pai foi excluído. Com `scripts/*` o diretório em si não é excluído, só os
+# filhos, e aí a negação funciona. Verificado com `git check-ignore`.
+scripts/*
+!scripts/url-publica.mjs
+!scripts/url-publica.d.mts

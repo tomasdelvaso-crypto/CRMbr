@@ -23,6 +23,8 @@ export interface ChamadaFake {
   payload?: unknown
   filtros: Array<{ metodo: string; coluna: string; valor: unknown }>
   colunas?: string
+  /** Segundo argumento de `upsert` (típicamente `{ onConflict }`). */
+  opcoes?: unknown
 }
 
 export interface FakeDb {
@@ -39,6 +41,7 @@ export interface FakeDb {
 interface FakeBuilder extends PromiseLike<RespostaFake> {
   select(colunas?: string, opcoes?: unknown): FakeBuilder
   insert(payload: unknown): FakeBuilder
+  upsert(payload: unknown, opcoes?: unknown): FakeBuilder
   update(payload: unknown): FakeBuilder
   delete(): FakeBuilder
   eq(coluna: string, valor: unknown): FakeBuilder
@@ -82,6 +85,12 @@ export function criarFakeDb(): FakeDb {
       insert(payload: unknown) {
         registro.op = 'insert'
         registro.payload = payload
+        return b
+      },
+      upsert(payload: unknown, opcoes?: unknown) {
+        registro.op = 'upsert'
+        registro.payload = payload
+        registro.opcoes = opcoes
         return b
       },
       update(payload: unknown) {

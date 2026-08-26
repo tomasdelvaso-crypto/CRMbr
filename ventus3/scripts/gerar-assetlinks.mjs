@@ -29,7 +29,8 @@
 // CÓMO SE USA
 // ══════════════════════════════════════════════════════════════════════════
 //   node scripts/gerar-assetlinks.mjs
-//   node scripts/gerar-assetlinks.mjs --verificar=https://ventus.ventapel.com.br
+//   node scripts/gerar-assetlinks.mjs --verificar            # usa config/url-publica.txt
+//   node scripts/gerar-assetlinks.mjs --verificar=https://outra.url
 //   node scripts/gerar-assetlinks.mjs --check          # no escribe; falla si difiere
 //   node scripts/gerar-assetlinks.mjs --extra-sha256=AA:BB:...  # 2ª clave
 //
@@ -40,7 +41,8 @@
 //   --senha-arquivo=<path>  default: /home/user/ventus-keystore-pass.txt
 //   --saida=<path>          default: public/.well-known/assetlinks.json
 //   --extra-sha256=<fp>     repetible. Para el Play App Signing o una 2ª clave
-//   --verificar=<url>       baja el archivo publicado y lo compara
+//   --verificar[=<url>]     baja el archivo publicado y lo compara (sin valor:
+//                           la URL de config/url-publica.txt)
 //   --check                 modo CI: no escribe, sale 1 si el disco no coincide
 //   --json                  imprime el resultado como JSON y nada más
 //
@@ -51,6 +53,7 @@ import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { lerUrlPublica } from './url-publica.mjs';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const RAIZ = resolve(AQUI, '..');
@@ -87,7 +90,10 @@ function lerArgs(argv) {
       case 'senha-arquivo': args.senhaArquivo = valor; break;
       case 'saida': args.saida = valor; break;
       case 'extra-sha256': args.extraSha256.push(valor); break;
-      case 'verificar': args.verificar = valor; break;
+      // Sin valor, `--verificar` usa la fuente única (config/url-publica.txt
+      // o VENTUS_URL). Escribir la URL a mano acá es la forma clásica de
+      // verificar un host y desplegar en otro.
+      case 'verificar': args.verificar = valor ?? lerUrlPublica(); break;
       case 'check': args.check = true; break;
       case 'json': args.json = true; break;
       case 'help': case 'h': args.help = true; break;
@@ -317,7 +323,7 @@ async function main() {
   SILENCIO = Boolean(args.json);
 
   if (args.help) {
-    console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 44).join('\n'));
+    console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 48).join('\n'));
     return;
   }
 
@@ -400,7 +406,7 @@ async function main() {
     log('  (Limited Distribution Account) junto com o package name. Ver docs/ANDROID.md.');
     log('');
     log('  Falta publicar: o arquivo só vale depois de um deploy. Depois rode');
-    log('    node scripts/gerar-assetlinks.mjs --verificar=https://<seu-host>');
+    log('    node scripts/gerar-assetlinks.mjs --verificar');
   }
 
   if (args.verificar) {

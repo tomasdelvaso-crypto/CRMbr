@@ -1,14 +1,41 @@
 /// <reference types="vitest/config" />
 import { fileURLToPath, URL } from 'node:url'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { lerUrlPublica } from './scripts/url-publica.mjs'
+
+// ══════════════════════════════════════════════════════════════════════════
+// La URL pública, inyectada en index.html
+// ══════════════════════════════════════════════════════════════════════════
+// og:image y og:url tienen que ser absolutas: WhatsApp —por donde se manda el
+// link de /instalar— no resuelve rutas relativas y el link llega como texto
+// pelado. Absoluta significa que el host queda escrito en el HTML, y ahí es
+// donde se pudría: quedaba `ventus.ventapel.com.br`, un dominio que todavía
+// no existe, mientras el sitio vivía en otro lado.
+//
+// Ahora el HTML escribe `%VENTUS_URL%` y este plugin lo reemplaza en build y
+// en dev con el valor de config/url-publica.txt (o de la variable VENTUS_URL).
+// Va con `order: 'pre'` para correr antes del reemplazo de %VITE_*% que hace
+// el propio Vite, que no conoce esta clave y la dejaría intacta.
+function urlPublicaNoHtml(): Plugin {
+  return {
+    name: 'ventus-url-publica',
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html) {
+        return html.replaceAll('%VENTUS_URL%', lerUrlPublica())
+      },
+    },
+  }
+}
 
 // Configuración única de Ventus v3.
 // Una sola app Vite: el dominio (src/core) se comparte con api/ por import relativo.
 export default defineConfig({
   plugins: [
+    urlPublicaNoHtml(),
     react(),
     tailwindcss(),
     VitePWA({

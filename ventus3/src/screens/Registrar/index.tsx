@@ -66,6 +66,7 @@ import {
   haptic,
   toast,
 } from '@/ui'
+import { useBackNativo, useBotaoPrimario, useBotaoSecundario } from '@/host'
 import { consumirCompartilhamento, idCompartilhadoDaUrl } from '@/install/compartilhado'
 import { BotaoGravar } from './BotaoGravar'
 import { CartaoConfirmacao } from './CartaoConfirmacao'
@@ -698,6 +699,63 @@ export default function RegistrarScreen() {
   }, [])
 
   /* ══════════════════════════════════════════════════════════════════════
+     La acción crítica de esta pantalla
+     ══════════════════════════════════════════════════════════════════════
+     «Confirmar» es el tercer y último toque del camino feliz, y es EL momento
+     en que el doble tap duplica el registro —el bug que el bot del v2 sufre
+     hoy—. Por eso se declara al host: el MainButton del Mini App tiene
+     progreso nativo que además desactiva el botón mientras la escritura está
+     en vuelo, y eso no hay forma de conseguirlo dibujando el botón propio.
+
+     «Descartar» es el secundario: es la salida, no una segunda acción crítica.
+     «Corrigir falando» se queda SIEMPRE en la barra propia — el host tiene dos
+     botones y el tercero es el que se sacrifica.
+
+     Los dos se apagan mientras hay un sheet abierto (buscar cliente, teclado):
+     un botón fijo abajo que escribe sobre lo que quedó detrás del modal es una
+     trampa. Todo esto vive arriba del `return` temprano porque un hook no
+     puede quedar del otro lado de un `if`. */
+  const emConfirmacao = fase === 'confirmando' || fase === 'salvando'
+  const bloqueado = !rascunho || !podeConfirmar(rascunho)
+  const sheetAberto = buscaAberta || tecladoAberto
+  const podeDecidir = emConfirmacao && rascunho !== null && !sheetAberto
+
+  const confirmarNativo = useBotaoPrimario(
+    !podeDecidir
+      ? null
+      : {
+          rotulo: 'Confirmar',
+          ativo: !bloqueado,
+          carregando: fase === 'salvando',
+          aoTocar: () => {
+            void confirmarRegistro()
+          },
+        },
+  )
+
+  const descartarNativo = useBotaoSecundario(
+    !podeDecidir
+      ? null
+      : {
+          rotulo: 'Descartar',
+          ativo: fase !== 'salvando',
+          aoTocar: () => {
+            void descartar()
+          },
+        },
+  )
+
+  // Registrar se abre EMPILHADA casi siempre (el FAB, una tarjeta del día), y
+  // el back nativo del Mini App tiene que devolver a donde estaba. Casi:
+  // entrar por el share_target o por un deep link la deja como PRIMERA entrada
+  // del historial —`location.key === 'default'`— y ahí `navigate(-1)` no tiene
+  // a dónde volver, así que el botón quedaría muerto. Se manda a Hoje.
+  useBackNativo(() => {
+    if (location.key === 'default') void navigate('/')
+    else void navigate(-1)
+  })
+
+  /* ══════════════════════════════════════════════════════════════════════
      Render
      ══════════════════════════════════════════════════════════════════════ */
 
@@ -708,9 +766,6 @@ export default function RegistrarScreen() {
       </div>
     )
   }
-
-  const emConfirmacao = fase === 'confirmando' || fase === 'salvando'
-  const bloqueado = !rascunho || !podeConfirmar(rascunho)
 
   return (
     <div className="flex flex-col">
@@ -838,17 +893,22 @@ export default function RegistrarScreen() {
                 {textoDoQueFalta(rascunho)}
               </p>
             )}
-            <Button
-              block
-              size="lg"
-              icon={<Check size={20} aria-hidden />}
-              disabled={bloqueado}
-              loading={fase === 'salvando'}
-              hapticPattern="success"
-              onClick={() => void confirmarRegistro()}
-            >
-              Confirmar
-            </Button>
+            {/* Cuando el host los dibuja abajo de todo, no se dibujan acá:
+                dos «Confirmar» para la misma escritura es exactamente cómo se
+                registra dos veces el mismo hecho. */}
+            {!confirmarNativo && (
+              <Button
+                block
+                size="lg"
+                icon={<Check size={20} aria-hidden />}
+                disabled={bloqueado}
+                loading={fase === 'salvando'}
+                hapticPattern="success"
+                onClick={() => void confirmarRegistro()}
+              >
+                Confirmar
+              </Button>
+            )}
             <div className="flex gap-2">
               <Button
                 variant="secondary"
@@ -859,15 +919,17 @@ export default function RegistrarScreen() {
               >
                 Corrigir falando
               </Button>
-              <Button
-                variant="ghost"
-                block
-                icon={<X size={18} aria-hidden />}
-                disabled={fase === 'salvando'}
-                onClick={() => void descartar()}
-              >
-                Descartar
-              </Button>
+              {!descartarNativo && (
+                <Button
+                  variant="ghost"
+                  block
+                  icon={<X size={18} aria-hidden />}
+                  disabled={fase === 'salvando'}
+                  onClick={() => void descartar()}
+                >
+                  Descartar
+                </Button>
+              )}
             </div>
           </div>
         </div>

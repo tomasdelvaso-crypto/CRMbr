@@ -1,6 +1,11 @@
 # .github/workflows/apk.yml
 # Gera o APK (TWA) do Ventus v3 e publica como GitHub Release ao empurrar uma tag v*.
 #
+# Este arquivo vive na RAIZ do repositório (o Actions só lê .github/workflows/
+# da raiz), mas o projeto vive em ventus3/. Daí o `env.DIR_APP` e os
+# `working-directory` — todo caminho relativo aqui é relativo à raiz do repo,
+# não a ventus3/.
+#
 # ══════════════════════════════════════════════════════════════════════════
 # POR QUE ESTE WORKFLOW EXISTE
 # ══════════════════════════════════════════════════════════════════════════
@@ -17,13 +22,14 @@
 # ══════════════════════════════════════════════════════════════════════════
 # Settings → Secrets and variables → Actions
 #
-#   Secrets:
-#     ANDROID_KEYSTORE_BASE64    base64 -w0 android/ventapel-ventus.keystore
+#   Secrets (obrigatórios):
+#     ANDROID_KEYSTORE_BASE64    base64 -w0 ventus3/android/ventapel-ventus.keystore
 #     ANDROID_KEYSTORE_PASSWORD  a senha (a mesma do keystore e da chave)
 #
-#   Variables:
-#     VENTUS_URL                 ex.: https://ventus.ventapel.com.br
-#                                (a URL que o APK vai abrir; sem barra no fim)
+#   Variables (opcional):
+#     VENTUS_URL                 só se quiser pisar a URL do repositório.
+#                                Sem ela usamos ventus3/config/url-publica.txt,
+#                                que é a fonte única e já está preenchida.
 #
 # Passo a passo com os comandos exatos: ventus3/docs/ANDROID.md
 #
@@ -46,11 +52,11 @@ on:
   workflow_dispatch:
     inputs:
       url:
-        description: 'URL que o APK vai abrir (vazio = usa a variable VENTUS_URL)'
+        description: 'URL que o APK vai abrir (vazio = config/url-publica.txt ou a variable VENTUS_URL)'
         required: false
         type: string
       publicar:
-        description: 'Publicar como GitHub Release (só faz sentido com uma tag)'
+        description: 'Publicar como GitHub Release (exige que o workflow tenha sido disparado numa tag)'
         required: false
         default: false
         type: boolean
@@ -85,16 +91,24 @@ jobs:
 
       # O bubblewrap exige JDK 17. Com o 21 as command line tools do Android
       # não compilam — não é preciosismo, é um erro de compilação.
+      # Isto também põe o `keytool` no PATH, que os passos seguintes usam.
       - name: JDK 17 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+      # `packages` explícito. O valor padrão da action inclui `tools`, que é um
+      # pacote OBSOLETO do sdkmanager: quando ele não resolve, o passo falha com
+      # "Failed to find package tools" e o erro não diz o que fazer. O que o
+      # gradle do bubblewrap precisa de verdade é platform-tools + uma platform
+      # + build-tools; o que faltar, o próprio gradle baixa (as licenças já
+      # estão aceitas por esta action).
       - name: Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'tools platform-tools'
+          packages: 'platform-tools build-tools;34.0.0 platforms;android-34'
+          accept-android-sdk-licenses: true
 
       - name: Node 22
         uses: actions/setup-node@v4
@@ -104,8 +118,21 @@ jobs:
       - name: Instalar Bubblewrap
         run: npm install -g "@bubblewrap/cli@${BUBBLEWRAP_VERSION}"
 
-      # Decide a URL: input manual > variable do repositório. Sem URL não há
-      # APK possível, então falhamos cedo e com a instrução exata.
+      # Diagnóstico barato: se o build falhar por SDK, esta saída é a primeira
+      # coisa que se olha. Um `ls` que não custa nada evita meia hora de chute.
+      - name: Onde ficou o SDK
+        run: |
+          set -euo pipefail
+          echo "ANDROID_HOME=${ANDROID_HOME:-(vazio)}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-(vazio)}"
+          echo "JAVA_HOME=${JAVA_HOME:-(vazio)}"
+          ls -1 "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmdline-tools" || true
+          java -version
+          keytool -help >/dev/null 2>&1 && echo "keytool: ok"
+
+      # Decide a URL: input manual > variable do repositório > fonte única do
+      # repositório (ventus3/config/url-publica.txt). Sem nenhuma das três não
+      # há APK possível, então falhamos cedo e com a instrução exata.
       - name: Resolver a URL do app
         id: url
         env:
@@ -113,17 +140,41 @@ jobs:
           URL_VAR: ${{ vars.VENTUS_URL }}
         run: |
           set -euo pipefail
-          URL="${URL_INPUT:-$URL_VAR}"
+          URL="${URL_INPUT:-}"
+          ORIGEM='input do Run workflow'
           if [ -z "$URL" ]; then
-            echo "::error::Falta a URL. Defina a variable VENTUS_URL em Settings → Secrets and variables → Actions → Variables, ou passe 'url' no Run workflow."
+            URL="${URL_VAR:-}"
+            ORIGEM='variable VENTUS_URL'
+          fi
+          if [ -z "$URL" ]; then
+            URL="$(node "${DIR_APP}/scripts/url-publica.mjs")"
+            ORIGEM="${DIR_APP}/config/url-publica.txt"
+          fi
+          if [ -z "$URL" ]; then
+            echo "::error::Falta a URL. Preencha ${DIR_APP}/config/url-publica.txt, ou defina a variable VENTUS_URL em Settings → Secrets and variables → Actions → Variables, ou passe 'url' no Run workflow."
             exit 1
           fi
           case "$URL" in
             https://*) ;;
-            *) echo "::error::VENTUS_URL precisa começar com https://. Recebi: $URL"; exit 1 ;;
+            *) echo "::error::A URL do app precisa começar com https:// (Android não valida Digital Asset Links sobre http). Recebi: $URL"; exit 1 ;;
           esac
           echo "url=${URL%/}" >> "$GITHUB_OUTPUT"
-          echo "URL do app: ${URL%/}"
+          echo "URL do app: ${URL%/}   (origem: $ORIGEM)"
+
+      # Falhar aqui, e não depois de 15 minutos de gradle: publicar exige uma
+      # tag, porque a Release leva o nome do ref. Num branch, `github.ref_name`
+      # traz barras ("claude/algo") e o `gh release create` faria algo que
+      # ninguém quer.
+      - name: Conferir que dá para publicar
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publicar
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF}" in
+            refs/tags/v*) echo "Vai publicar a Release ${GITHUB_REF_NAME}." ;;
+            *)
+              echo "::error::'Publicar' só funciona a partir de uma tag v*. Este run veio de ${GITHUB_REF}. Rode: git tag v1.0.0 && git push origin v1.0.0"
+              exit 1 ;;
+          esac
 
       # O keystore chega em base64 e vive só no disco efêmero do runner.
       # Sem ele o build assinaria com uma chave de debug — e um APK com
@@ -132,10 +183,18 @@ jobs:
       - name: Restaurar o keystore de release
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          # A senha entra por env e nunca interpolada no meio do script: um
+          # `${{ secrets... }}` dentro de aspas viraria injeção de shell se a
+          # senha tivesse aspas ou crase.
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -z "${KEYSTORE_B64:-}" ]; then
             echo "::error::Falta o secret ANDROID_KEYSTORE_BASE64. Gere-o com: base64 -w0 ventus3/android/ventapel-ventus.keystore"
+            exit 1
+          fi
+          if [ -z "${KEYSTORE_PASS:-}" ]; then
+            echo "::error::Falta o secret ANDROID_KEYSTORE_PASSWORD. É a linha VENTUS_KEYSTORE_PASSWORD= do arquivo de senha, fora do repositório."
             exit 1
           fi
           printf '%s' "$KEYSTORE_B64" | base64 -d > "${DIR_APP}/android/ventapel-ventus.keystore"
@@ -143,7 +202,7 @@ jobs:
           # Um base64 truncado gera um arquivo que só falha lá na assinatura,
           # com uma mensagem que não ajuda. Checamos aqui.
           if ! keytool -list -keystore "${DIR_APP}/android/ventapel-ventus.keystore" \
-                 -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >/dev/null 2>&1; then
+                 -storepass "$KEYSTORE_PASS" >/dev/null 2>&1; then
             echo "::error::O keystore restaurado não abre. Confira ANDROID_KEYSTORE_BASE64 (use base64 -w0, sem quebras de linha) e ANDROID_KEYSTORE_PASSWORD."
             exit 1
           fi
@@ -157,6 +216,22 @@ jobs:
         env:
           VENTUS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: node scripts/gerar-assetlinks.mjs --check
+
+      # Aviso, não bloqueio: baixa o assetlinks do site de verdade e diz se vai
+      # validar. Não trava a Release porque um cache de CDN atrasado impediria
+      # de gerar um APK que está correto — mas se falhar aqui, falha no
+      # telefone, e o log deixa isso escrito antes de alguém instalar.
+      - name: Conferir o assetlinks já publicado (aviso)
+        continue-on-error: true
+        working-directory: ${{ env.DIR_APP }}
+        env:
+          VENTUS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if ! node scripts/gerar-assetlinks.mjs --check --verificar="${{ steps.url.outputs.url }}"; then
+            echo "::warning::O assetlinks de ${{ steps.url.outputs.url }} não valida hoje. O APK vai abrir com a barra do Chrome até isso ser corrigido. Ver ventus3/docs/ANDROID.md §4."
+            exit 1
+          fi
 
       - name: Versão
         id: versao
@@ -214,6 +289,20 @@ jobs:
         working-directory: ${{ env.DIR_APP }}
         run: |
           set -euo pipefail
+
+          # nullglob: o .aab só existe se o bubblewrap tiver gerado o bundle, e
+          # o build-apk.sh copia condicionalmente. Sem isto, um glob sem match
+          # chega ao `gh` como o texto "android/dist/*.aab" e o comando falha
+          # com "file not found" DEPOIS de compilar tudo.
+          shopt -s nullglob
+          ARQUIVOS=(android/dist/*.apk android/dist/*.aab)
+          shopt -u nullglob
+          if [ "${#ARQUIVOS[@]}" -eq 0 ]; then
+            echo "::error::Não achei nenhum .apk/.aab em android/dist para publicar."
+            exit 1
+          fi
+          echo "Vou subir: ${ARQUIVOS[*]}"
+
           NOTAS="$(mktemp)"
           cat > "$NOTAS" <<EOF
           ## Ventus $VERSAO (versionCode $CODIGO)
@@ -230,7 +319,7 @@ jobs:
              desconhecidos desta fonte", toque em **Configurações** e ative a
              permissão para o Chrome. É uma vez só.
           3. O Play Protect vai avisar **"App não verificada"** —
-             toque em **Instalar mesmo assim**.
+             toque em **Mais detalhes** e depois em **Instalar mesmo assim**.
           4. Ao abrir, **não pode** aparecer a barra de endereço do Chrome.
              Se aparecer, o assetlinks.json não validou: veja \`docs/ANDROID.md\`.
 
@@ -238,10 +327,10 @@ jobs:
           EOF
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" android/dist/*.apk android/dist/*.aab --clobber
+            gh release upload "$TAG" "${ARQUIVOS[@]}" --clobber
           else
             gh release create "$TAG" \
-              android/dist/*.apk android/dist/*.aab \
+              "${ARQUIVOS[@]}" \
               --title "Ventus $VERSAO" \
               --notes-file "$NOTAS"
           fi

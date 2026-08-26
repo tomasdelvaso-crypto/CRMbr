@@ -20,6 +20,7 @@ import type {
   StageId,
   Task,
   Vendor,
+  VentusAction,
 } from '@/core'
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -152,6 +153,16 @@ export interface Semente {
   leads: Lead[]
   tasks: Task[]
   commitments: Commitment[]
+  /**
+   * Filas que además existen «del lado del servidor», por nombre de tabla.
+   *
+   * No se escriben en Dexie: las contesta el doble de PostgREST. Hace falta
+   * para todo lo que la app REVALIDA al montar y guarda pisando lo local — la
+   * bandeja de Revisão es el caso: `sincronizarRevisao()` pide
+   * `ventus_actions` y escribe lo que vuelva en `meta`, así que una propuesta
+   * sembrada sólo en Dexie desaparece en el primer render.
+   */
+  servidor?: Record<string, unknown[]>
 }
 
 /**
@@ -258,4 +269,59 @@ export function sementePadrao(): Semente {
 /** Semilla vacía: la cartera que todavía no bajó. */
 export function sementeVazia(): Semente {
   return { vendors: [vendedor()], opportunities: [], leads: [], tasks: [], commitments: [] }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Propuestas del Ventus (la bandeja de Revisão)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Id fijo: las aserciones lo buscan en el cuerpo de lo que salió al servidor. */
+export const PROPOSTA_ID = '11111111-2222-4333-8444-555555555555'
+
+/**
+ * Una propuesta `criar_task` sobre Ambev (102), con TRES campos revisables:
+ * título, prazo y canal. Tres y no uno a propósito — la decisión de esta
+ * pantalla es POR CAMPO, y con un solo campo esa regla no se puede probar.
+ */
+export function propostaCriarTask(over: Partial<VentusAction> = {}): VentusAction {
+  const criado = new Date()
+  const expira = new Date(criado.getTime() + 40 * 60 * 60 * 1000)
+  return {
+    id: PROPOSTA_ID,
+    vendor: VENDEDOR,
+    vendor_id: 1,
+    tipo: 'criar_task',
+    payload: {
+      titulo: 'Ligar para Marcelo sobre a caixa violada',
+      due_date: diasAdiante(2),
+      canal: 'phone',
+    },
+    evidencia: {
+      quote: 'Se a caixa chegar violada de novo, eu perco o contrato com a rede.',
+      fonte: { nome: 'Marcelo Silva', cargo: 'Gerente de Logística' },
+    },
+    confianca: 'alta',
+    precondition_hash: null,
+    idempotency_key: `e2e-${PROPOSTA_ID}`,
+    status: 'proposed',
+    entity_kind: 'opportunity',
+    entity_id: '102',
+    superficie: 'telegram',
+    motivo: 'O Ventus ouviu um prazo na sua nota de voz e propôs a tarefa.',
+    resultado: null,
+    expires_at: expira.toISOString(),
+    created_at: criado.toISOString(),
+    committed_at: null,
+    dismissed_at: null,
+    dismissed_reason: null,
+    ...over,
+  }
+}
+
+/** La cartera de siempre, más una propuesta esperando en la bandeja. */
+export function sementeComProposta(): Semente {
+  return {
+    ...sementePadrao(),
+    servidor: { ventus_actions: [propostaCriarTask()] },
+  }
 }

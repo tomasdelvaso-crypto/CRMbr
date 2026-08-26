@@ -130,10 +130,16 @@ export function Cabecalho({ opportunity, lead, health, diasSemContato }: Cabecal
         >
           WhatsApp
         </Button>
+        {/* El nombre accesible NO puede ser «Registrar por voz» a secas: ese es
+            el del FAB del Shell, que está en la misma pantalla y manda a la
+            captura sin cliente. Dos botones con el mismo nombre le suenan
+            idénticos a un lector de pantalla. Éste dice a QUIÉN registra; el
+            del Shell queda como la captura genérica. El rótulo visible («Voz»)
+            sigue contenido en el nombre, como pide el criterio 2.5.3. */}
         <Button
           block
           size="sm"
-          aria-label="Registrar por voz"
+          aria-label={`Registrar conversa por voz em ${nome}`}
           icon={<Mic size={17} aria-hidden />}
           onClick={() => void navigate(`/registrar?oportunidade=${String(opportunity.id)}`)}
         >

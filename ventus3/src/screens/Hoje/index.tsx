@@ -50,9 +50,11 @@ import {
   Skeleton,
   haptic,
   toast,
+  useTelaCurta,
 } from '@/ui'
+import { useBotaoPrimario } from '@/host'
 import { SessionContext } from '@/app/session-context'
-import { CabecalhoDoDia } from './CabecalhoDoDia'
+import { CabecalhoDoDia, ContextoDoDia } from './CabecalhoDoDia'
 import { CardAcao } from './CardAcao'
 import { CorrenteDoTime } from './CorrenteDoTime'
 import { SheetAdiar } from './SheetAdiar'
@@ -78,6 +80,15 @@ export default function HojeScreen() {
 function Hoje({ vendorName }: { vendorName: string | null }) {
   const navigate = useNavigate()
   const hoje = useDiaVigente()
+
+  // ── Teléfonos cortos ──────────────────────────────────────────────────
+  // En un iPhone de 664 px quedan 478 px de ventana útil (header 57, bottom
+  // nav 65, barra de comando 66) y esta pantalla pedía 684 para llegar al
+  // final de la primera tarjeta: se veía cortada al abrir. Compactar no es
+  // achicar todo un poco — es mover abajo lo que explica y motiva (la largada,
+  // la faixa da sequência) y dejar arriba lo que dice dónde estoy y qué hago.
+  // En un teléfono largo `compacto` es false y no cambia nada.
+  const compacto = useTelaCurta()
 
   const plano = usePlanoFixado(vendorName, hoje)
   const aneis = useAneisDoDia(vendorName, hoje)
@@ -238,6 +249,25 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
   const contatosProntos = fila.data?.leads.length ?? 0
   const resto = plano.data?.resto ?? []
 
+  /* ── La acción crítica de Hoje ─────────────────────────────────────────
+     «Iniciar Golden Hour», y no «resolver la primera tarjeta»: las tres del
+     día se resuelven con el gesto sobre la tarjeta que corresponde —hay tres,
+     no una—, mientras que el bloque que genera pipeline es UNO y es el que se
+     posterga. Es la reserva que pide el PLANO §60.
+
+     Se apaga mientras el sheet de «Adiar» está abierto: un botón fijo abajo
+     que dispara sobre lo que quedó detrás del modal es una trampa. */
+  const goldenNativo = useBotaoPrimario(
+    aAdiar !== null || fila.isPending
+      ? null
+      : {
+          rotulo: contatosProntos === 0 ? 'Montar a fila da Golden Hour' : 'Iniciar Golden Hour',
+          aoTocar: () => {
+            void navigate('/golden')
+          },
+        },
+  )
+
   return (
     <>
       {/* PullToRefresh necesita una altura DEFINIDA para ser dueño del scroll:
@@ -247,7 +277,7 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
           bottom nav (4rem + safe-bottom, que el <main> ya pone como padding)
           abajo. Total = 100svh exactos, y el body no scrollea. */}
       <PullToRefresh
-        className="h-[calc(100svh-var(--spacing-header)-var(--safe-top)-var(--spacing-nav)-var(--safe-bottom))]"
+        className="h-[calc(100svh-var(--spacing-header)-var(--safe-top)-var(--spacing-nav)-var(--safe-bottom)-var(--spacing-chrome))]"
         onRefresh={async () => {
           await Promise.all([
             plano.refetch(),
@@ -264,15 +294,21 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
             largada={aneis.data?.largada ?? 0}
             sequencia={sequencia.data}
             carregando={aneis.isPending}
+            compacto={compacto}
           />
 
-          <BotaoGoldenHour
-            contatosProntos={contatosProntos}
-            carregando={fila.isPending}
-            onIniciar={() => void navigate('/golden')}
-          />
+          {/* El host ya lo dibuja abajo de todo cuando puede: dibujarlo acá
+              también serían dos botones para la misma acción. */}
+          {!goldenNativo && (
+            <BotaoGoldenHour
+              contatosProntos={contatosProntos}
+              carregando={fila.isPending}
+              compacto={compacto}
+              onIniciar={() => void navigate('/golden')}
+            />
+          )}
 
-          <section aria-label="Suas 3 ações de hoje" className="mt-6">
+          <section aria-label="Suas 3 ações de hoje" className={compacto ? 'mt-4' : 'mt-6'}>
             {carregando ? (
               <Skeleton variant="card-acao" count={3} />
             ) : fixadas.length === 0 ? (
@@ -301,6 +337,7 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
                         item={item}
                         posicao={i + 1}
                         total={fixadas.length}
+                        compacto={compacto}
                         onFazerAgora={irParaRegistro}
                         onFeito={marcarFeito}
                         onAdiar={(acao) => setAAdiar(acao)}
@@ -311,6 +348,16 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
               </>
             )}
           </section>
+
+          {/* En teléfono corto, lo que explica y motiva vive acá abajo. Ver
+              CabecalhoDoDia. */}
+          {compacto && (
+            <ContextoDoDia
+              largada={aneis.data?.largada ?? 0}
+              sequencia={sequencia.data}
+              className="mt-4"
+            />
+          )}
 
           <CorrenteDoTime elos={corrente.data} carregando={corrente.isPending} />
 
@@ -345,23 +392,34 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
 function BotaoGoldenHour({
   contatosProntos,
   carregando,
+  compacto = false,
   onIniciar,
 }: {
   contatosProntos: number
   carregando: boolean
+  compacto?: boolean
   onIniciar: () => void
 }) {
+  // `lg` (52 px) es el tamaño de la acción reservada del PLANO; en teléfono
+  // corto baja a `md` (44 px), que sigue por encima del alvo mínimo.
+  const tamanho = compacto ? 'md' : 'lg'
+  const margem = compacto ? 'mt-3' : 'mt-4'
+
   if (carregando) {
-    return <div className="mt-4 h-touch-lg animate-pulse-soft rounded-card bg-skeleton" />
+    return (
+      <div
+        className={`${margem} ${compacto ? 'h-touch' : 'h-touch-lg'} animate-pulse-soft rounded-card bg-skeleton`}
+      />
+    )
   }
 
   if (contatosProntos === 0) {
     return (
       <Button
         block
-        size="lg"
+        size={tamanho}
         variant="secondary"
-        className="mt-4"
+        className={margem}
         icon={<Zap size={18} aria-hidden />}
         onClick={onIniciar}
       >
@@ -373,8 +431,8 @@ function BotaoGoldenHour({
   return (
     <Button
       block
-      size="lg"
-      className="mt-4"
+      size={tamanho}
+      className={margem}
       icon={<Zap size={18} aria-hidden />}
       hapticPattern="impact"
       onClick={onIniciar}

@@ -138,6 +138,13 @@
   /* Altura del header pegajoso. */
   --spacing-header: 3.5rem;
   --spacing-fab: 3.5rem;
+  /* Altura EXACTA de la barra de comando del Ventus, contada pieza por pieza:
+     el alvo táctil (2,75rem) + el relleno de la cápsula (0,375rem × 2) + sus
+     dos bordes (0,0625rem × 2) + el aire que la separa de la bottom nav
+     (0,5rem). Está escrita acá y no medida en JavaScript porque la usan dos
+     cosas que tienen que coincidir al píxel: la barra, que se pinta con ella,
+     y el hueco que cada scroll reserva abajo para no quedar debajo. */
+  --spacing-ventus: calc(2.75rem + 0.75rem + 0.125rem + 0.5rem);
   --spacing-gutter: 1rem;
   /* Ancho máximo de la columna de contenido en móvil.
      Duplicado como --container-col porque en Tailwind v4 `max-w-col` resuelve
@@ -276,6 +283,14 @@
     --sheet-max-h: calc(100svh - var(--safe-top) - 2.5rem);
     /* Dónde apoya el toast: encima de la bottom nav y del home indicator. */
     --toast-bottom: calc(var(--spacing-nav) + var(--safe-bottom) + 0.75rem);
+    /* Cuánto ocupa el chrome fijo que vive ENCIMA de la bottom nav. Hoy es la
+       barra de comando del Ventus y nada más. El Shell la escribe en cada
+       navegación (0px donde la barra no se pinta) y todo lo que scrollea la
+       resta de su alto: sin esto la barra se apoya sobre el contenido y el
+       último tramo del scroll nunca se puede leer. Vive en :root —y no en el
+       <div> del Shell— porque los portales (Sheet, Toast, Confirm) cuelgan de
+       <body> y quedarían fuera de esa cascada. */
+    --spacing-chrome: 0px;
     color-scheme: light;
   }
 
@@ -368,9 +383,11 @@
 @utility mb-safe {
   margin-bottom: var(--safe-bottom);
 }
-/* Espacio para que el contenido no quede debajo de la bottom nav + home indicator. */
+/* Espacio para que el contenido no quede debajo del chrome fijo de abajo: la
+   bottom nav, el home indicator y —cuando está— la barra de comando del
+   Ventus. Ver --spacing-chrome. */
 @utility pb-nav-safe {
-  padding-bottom: calc(var(--spacing-nav) + var(--safe-bottom));
+  padding-bottom: calc(var(--spacing-nav) + var(--safe-bottom) + var(--spacing-chrome));
 }
 
 /* Alto de pantalla ÚTIL: 100svh menos las dos safe areas. */

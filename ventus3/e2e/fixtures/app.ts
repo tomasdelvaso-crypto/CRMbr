@@ -271,7 +271,11 @@ export const test = base.extend<Fixtures>({
         return filas.filter((f) => f.estado !== 'enviado').length
       },
       async semear(semente = sementePadrao()) {
-        servidor = { vendors: [...semente.vendors] }
+        // `servidor` NO se escribe en Dexie: son las filas que el doble de
+        // PostgREST contesta. Se separa acá para que el bucle de escritura no
+        // intente abrir una tabla que no existe.
+        const { servidor: doServidor, ...tabelas } = semente
+        servidor = { vendors: [...semente.vendors], ...(doServidor ?? {}) }
 
         // El primer arranque va a /instalar, y no es un capricho.
         //
@@ -328,7 +332,7 @@ export const test = base.extend<Fixtures>({
               )) as { notificarMudancas: (tabelas: readonly string[]) => void }
               sync.notificarMudancas(Object.keys(dados as Record<string, unknown>))
             },
-            [MODULO_DB, semente as unknown as Record<string, readonly unknown[]>] as const,
+            [MODULO_DB, tabelas as unknown as Record<string, readonly unknown[]>] as const,
           )
         }
 

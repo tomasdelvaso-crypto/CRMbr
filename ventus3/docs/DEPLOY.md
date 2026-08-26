@@ -4,7 +4,28 @@
 > Se a verificação falha, pare: o passo seguinte vai falhar de um jeito mais
 > difícil de diagnosticar.
 >
-> Corte: 2026-08-25 · rama `claude/crm-web-app-redesign-f7tu7g`
+> Corte: 2026-08-26 · rama `claude/crm-web-app-redesign-f7tu7g`
+
+---
+
+## 0-bis · O que JÁ está feito (26/08/2026)
+
+Este runbook foi escrito antes do primeiro deploy. Boa parte já aconteceu.
+O que **não** é preciso refazer:
+
+| passo | estado |
+|---|---|
+| §1 · projeto na Vercel | **feito** — no ar em `https://ventus3.vercel.app`, root directory `ventus3`, deploy automático desde `claude/crm-web-app-redesign-f7tu7g` |
+| §2 · variáveis de ambiente | **feito** — `/api/health` responde `ok:true` com Supabase, Anthropic, Groq e auth configurados |
+| banco · migrações `0001`–`0012` | **aplicadas** no projeto `wtrbvgqxgcfjacqcndmb` |
+| banco · RLS e grants | **saneados e verificados**: `anon` sem nenhum grant, 67 policies sobre `authenticated` |
+| APK · assetlinks.json | **com o SHA-256 real** do keystore, conferido (`npm run assetlinks:check`) |
+| APK · workflow | **revisado linha a linha**; falta só carregar os dois secrets |
+
+O que **falta**, por ordem de prioridade, está em `ESTADO.md` §5. Os passos
+deste documento que continuam pendentes são o **§3** (domínio próprio),
+o **§4** (VAPID), o **§6** (webhook do bot — leia o §6.1 antes de tocar em nada)
+e o **§8** (APK).
 
 ---
 
@@ -24,14 +45,13 @@ migrações `0001`–`0011` e a `0100` (RLS, grants, views) **já estão aplicad
 A única que falta é a `0012_cron.sql`, e ela só deve ser aplicada depois do
 deploy estar de pé (passo 5).
 
-### Bloqueio conhecido antes de começar
+### O bot v1 está no ar e um token tem UM webhook
 
-**`/api/telegram` é um stub que devolve 501.** A biblioteca inteira do bot v3
-existe (`api/telegram/_lib/`, 3.653 linhas: comandos, callbacks, sessões,
-identidade, extração, fila idempotente), mas **falta o handler que roteia os
-updates**. Consequência prática: os passos 6 e 7 (webhook e Mini App) ficam
-bloqueados. O resto do deploy — app, PWA, avisos por push, jobs, APK — não
-depende disso e pode ir hoje. Ver `ESTADO.md`, bloqueio 1.
+`/api/telegram` **já está implementado** (o roteamento existe; era o bloqueio 1
+de `ESTADO.md`) e `/api/pairing-code` também (bloqueio 2). O que continua sendo
+um risco real é o passo 6: **apontar o webhook do token de produção para o v3
+desliga o bot v1 na hora**, porque o Telegram guarda um webhook por token. Leia
+o §6.1 inteiro antes de rodar qualquer `setWebhook`.
 
 ---
 
@@ -76,12 +96,19 @@ SUPABASE_SERVICE_ROLE_KEY   <service_role key>       ← NUNCA com prefixo VITE_
 SUPABASE_JWT_SECRET         <JWT secret do projeto>
 ANTHROPIC_API_KEY           <ou CLAUDE_API_KEY, que é como o v2 a chama>
 GROQ_API_KEY                <transcrição>
-APP_URL                     https://ventus.ventapel.com.br
-ALLOWED_ORIGIN              https://ventus.ventapel.com.br
+APP_URL                     https://ventus3.vercel.app    ← hoje. Ver §3
+ALLOWED_ORIGIN              https://ventus3.vercel.app
 CRON_SECRET                 <openssl rand -hex 32>
 ```
 
 Depois: `VAPID_*` (passo 4), `TELEGRAM_*` (passos 6 e 7).
+
+**`TELEGRAM_WEBHOOK_SECRET` não é opcional.** `api/telegram.ts` é fail-**closed**:
+sem ela o webhook responde `500` a tudo e não processa nenhum update (o
+`/api/digest` do v2 fazia o contrário, fail-open, e está na lista de bugs do
+plano). Gere com `openssl rand -hex 32` e use **exatamente o mesmo valor** no
+`secret_token` do `setWebhook` do §6.2 — o handler compara em tempo constante e
+um byte diferente é um `401`.
 
 Duas armadilhas que já custaram tempo em outros projetos:
 
@@ -108,15 +135,33 @@ passos 4 e 6.
 
 ## 3 · Domínio
 
-Apontar `ventus.ventapel.com.br` para o projeto (Settings → Domains). O nome
-aparece hardcoded como *fallback* em três lugares e trocá-lo depois obriga a
-mexer nos três:
+**Hoje a URL de produção é `https://ventus3.vercel.app`.**
+`ventus.ventapel.com.br` **ainda não existe** — não é um domínio configurado
+esperando DNS, é um nome que ninguém registrou. Onde ele aparecia escrito à
+mão, agora aparece a URL real.
 
-- `APP_URL` / `ALLOWED_ORIGIN` (env vars);
-- `index.html` → `og:image` (URL absoluta: o WhatsApp não resolve relativa);
-- `android/twa-manifest.json` → o APK **assinado** carrega o host dentro. Trocar
-  o domínio depois do primeiro APK obriga a recompilar e **reinstalar nos 6
-  aparelhos**. Decida antes do passo 8.
+A URL vive num lugar só: **`ventus3/config/url-publica.txt`**. Dela leem o
+`index.html` (og:image e og:url, injetados no build por um plugin de
+`vite.config.ts`), o `scripts/build-apk.sh`, o `gerar-assetlinks.mjs
+--verificar` e o `.github/workflows/apk.yml`. A variável de ambiente
+`VENTUS_URL` pisa o arquivo em qualquer um deles.
+
+Fora dessa fonte única sobram só as env vars do backend, que a Vercel gerencia:
+`APP_URL` e `ALLOWED_ORIGIN`.
+
+### O dia em que existir ventus.ventapel.com.br
+
+1. Vercel → Settings → Domains → apontar o domínio ao projeto e esperar o
+   certificado.
+2. `ventus3/config/url-publica.txt`: mudar a única linha.
+3. `cd ventus3 && npm run url:sync && npm run url:check`
+4. Vercel: atualizar `APP_URL` e `ALLOWED_ORIGIN`.
+5. Deploy. Conferir: `npm run assetlinks:verificar` tem que passar contra o
+   host novo (o assetlinks só vale publicado).
+6. **APK novo e reinstalação nos 6 aparelhos**: o host vai *assinado* dentro do
+   APK. Passo a passo em `ANDROID.md` §4.
+
+O passo 6 é a razão de decidir o domínio **antes** do primeiro APK, não depois.
 
 ---
 
@@ -149,7 +194,7 @@ aparelho fica sem push **para sempre**), mas até alguém abrir, não chega nada
 
 ```bash
 curl -s -H "Authorization: Bearer <access_token>" \
-  "https://ventus.ventapel.com.br/api/dispatch/track?acao=chave"
+  "https://ventus3.vercel.app/api/dispatch/track?acao=chave"
 # {"chave":"BOeHcu..."}   ← se vier {"chave":null}, faltam as env vars
 ```
 
@@ -169,7 +214,7 @@ chamadas que dão 404 a cada minuto.
 No SQL Editor do Supabase, uma vez:
 
 ```sql
-select vault.create_secret('https://ventus.ventapel.com.br', 'ventus_app_url',
+select vault.create_secret('https://ventus3.vercel.app', 'ventus_app_url',
        'Base absoluta do app v3');
 select vault.create_secret('<o mesmo CRON_SECRET da Vercel>', 'ventus_cron_secret',
        'Bearer dos endpoints de cron do v3');
@@ -233,61 +278,165 @@ select jobname, status, return_message, start_time
 
 ---
 
-## 6 · Bot do Telegram — **BLOQUEADO**
+## 6 · Bot do Telegram
 
-> `api/telegram.ts` responde **501** a tudo hoje. Registrar o webhook agora faz
-> o bot parar de responder e não ganha nada.
+`api/telegram.ts` roteia os updates: verifica o `secret_token`, reivindica o
+`update_id` em `bot_log` (claim em duas fases), despacha para comando / áudio /
+texto / botão inline, e responde **200 sempre**. Os comandos ligados são
+`/hoje` `/golden` `/anel` `/placar` `/compromissos` `/status` `/pendentes`
+`/parados` `/pipeline` `/vincular` `/desfazer` `/ajuda` `/id`.
 
-### 6.1 Antes de registrar: um bot só tem UM webhook
+### 6.1 · ⚠️ UM TOKEN TEM UM SÓ WEBHOOK — apontar o v3 APAGA o v1
 
-`setWebhook` **substitui** o webhook anterior desse token. Se o token for o do
-bot v1 (`/home/user/ventus-bot`, que está no ar), apontá-lo para o v3
-**desliga o v1 na hora**, sem aviso e sem rollback automático.
+`setWebhook` **substitui** o webhook anterior desse token. Não há dois. Não há
+aviso. Não há rollback automático.
 
-Faça a primeira volta com um **bot de teste** (`@BotFather` → `/newbot`), com o
-token de teste nas env vars de *Preview* da Vercel. Só migre o bot de produção
-quando o handler existir e o teste tiver passado.
+> O bot v1 (`/home/user/ventus-bot`) está **em produção e o time usa hoje**. Se
+> você rodar o `setWebhook` do §6.2 com o token de produção, o v1 para de
+> responder **no mesmo segundo** — os áudios que o time mandar a partir daí vão
+> para o v3, e o que o v3 ainda não souber fazer ninguém faz.
 
-### 6.2 Registrar (quando o handler existir)
+**Antes de qualquer coisa, guarde o estado atual** — depois do `setWebhook` ele
+não está em lugar nenhum:
 
 ```bash
-BOT_TOKEN='123456:AA...'
+curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo" | jq > /tmp/webhook-v1.json
+```
+
+Por isso: **a primeira volta é com um bot de teste.**
+
+```bash
+# 1. @BotFather → /newbot → anota o token de TESTE
+# 2. Vercel → Settings → Environment Variables → escopo *Preview*:
+#      TELEGRAM_BOT_TOKEN      = <token de teste>
+#      TELEGRAM_WEBHOOK_SECRET = <openssl rand -hex 32>
+# 3. registra o webhook do §6.2 contra a URL de Preview
+# 4. manda /id, /ajuda, /hoje e um áudio de 20s pelo bot de TESTE
+```
+
+Só depois que essa volta passar inteira se migra o bot de produção — e de
+preferência fora do horário comercial, com o time avisado.
+
+### 6.2 · Registrar o webhook
+
+```bash
+BOT_TOKEN='123456:AA...'                                   # de TESTE na 1ª volta
 SECRET='<o mesmo TELEGRAM_WEBHOOK_SECRET das env vars>'
+URL='https://ventus3.vercel.app/api/telegram'               # ou a URL de Preview
 
 curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
   -H 'Content-Type: application/json' \
   -d "{
-    \"url\": \"https://ventus.ventapel.com.br/api/telegram\",
+    \"url\": \"${URL}\",
     \"secret_token\": \"${SECRET}\",
     \"allowed_updates\": [\"message\", \"edited_message\", \"callback_query\"],
     \"drop_pending_updates\": true,
     \"max_connections\": 40
   }"
+# {"ok":true,"result":true,"description":"Webhook was set"}
 ```
 
 `drop_pending_updates: true` na PRIMEIRA vez: senão o Telegram entrega de uma
 vez toda a fila acumulada desde que o webhook velho parou de responder.
+Nas vezes seguintes, **tire essa linha** — ela descarta trabalho real.
 
-**Verificar:**
+`allowed_updates` é a lista exata que o handler entende. Pedir mais tipos só
+gera updates que ele classifica como `ignorado` e descarta.
+
+### 6.3 · Verificar
 
 ```bash
 curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo" | jq
 ```
 
-Espera-se `"url"` com o endereço certo, `"pending_update_count": 0` e — o campo
-que importa — **`last_error_message` ausente**. Se aparecer
-`Wrong response from the webhook: 501 Not Implemented`, é o bloqueio deste
-passo.
+| Campo | O que tem que aparecer |
+|---|---|
+| `url` | exatamente a URL do §6.2 |
+| `pending_update_count` | `0` |
+| `last_error_message` | **ausente** |
+| `has_custom_certificate` | `false` |
 
-**Voltar atrás:** `curl -sS "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook"`
-e re-registrar o webhook do v1.
+Um `Wrong response from the webhook: 401 Unauthorized` significa que o
+`secret_token` do `setWebhook` e a env var `TELEGRAM_WEBHOOK_SECRET` **não são
+o mesmo texto**. Um `500` significa que a env var não existe no ambiente.
+
+Depois, no chat do bot, na ordem:
+
+```
+/id          → devolve o seu Telegram ID e o ID do chat (funciona sem vínculo)
+/vincular <código de 6 dígitos gerado em Ajustes → Telegram>   → §6.4
+/ajuda       → o menu
+/hoje        → as 3 ações do dia com botões
+<áudio 20s>  → "🎙 Ouvindo o áudio…" em menos de 1s, e depois a confirmação
+               NO MESMO mensagem, editada
+```
+
+O ack tem que chegar **antes** da transcrição: é o desenho do §5 do
+`api/telegram.ts`. Se demorar, olhe os logs da função — o gargalo é o
+`getFile` do Telegram, não o Groq.
+
+### 6.4 · Emparelhar os vendedores (`/api/pairing-code`)
+
+`pairing_codes` tem `revoke all … from anon, authenticated`: o código de 6
+dígitos **só** o emite o servidor. `POST /api/pairing-code` faz isso, com o JWT
+do vendedor; o `vendor_id` do corpo é ignorado de propósito (vale o do token).
+
+Hoje só Renata, Jordi e Tomás têm `vendors.telegram_id` carregado à mão.
+**Victor Hugo, Andre e Paulo entram por aqui**, cada um do seu telefone:
+
+1. app → **Ajustes → Telegram → Gerar código**
+2. no chat do bot: `/vincular 482913`
+3. o bot responde «Pronto, <nome>. Este Telegram ficou ligado ao Ventus.»
+
+Regras do código: 6 dígitos, **10 minutos**, **um só uso**, 5 tentativas erradas
+e queima, e **pedir um novo invalida o anterior**. Teto de 6 códigos por
+vendedor por hora.
+
+Comprovar o endpoint sem passar pela tela:
+
+```bash
+JWT='<access_token de uma sessão real>'
+curl -sS -X POST https://ventus3.vercel.app/api/pairing-code \
+  -H "Authorization: Bearer ${JWT}" -H 'Content-Type: application/json' -d '{}'
+# {"ok":true,"codigo":"482913","expira_em":"2026-08-26T13:41:02.000Z"}
+
+curl -sS -X POST https://ventus3.vercel.app/api/pairing-code -d '{}'
+# 401 — sem sessão não sai código
+```
+
+Um `503 pareamento_indisponivel` quer dizer que a migração `0006_telegram.sql`
+não está aplicada nesse banco.
+
+Num **grupo** o pareamento também funciona (`/vincular` dentro do grupo), mas o
+canal nasce só com `ler` e `registrar`: confirmar um registro é do chat privado.
+Seis pessoas no mesmo chat não fecham a oportunidade de uma com um tap.
+
+### 6.5 · Voltar atrás
+
+```bash
+# desliga o webhook do v3
+curl -sS "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook"
+# e re-registra o do v1
+curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://<projeto-do-v1>.vercel.app/api/telegram"}'
+```
+
+A URL exata do v1 é a que está hoje em `getWebhookInfo` — **anote-a antes** de
+rodar o `setWebhook` do §6.2, porque depois ela já não está em lugar nenhum
+(`/home/user/ventus-bot/README.md` só traz o molde com `<proyecto>`).
+
+O v1 não usa `secret_token`, então o `setWebhook` dele vai sem esse campo. Nada
+se perde nos dois sentidos: os updates que ficaram abertos continuam em
+`bot_log` com desfecho `erro:` ou `recebido` e são reprocessáveis.
 
 ---
 
 ## 7 · Telegram Mini App — **depende do passo 6**
 
 1. `@BotFather` → `/newapp` → escolher o bot → título, descrição, ícone 640×360,
-   **URL = `https://ventus.ventapel.com.br`**, short name (ex.: `app`).
+   **URL = `https://ventus3.vercel.app`** (a de `config/url-publica.txt`),
+   short name (ex.: `app`).
    Sem isto `t.me/<bot>/app` não existe e nenhum deep link abre nada.
 2. Env var `TELEGRAM_BOT_USERNAME=<bot sem arroba>`. Com ela, os botões dos
    avisos abrem o **Mini App no destino exato**
@@ -298,65 +447,98 @@ e re-registrar o webhook do v1.
    sozinho — quem olha o relógio é `auth_date`.
 
 **Verificar:** abrir `t.me/<bot>/app` no celular. Tem que entrar **sem passar
-pela tela de login**. Um **403** significa «este Telegram não está pareado»: só
-os vendedores com `vendors.telegram_id` preenchido entram, porque a Edge
-Function `pairing-code` ainda não existe (`ESTADO.md`, bloqueio 2).
+pela tela de login**. Um **403** significa «este Telegram não está pareado»:
+resolve-se com o `/vincular` do §6.4, que agora existe.
 
 ---
 
 ## 8 · APK (TWA para Android)
 
-O APK **não é compilado neste deploy**: sai do workflow
-`.github/workflows/apk.yml`, que dispara com uma tag `v*`.
+O APK **não é compilado neste deploy** nem neste contêiner (`dl.google.com`
+está bloqueado, então o Android SDK não baixa): sai do workflow
+`.github/workflows/apk.yml`, que roda no runner do GitHub e dispara com uma tag
+`v*`. O guia completo — trâmite do Google, instalação no telefone, diagnóstico
+— é `ANDROID.md`. Aqui fica só o que este runbook precisa.
 
-1. **GitHub → Settings → Secrets and variables → Actions:**
-   - secret `ANDROID_KEYSTORE_BASE64` = `base64 -w0 ventus3/android/ventapel-ventus.keystore`
-     (o `-w0` importa: sem ele o base64 vem quebrado em linhas)
-   - secret `ANDROID_KEYSTORE_PASSWORD`
-   - variable `VENTUS_URL` = `https://ventus.ventapel.com.br`
-2. `public/.well-known/assetlinks.json` já tem o **SHA-256 real** do keystore
-   (`node scripts/gerar-assetlinks.mjs --check` confirma). Ele precisa estar
-   **publicado** para a TWA abrir sem a barra do Chrome:
+**Só faltam os dois secrets.** Tudo o resto já está pronto no repositório: o
+`assetlinks.json` com o SHA-256 real, o `twa-manifest.json` alinhado com a URL
+única, e o workflow revisado.
+
+1. **Carregar os dois secrets** (da **raiz do repo**, não de `ventus3/`):
    ```bash
-   curl -sI https://ventus.ventapel.com.br/.well-known/assetlinks.json
+   cd /home/user/CRMbr
+   gh secret set ANDROID_KEYSTORE_BASE64 --repo tomasdelvaso-crypto/CRMbr \
+     --body "$(base64 -w0 ventus3/android/ventapel-ventus.keystore)"
+   gh secret set ANDROID_KEYSTORE_PASSWORD --repo tomasdelvaso-crypto/CRMbr \
+     --body "$(sed -nE 's/^VENTUS_KEYSTORE_PASSWORD=(.*)$/\1/p' /home/user/ventus-keystore-pass.txt)"
+   ```
+   O `-w0` importa: sem ele o base64 vem quebrado em linhas e o keystore
+   restaurado não abre. A variable `VENTUS_URL` é **opcional** — sem ela o
+   workflow lê `ventus3/config/url-publica.txt`.
+2. **O assetlinks tem que estar publicado** para a TWA abrir sem a barra do
+   Chrome:
+   ```bash
+   curl -sI https://ventus3.vercel.app/.well-known/assetlinks.json
    # HTTP/2 200 · content-type: application/json   ← o vercel.json força isso
+   cd ventus3 && npm run assetlinks:verificar      # o veredito completo
    ```
    O `text/plain` é o erro clássico e faz a verificação de App Links falhar em
-   silêncio.
+   silêncio. O workflow também confere isso, como aviso, antes de compilar.
 3. `git tag v3.0.0 && git push origin v3.0.0` → o workflow compila com
    Bubblewrap e publica `ventus.apk` numa GitHub Release.
 4. Env var `VITE_APK_URL` = a URL do asset da Release. **Sem ela, o botão
    «Baixar o APK» da tela `/instalar` simplesmente não aparece** — é de
    propósito: um botão que leva a 404 é pior que nenhum botão.
+5. Trâmite do Google (Limited Distribution Account, `br.com.ventapel.ventus` +
+   o SHA-256): `ANDROID.md` §8. **Prazo 30/09/2026.**
 
-**Guardar hoje**, não depois: o keystore
-(`ventus3/android/ventapel-ventus.keystore`, gitignorado) no cofre da Ventapel,
-e a senha (`/home/user/ventus-keystore-pass.txt`) no gestor de senhas. Perder
-esse arquivo = **nunca mais** conseguir atualizar o app instalado. Não tem
-recuperação.
+> ### ⚠️ Guardar o keystore hoje, não depois
+> O keystore (`ventus3/android/ventapel-ventus.keystore`, gitignorado) vai ao
+> cofre de arquivos da Ventapel, e a senha
+> (`/home/user/ventus-keystore-pass.txt`) ao gestor de senhas. **São dois
+> segredos e vão em dois lugares.**
+>
+> Perder esse arquivo = **nunca mais** conseguir atualizar o app instalado nos
+> telefones, porque o Android identifica um app pelo par (package, certificado).
+> Não tem recuperação, não tem suporte, não tem backup do lado do Google. O
+> secret do GitHub **não** serve de backup: secrets não se leem de volta.
 
 ---
 
 ## 9 · Verificação final, na ordem
 
 ```bash
+# A URL sai da fonte única, para que esta lista não envelheça:
+VENTUS="$(cd ventus3 && node scripts/url-publica.mjs)"   # https://ventus3.vercel.app
+
 # 1 · o app responde e sabe quem é
-curl -s https://ventus.ventapel.com.br/api/health | jq '.ok, .versao'
+curl -s "$VENTUS"/api/health | jq '.ok, .versao'
 
 # 2 · o manifest é servido com o tipo certo
-curl -sI https://ventus.ventapel.com.br/manifest.webmanifest | grep -i content-type
+curl -sI "$VENTUS"/manifest.webmanifest | grep -i content-type
 # application/manifest+json
 
 # 3 · o service worker não é cacheado
-curl -sI https://ventus.ventapel.com.br/sw.js | grep -i cache-control
+curl -sI "$VENTUS"/sw.js | grep -i cache-control
 # public, max-age=0, must-revalidate
 
 # 4 · o assetlinks é JSON
-curl -sI https://ventus.ventapel.com.br/.well-known/assetlinks.json | grep -i content-type
+curl -sI "$VENTUS"/.well-known/assetlinks.json | grep -i content-type
 
 # 5 · a API não é engolida pelo rewrite de SPA
-curl -s -o /dev/null -w '%{http_code}\n' https://ventus.ventapel.com.br/api/plan
+curl -s -o /dev/null -w '%{http_code}\n' "$VENTUS"/api/plan
 # 401 (sem sessão) — nunca 200 com HTML dentro
+
+# 6 · o webhook do bot é fail-closed
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  "$VENTUS"/api/telegram -d '{"update_id":1}'
+# 401 — sem o secret_token do Telegram não entra nada. Um 200 aqui é um furo;
+# um 500 quer dizer que falta TELEGRAM_WEBHOOK_SECRET no ambiente.
+
+# 7 · o emissor de códigos existe e exige sessão
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  "$VENTUS"/api/pairing-code -d '{}'
+# 401 — nunca 404 (não deployada) nem 200 (sem porteiro)
 ```
 
 Depois, no celular de verdade — é o único lugar onde o resto se verifica:
@@ -368,6 +550,11 @@ Depois, no celular de verdade — é o único lugar onde o resto se verifica:
 - [ ] **Modo avião**: registrar assim mesmo, voltar a rede, ver a fila subir.
 - [ ] Autorizar avisos e esperar um `ventus-run` (≤ 1 min) com algo na fila.
 - [ ] Tocar o aviso: tem que abrir **na tela do aviso**, não na Hoje.
+- [ ] **Ajustes → Telegram → Gerar código** e `/vincular` no bot: o app tem que
+      passar a dizer «Telegram conectado» (§6.4).
+- [ ] Mandar o **mesmo áudio duas vezes** de propósito: tem que entrar uma vez
+      só. O dedup é por `update_id`, mas o `idempotency_key` do registro é a
+      segunda rede.
 
 ---
 

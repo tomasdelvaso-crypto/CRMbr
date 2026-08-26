@@ -51,6 +51,27 @@ export function useTelaLarga(): boolean {
 }
 
 /**
+ * Pantallas CORTAS, medidas por alto y no por ancho.
+ *
+ * El número no es un gusto: sale de la cuenta de la tela Hoje. Su ventana de
+ * scroll es `100svh` menos el header (57), la bottom nav (65) y la barra de
+ * comando del Ventus (66) — 188 px de chrome. El bloque de arriba en su forma
+ * completa más la primera tarjeta miden 684 px, así que el layout completo
+ * necesita `100svh >= 872`. Por debajo de eso la primera tarjeta se corta, que
+ * es justo lo que la pantalla no puede permitirse.
+ *
+ * 880 px deja adentro a los dos teléfonos del equipo —el iPhone 14 da 664 px
+ * de viewport y el Pixel 7, con la barra de Chrome puesta, 839— y afuera al
+ * escritorio y a la tablet, donde sobra lugar y el orden es el del PLANO.
+ */
+export const CONSULTA_TELA_CURTA = '(max-height: 880px)'
+
+/** `true` donde la tela Hoje no entra sin compactarse. */
+export function useTelaCurta(): boolean {
+  return useMediaQuery(CONSULTA_TELA_CURTA)
+}
+
+/**
  * Valor con retardo. El buscador de la Carteira filtra 65 filas en memoria,
  * pero el `setState` por tecla más el re-render de la lista virtualizada hacen
  * que el teclado de un Android de gama media se sienta pegajoso. 200ms es el

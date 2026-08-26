@@ -1009,40 +1009,15 @@ export async function ignorarEmpresaDoMapa(vendor: string, sweepId: number): Pro
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   Badge del sistema operativo
+   El badge del sistema operativo NO se pinta desde acá
    ══════════════════════════════════════════════════════════════════════════ */
 
-// Frontera con la plataforma: la Badging API no está en el lib.dom de este
-// TypeScript, así que se declara la forma mínima que usamos. No es un `any`:
-// es la firma exacta de w3c/badging.
-interface NavigatorComBadge {
-  setAppBadge?: (contents?: number) => Promise<void>
-  clearAppBadge?: () => Promise<void>
-}
-
-/** ¿El navegador soporta el badge del ícono? Chrome/Edge sí; Safari iOS no. */
-export function suportaAppBadge(): boolean {
-  if (typeof navigator === 'undefined') return false
-  return typeof (navigator as unknown as NavigatorComBadge).setAppBadge === 'function'
-}
-
-/**
- * Pinta el contador en el ícono de la app instalada.
- *
- * Con detección de soporte y tragándose el rechazo a propósito: en Chrome el
- * badge falla si la PWA no está instalada, y eso no es un error que el
- * vendedor tenga que ver.
- */
-export async function atualizarAppBadge(total: number): Promise<void> {
-  if (typeof navigator === 'undefined') return
-  const nav = navigator as unknown as NavigatorComBadge
-  try {
-    if (total > 0) await nav.setAppBadge?.(total)
-    else await nav.clearAppBadge?.()
-  } catch {
-    // PWA no instalada, permiso denegado o WebView sin soporte: sin ruido.
-  }
-}
+// Antes este módulo tenía su propio `atualizarAppBadge()` y lo llamaba con el
+// total de la bandeja. El badge del ícono es UNO SOLO: dos escritores se pisan
+// —el último que corre gana— y el número terminaba contando la mitad del
+// trabajo pendiente. Ahora hay un único escritor, `definirBadge()` de
+// `@/push`, cableado en `src/app/Shell.tsx` con la suma real: tarjetas del día
+// sin resolver + propuestas del Ventus sin revisar.
 
 /* ══════════════════════════════════════════════════════════════════════════
    Hooks
@@ -1115,10 +1090,8 @@ export function useContagemRevisao(vendor: string | null): number {
     }
   }, [vendor, queryClient])
 
-  useEffect(() => {
-    void atualizarAppBadge(total)
-  }, [total])
-
+  // El badge del ícono no se pinta acá: ver el bloque de arriba. Este hook
+  // devuelve el número y nada más.
   return total
 }
 

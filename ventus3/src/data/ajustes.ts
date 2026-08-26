@@ -57,7 +57,7 @@ import { carregarCarteira, gravarMeta, lerCursor, lerMeta, storageEstimate } fro
 import { chaveCookbook, chaveInicioDoJogo, gravarCookbook, lerCookbookDaSemana } from './placar'
 import { comProblema, flush, pendingCount, storePendentes } from './outbox'
 import { TABELAS_SYNC, syncNow } from './sync'
-import { supabase } from './supabase'
+import { sessaoAtual, supabase } from './supabase'
 import type { SyncTable } from './local-types'
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -747,27 +747,58 @@ export function useEstadoDoTelegram(vendorId: number | null): UseQueryResult<Est
  * NUNCA se vincula por @username: un username de Telegram cambia de dueño en
  * cuanto el original lo libera, y el bot del v2 hace exactamente eso — quien
  * agarre el username de un vendedor hereda su cartera. El código es de un solo
- * uso, dura 10 minutos y lo emite el servidor con `service_role`, porque
- * `pairing_codes` le está revocada al rol `authenticated` a propósito.
+ * uso, dura 10 minutos y lo emite `POST /api/pairing-code` con `service_role`,
+ * porque `pairing_codes` le está revocada al rol `authenticated` a propósito.
  *
  * El cliente NO inventa el número: si lo hiciera, cualquiera podría escribir
  * seis dígitos en el bot y quedarse con la cartera del otro.
  */
-export async function gerarCodigoDePareamento(vendorId: number): Promise<CodigoDePareamento> {
-  const { data, error } = await supabase.functions.invoke<{
-    codigo?: string
-    expira_em?: string
-  }>('pairing-code', { body: { vendor_id: vendorId } })
+export const PAIRING_CODE_PATH = '/api/pairing-code'
 
-  if (error || !data?.codigo) {
+const FORMATO_DE_CODIGO = /^[0-9]{6}$/
+
+export async function gerarCodigoDePareamento(vendorId: number): Promise<CodigoDePareamento> {
+  const sessao = await sessaoAtual()
+  if (!sessao) {
+    throw new ErroDePareamento('Sua sessão expirou. Entre de novo para gerar o código.')
+  }
+
+  let resposta: Response
+  try {
+    resposta = await fetch(PAIRING_CODE_PATH, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${sessao.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      // El servidor IGNORA este campo y usa el vendedor del JWT. Va igual
+      // porque el log del pedido sirve para detectar un cliente desalineado.
+      body: JSON.stringify({ vendor_id: vendorId }),
+    })
+  } catch {
+    throw new ErroDePareamento(
+      'Não deu para gerar o código agora. Confira o sinal e tente de novo; se persistir, avise o Jordi.',
+    )
+  }
+
+  const corpo = (await resposta.json().catch(() => null)) as
+    | { codigo?: string; expira_em?: string; error?: { message?: string } }
+    | null
+
+  if (resposta.status === 429) {
+    throw new ErroDePareamento(
+      corpo?.error?.message ?? 'Muitos códigos pedidos nesta hora. Espera um pouco.',
+    )
+  }
+  if (!resposta.ok || !corpo?.codigo || !FORMATO_DE_CODIGO.test(corpo.codigo)) {
     throw new ErroDePareamento(
       'Não deu para gerar o código agora. Confira o sinal e tente de novo; se persistir, avise o Jordi.',
     )
   }
 
   const codigo: CodigoDePareamento = {
-    codigo: data.codigo,
-    expiraEm: data.expira_em ?? new Date(Date.now() + TTL_DO_CODIGO_MS).toISOString(),
+    codigo: corpo.codigo,
+    expiraEm: corpo.expira_em ?? new Date(Date.now() + TTL_DO_CODIGO_MS).toISOString(),
   }
   // Se guarda para que el contador siga corriendo si la pantalla se recarga.
   await gravarMeta(chaveCodigoDePareamento(vendorId), codigo)

@@ -61,7 +61,7 @@ import { ETAPAS_FILTRO, ETAPA_CURTA, contarEtapas, prepararFila, type FiltroEtap
 
 /** Mismo cálculo que la Carteira: header (h-14), nav y las dos safe areas. */
 const ALTURA_TELA =
-  'calc(100svh - 3.5rem - var(--safe-top) - var(--spacing-nav) - var(--safe-bottom))'
+  'calc(100svh - 3.5rem - var(--safe-top) - var(--spacing-nav) - var(--safe-bottom) - var(--spacing-chrome))'
 
 /** Resultados que cierran el lead sin más toques: se avisa distinto. */
 const RESULTADOS_QUE_ENCERRAM: readonly TouchpointResult[] = ['not_interested']

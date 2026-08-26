@@ -19,16 +19,15 @@
 // Todo se lee de Dexie: la bandeja se revisa dentro del galpón, sin señal, y
 // las decisiones salen por el outbox cuando el teléfono vuelve al mundo.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CheckCheck, CloudOff, Inbox } from 'lucide-react'
 import type { DismissReason, RevisaoItem } from '@/core'
 import {
-  atualizarAppBadge,
+  horasParaExpirar,
   ignorarEmpresaDoMapa,
   promoverDoSweep,
   sincronizarRevisao,
-  suportaAppBadge,
   useAceitarProposta,
   useBandejaRevisao,
   useDescartarProposta,
@@ -47,6 +46,7 @@ import {
   haptic,
   toast,
 } from '@/ui'
+import { useBotaoPrimario, useBotaoSecundario } from '@/host'
 import { useVendorDaSessao } from '@/app/useVendorDaSessao'
 import { CartaoProposta, type DecisaoProposta } from './CartaoProposta'
 import { Colapsavel } from './Colapsavel'
@@ -56,6 +56,22 @@ import { SheetDescartar } from './SheetDescartar'
 import { SheetVincular } from './SheetVincular'
 
 type Aba = 'propostas' | 'sem_cliente' | 'mercado'
+
+/**
+ * ¿Dos decisiones dicen lo mismo? Comparación superficial y suficiente:
+ * `camposAceitos` es una lista de strings y `edicoes` un mapa plano de valores
+ * escalares. Existe sólo para cortar el bucle de render de `registrarDecisao`.
+ */
+function mesmaDecisao(a: DecisaoProposta, b: DecisaoProposta): boolean {
+  if (a.camposAceitos.length !== b.camposAceitos.length) return false
+  for (let i = 0; i < a.camposAceitos.length; i++) {
+    if (a.camposAceitos[i] !== b.camposAceitos[i]) return false
+  }
+  const chavesA = Object.keys(a.edicoes)
+  const chavesB = Object.keys(b.edicoes)
+  if (chavesA.length !== chavesB.length) return false
+  return chavesA.every((k) => Object.is(a.edicoes[k], b.edicoes[k]))
+}
 
 /** Qué se está descartando: una propuesta o un registro suelto. */
 interface AlvoDescarte {
@@ -81,13 +97,14 @@ export default function RevisaoScreen() {
 
   const bandeja = consulta.data
 
-  // Badge del sistema operativo. Con detección de soporte: en Safari iOS la
-  // Badging API no existe y el fallo tiene que ser silencioso, no una excepción
-  // en cada repintado.
-  useEffect(() => {
-    if (!suportaAppBadge()) return
-    void atualizarAppBadge(bandeja?.total ?? 0)
-  }, [bandeja?.total])
+  // La decisión viva de la tarjeta que es dueña del botón nativo. Ver el bloque
+  // «acción crítica» más abajo: sin esto el host aplicaría todos los campos,
+  // ignorando el que el vendedor acaba de rechazar con un tap.
+  const [decisoes, setDecisoes] = useState<Record<string, DecisaoProposta>>({})
+
+  // El badge del ícono NO se pinta acá. Es uno solo para toda la app y lo
+  // escribe el Shell con la suma real (tarjetas del día + propuestas sin
+  // revisar); dos escritores se pisaban y el número quedaba a medias.
 
   const marcarSaindo = useCallback((id: string) => {
     setSaindo((atual) => new Set(atual).add(id))
@@ -220,6 +237,99 @@ export default function RevisaoScreen() {
     [bandeja],
   )
 
+  /* ══════════════════════════════════════════════════════════════════════
+     La acción crítica de esta pantalla
+     ══════════════════════════════════════════════════════════════════════
+     Una propuesta es una decisión; la pantalla es una pila de decisiones. El
+     botón del host opera siempre sobre la PRIMERA que sigue esperando —la de
+     arriba, la que el vendedor está leyendo—, con la decisión que esa tarjeta
+     tiene AHORA: si rechazó un campo con un tap, el rótulo pasa a «Aceitar 2
+     de 3» y se aplica eso.
+
+     Se apaga cuando hay un sheet abierto: un botón fijo abajo que actúa sobre
+     lo que quedó detrás del modal es una trampa. Y se apaga fuera de la
+     pestaña «Propostas», donde la acción es otra (vincular, promover).
+
+     En la PWA `aceitarNativo` es false y cada tarjeta sigue pintando su par de
+     botones, que es lo correcto en una lista scrolleable con chrome propio. */
+  const primeira: RevisaoItem | null = useMemo(() => {
+    if (aba !== 'propostas') return null
+    const abertas = (bandeja?.propostas ?? []).filter(
+      (p) => !saindo.has(p.id) && horasParaExpirar(p.expira_em) > 0,
+    )
+    return abertas[0] ?? null
+  }, [aba, bandeja, saindo])
+
+  const sheetAberto = alvoDescarte !== null || aVincular !== null
+  // ── El corte del bucle de render ──────────────────────────────────────
+  // `onDecisao` se le pasa a la tarjeta como una flecha inline, así que cambia
+  // de identidad en cada render; el efecto que la llama depende de ella y por
+  // lo tanto corre en cada render. Guardando SIEMPRE un objeto nuevo, ese
+  // efecto pedía otro render, que pedía otro efecto: React llegaba al tope de
+  // profundidad y escupía «Maximum update depth exceeded» cada vez que la
+  // bandeja tenía al menos una propuesta.
+  //
+  // Devolver el MISMO objeto de estado cuando la decisión no cambió hace que
+  // React descarte el render y el ciclo se corte en la primera vuelta.
+  const registrarDecisao = useCallback((id: string, decisao: DecisaoProposta) => {
+    setDecisoes((atual) => {
+      const anterior = atual[id]
+      if (anterior && mesmaDecisao(anterior, decisao)) return atual
+      return { ...atual, [id]: decisao }
+    })
+  }, [])
+
+  const decisaoDaPrimeira: DecisaoProposta | null =
+    primeira === null
+      ? null
+      : (decisoes[primeira.id] ?? {
+          camposAceitos: primeira.campos.map((c) => c.field),
+          edicoes: {},
+        })
+
+  const nAceitos = decisaoDaPrimeira?.camposAceitos.length ?? 0
+  const nCampos = primeira?.campos.length ?? 0
+
+  const abrirDescarte = useCallback((item: RevisaoItem) => {
+    setAlvoDescarte({ id: item.id, nome: item.entidade.nome })
+  }, [])
+
+  const aceitarNativo = useBotaoPrimario(
+    primeira === null || sheetAberto
+      ? null
+      : {
+          rotulo:
+            nAceitos === nCampos
+              ? 'Aceitar'
+              : nAceitos === 0
+                ? 'Descartar tudo'
+                : `Aceitar ${String(nAceitos)} de ${String(nCampos)}`,
+          carregando: ocupado === primeira.id,
+          aoTocar: () => {
+            // Cero campos aceptados no es «aplicar nada»: es descartar, y
+            // descartar SIEMPRE pide motivo. Es la misma regla del botón de la
+            // tarjeta, no una segunda semántica para el Mini App.
+            if (decisaoDaPrimeira === null || decisaoDaPrimeira.camposAceitos.length === 0) {
+              abrirDescarte(primeira)
+              return
+            }
+            void confirmarProposta(primeira, decisaoDaPrimeira)
+          },
+        },
+  )
+
+  useBotaoSecundario(
+    primeira === null || sheetAberto
+      ? null
+      : {
+          rotulo: 'Descartar',
+          ativo: ocupado !== primeira.id,
+          aoTocar: () => {
+            abrirDescarte(primeira)
+          },
+        },
+  )
+
   if (sessaoCarregando || consulta.isPending) {
     return (
       <div className="space-y-3 p-4">
@@ -312,11 +422,19 @@ export default function RevisaoScreen() {
                         <CartaoProposta
                           item={item}
                           ocupado={ocupado === item.id}
+                          acoesNativas={aceitarNativo && item.id === primeira?.id}
+                          {...(item.id === primeira?.id
+                            ? {
+                                onDecisao: (decisao: DecisaoProposta) => {
+                                  registrarDecisao(item.id, decisao)
+                                },
+                              }
+                            : {})}
                           onAceitar={(decisao) => {
                             void confirmarProposta(item, decisao)
                           }}
                           onDescartar={() => {
-                            setAlvoDescarte({ id: item.id, nome: item.entidade.nome })
+                            abrirDescarte(item)
                           }}
                           {...(item.entidade.kind === 'opportunity' && item.entidade.id > 0
                             ? {

@@ -13,11 +13,14 @@
     "api/tma-auth.ts": {
       "maxDuration": 15
     },
+    "api/pairing-code.ts": {
+      "maxDuration": 10
+    },
     "api/dispatch/track.ts": {
       "maxDuration": 15
     },
     "api/telegram.ts": {
-      "maxDuration": 30
+      "maxDuration": 60
     },
     "api/act.ts": {
       "maxDuration": 60

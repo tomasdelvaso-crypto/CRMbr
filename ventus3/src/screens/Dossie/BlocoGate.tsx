@@ -35,6 +35,12 @@ export interface BlocoGateProps {
   /** Escala que traba, o la más débil cuando el gate ya pasó. */
   escalaFoco: ScaleKey
   bloqueado: boolean
+  /**
+   * El host ya dibuja «Avançar» abajo de todo. Este bloque no pinta el suyo:
+   * dos botones para el mismo cambio de etapa es cómo alguien avanza dos
+   * veces sin querer.
+   */
+  acaoNativa?: boolean
   onAlternarPergunta: (escala: ScaleKey, texto: string) => void
   onAvancarEtapa: () => void
   onAbrirEscala: (escala: ScaleKey) => void
@@ -47,6 +53,7 @@ export function BlocoGate({
   usadas,
   escalaFoco,
   bloqueado,
+  acaoNativa = false,
   onAlternarPergunta,
   onAvancarEtapa,
   onAbrirEscala,
@@ -86,9 +93,11 @@ export function BlocoGate({
               <p className="mt-1 text-sm text-fg-muted">
                 As escalas já sustentam {proximaEtapa}. O servidor revalida na hora de salvar.
               </p>
-              <Button className="mt-3" block variant="success" onClick={onAvancarEtapa}>
-                Avançar para {proximaEtapa}
-              </Button>
+              {!acaoNativa && (
+                <Button className="mt-3" block variant="success" onClick={onAvancarEtapa}>
+                  Avançar para {proximaEtapa}
+                </Button>
+              )}
             </>
           )}
         </Card>
@@ -128,7 +137,10 @@ export function BlocoGate({
                   <button
                     type="button"
                     aria-pressed={jaUsada}
-                    aria-label={jaUsada ? 'Desmarcar como já perguntada' : 'Marcar como já perguntada'}
+                    // La pregunta va DENTRO del nombre: hay una fila por
+                    // pregunta y sin ella un lector de pantalla anuncia cinco
+                    // botones idénticos, sin forma de saber cuál marca cuál.
+                    aria-label={`${jaUsada ? 'Desmarcar' : 'Marcar'} como já perguntada: ${q.text}`}
                     onClick={() => {
                       haptic('selection')
                       onAlternarPergunta(escalaFoco, q.text)

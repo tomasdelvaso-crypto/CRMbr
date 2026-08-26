@@ -9,7 +9,7 @@
 // maneja el padre (ver Colapsavel), no SwipeRow: descartar abre un sheet y una
 // tarjeta ya plegada no se puede desplegar si el vendedor se arrepiente.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Check, Clock3, Trash2 } from 'lucide-react'
 import type { RevisaoItem } from '@/core'
 import { horasParaExpirar, textoDeExpiracao } from '@/data'
@@ -42,6 +42,20 @@ export interface CartaoPropostaProps {
   onDescartar: () => void
   /** Abrir la ficha del cliente para decidir con contexto. */
   onAbrirCliente?: () => void
+  /**
+   * El host dibuja «Aceitar»/«Descartar» abajo de todo (MainButton del Mini
+   * App): la tarjeta no pinta los suyos, o quedan dos botones para la misma
+   * decisión. Los toques POR CAMPO siguen acá — el botón nativo aplica lo que
+   * el vendedor dejó marcado, no siempre todo.
+   */
+  acoesNativas?: boolean
+  /**
+   * Informa hacia arriba la decisión de ESTE momento (qué campos siguen
+   * aceptados y con qué ediciones). Sólo la recibe la tarjeta que es dueña del
+   * botón nativo: sin esto el host aplicaría todos los campos, ignorando lo
+   * que el vendedor acaba de rechazar con un tap.
+   */
+  onDecisao?: (decisao: DecisaoProposta) => void
 }
 
 export function CartaoProposta({
@@ -50,6 +64,8 @@ export function CartaoProposta({
   onAceitar,
   onDescartar,
   onAbrirCliente,
+  acoesNativas = false,
+  onDecisao,
 }: CartaoPropostaProps) {
   const [recusados, setRecusados] = useState<ReadonlySet<string>>(new Set())
   const [edicoes, setEdicoes] = useState<Record<string, unknown>>({})
@@ -80,6 +96,12 @@ export function CartaoProposta({
     }
     onAceitar({ camposAceitos: aceitos, edicoes })
   }
+
+  // `aceitos` es un useMemo y `edicoes` un objeto de estado: el efecto corre
+  // cuando la decisión CAMBIA de verdad, no en cada repintado del padre.
+  useEffect(() => {
+    onDecisao?.({ camposAceitos: aceitos, edicoes })
+  }, [aceitos, edicoes, onDecisao])
 
   const campoEmEdicao = editando === null ? null : item.campos.find((c) => c.field === editando)
 
@@ -143,7 +165,7 @@ export function CartaoProposta({
           Esta proposta expirou. Peça ao Ventus uma nova sobre o estado atual —
           confirmar agora usaria dados de dois dias atrás.
         </p>
-      ) : (
+      ) : acoesNativas ? null : (
         <div className="mt-3 flex items-center gap-2">
           <Button
             block

@@ -11,9 +11,9 @@
 // pantalla y casi entera). El teclado de Android empuja la barra por sí solo
 // vía visualViewport; el sheet ya recalcula su alto con ResizeObserver.
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Mic, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import { Sheet, cx, haptic } from '@/ui'
 import { useVendorDaSessao } from '@/app/useVendorDaSessao'
 import { barraDeComandoVisivel } from './rotas'
@@ -25,11 +25,22 @@ export interface BarraDeComandoProps {
   opportunityId?: number | null
   /** Nombre del cliente, para el placeholder. */
   contexto?: string | null
+  /**
+   * Botón que ocupa la ranura de la derecha.
+   *
+   * Acá vivía un micrófono que abría el MISMO sheet que el campo de texto: dos
+   * controles para una sola acción. El Shell pone en su lugar el micrófono de
+   * Registrar, que antes flotaba 4rem por encima de esta barra y tapaba la
+   * primera tarjeta de Hoje. La barra no sabe qué botón es ni tiene por qué:
+   * sólo le presta la ranura.
+   */
+  acao?: ReactNode
 }
 
 export function BarraDeComando({
   opportunityId = null,
   contexto = null,
+  acao = null,
 }: BarraDeComandoProps) {
   const location = useLocation()
   const { vendorName } = useVendorDaSessao()
@@ -56,6 +67,10 @@ export function BarraDeComando({
 
   return (
     <>
+      {/* El alto de esta franja NO es libre: `--spacing-ventus` lo declara al
+          píxel y todo lo que scrollea lo resta de su altura para no quedar
+          debajo. Cambiar el relleno o el alvo de acá sin cambiar el token
+          vuelve a poner la barra encima del contenido. */}
       <div
         className="fixed inset-x-0 z-30 px-safe"
         style={{ bottom: 'calc(var(--spacing-nav) + env(safe-area-inset-bottom, 0px))' }}
@@ -76,14 +91,7 @@ export function BarraDeComando({
                 {contexto != null ? `Perguntar sobre ${contexto}` : 'Perguntar ao Ventus'}
               </span>
             </button>
-            <button
-              type="button"
-              onClick={abrir}
-              aria-label="Falar com o Ventus"
-              className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-fg active:bg-brand-strong"
-            >
-              <Mic size={20} aria-hidden />
-            </button>
+            {acao}
           </div>
         </div>
       </div>

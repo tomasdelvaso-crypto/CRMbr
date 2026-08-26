@@ -1,6 +1,7 @@
 # Estado do Ventus v3
 
-> Fecha de corte: **2026-08-25** · Rama `claude/crm-web-app-redesign-f7tu7g`
+> Fecha de corte: **2026-08-26** · Rama `claude/crm-web-app-redesign-f7tu7g`
+> **La app está desplegada y respondiendo en https://ventus3.vercel.app.**
 > Documento del integrador. Consolida **tres olas** de trabajo paralelo: la de
 > fundación (dominio, design system, SQL, capa offline), la de nueve agentes
 > que construyeron las 15 pantallas y el backend serverless, y la última —cinco
@@ -14,32 +15,80 @@
 
 ---
 
-## 0 · Lo que bloquea el despliegue (leer esto primero)
+## 0 · Dónde estamos hoy (leer esto primero)
 
-Tres cosas, en orden. Nada más de esta lista impide subir el resto.
+**Ya no hay bloqueos de despliegue: la app está en el aire.**
 
-1. **`/api/telegram` es un stub que devuelve 501.** La biblioteca completa del
-   bot v3 existe y está testeada —`api/telegram/_lib/`, 3.653 líneas: comandos,
-   callbacks con fingerprint, sesiones con TTL, identidad, extracción, fila
-   idempotente (`reivindicarUpdate`)— pero **falta el handler que rutea los
-   updates**. Lo que el plano pide de él está escrito (§532-545 de `PLANO.md`):
-   ack <1s, claim antes de procesar, reintento por la cola. Mientras no exista:
-   registrar el webhook **apaga el bot v1 y no enciende el v3** (un token de
-   Telegram tiene un solo webhook), y el emparejamiento por `/vincular` no
-   funciona, así que al Mini App sólo entran los 3 vendedores que ya tienen
-   `vendors.telegram_id` cargado a mano.
-2. **La Edge Function `pairing-code` no existe.** `pairing_codes` tiene
-   `revoke all … from anon, authenticated` a propósito: el código de 6 dígitos
-   **tiene** que emitirlo el servidor con `service_role`. Sin ella no hay forma
-   de emparejar un Telegram nuevo, ni por el bot ni por Ajustes.
-3. **`supabase/migrations/0012_cron.sql` está escrita pero NO aplicada.** Es a
-   propósito: agendar los jobs antes de que el deploy responda son diez
-   llamadas por minuto a un 404. Se aplica después del paso 2 de `DEPLOY.md`, y
-   antes hay que grabar los dos secretos en el Vault.
+```
+https://ventus3.vercel.app          ← producción, deploy automático desde
+                                      claude/crm-web-app-redesign-f7tu7g
+                                      (root directory: ventus3)
+/api/health                         → ok:true, con Supabase, Anthropic, Groq
+                                      y auth configurados
+```
 
-Lo que **sí** está listo para subir hoy: la app entera con sus 15 pantallas, la
-PWA instalable, el Web Push, el dispatcher de avisos, los seis endpoints de
-`api/` que no son el bot, y el APK (que se compila en GitHub Actions, no acá).
+El dominio propio `ventus.ventapel.com.br` **no existe todavía**: no es un DNS
+esperando propagar, es un nombre que nadie registró. La URL real de hoy es la
+de Vercel, y desde el 26/08 vive en **un solo lugar** —
+`config/url-publica.txt` — de donde la leen el `og:image`/`og:url` del
+`index.html`, el `build-apk.sh`, el `gerar-assetlinks.mjs --verificar` y el
+workflow del APK. `DEPLOY.md` §3 tiene el procedimiento del día que el dominio
+exista; el paso caro es el APK, porque el host va **firmado adentro** y cambiarlo
+obliga a recompilar y reinstalar en los seis teléfonos.
+
+### Lo que queda abierto, por orden de prioridad
+
+| # | qué | por qué ahora | dónde |
+|---|---|---|---|
+| 1 | **Cargar los 2 secrets del APK en GitHub** y empujar una tag `v*` | es el único paso que falta para tener el APK; el resto está listo y verificado | `ANDROID.md` §2-3 |
+| 2 | **Respaldar el keystore y su contraseña** | perderlos = no poder actualizar nunca más la app instalada, sin recuperación | `ANDROID.md` §7 |
+| 3 | **Trámite Limited Distribution del Google** | **prazo 30/09/2026**; después de esa fecha un aparato nuevo no instala | `ANDROID.md` §8 |
+| 4 | **Aplicar `0012_cron.sql`** (con los dos secretos en el Vault) | sin los jobs no sale ni un aviso, y la cola de re-drive del bot no se barre | `DEPLOY.md` §5 |
+| 5 | **Webhook del bot de Telegram** | ⚠️ **un token tiene UN webhook**: apuntar el de producción al v3 apaga el bot v1 que el equipo usa hoy. La primera vuelta va con un bot de prueba en el scope *Preview* | `DEPLOY.md` §6.1 |
+| 6 | **Emparejar a los vendedores** y registrar el Mini App en @BotFather | depende del 5 | `DEPLOY.md` §6.4, §7 |
+| 7 | **Probar en hardware real** (un iPhone y un Android) | safe areas, `apple-touch-icon`, umbrales de gesto | §5.1-bis |
+| 8 | El resto de la lista larga | — | §5 |
+
+### Dos avisos que no vencen
+
+- **`TELEGRAM_WEBHOOK_SECRET` es obligatoria.** Sin ella el webhook responde
+  500 a todo y no procesa nada, a propósito.
+- **Un token de Telegram tiene UN solo webhook.** No hay forma de tener el v1 y
+  el v3 escuchando el mismo bot. `DEPLOY.md` §6.1.
+
+### Lo que se cerró en las últimas dos vueltas
+
+1. ~~`/api/telegram` es un stub que devuelve 501~~ — **hecho**. `api/telegram.ts`
+   es ahora el ruteo completo: verificación del `secret_token` en tiempo
+   constante y fail-closed, `reivindicarUpdate()` antes de trabajar, despacho a
+   comando / audio / texto / `callback_query`, y **200 siempre**. Los trece
+   comandos están cableados (`/hoje /golden /anel /placar /compromissos /status
+   /pendentes /parados /pipeline /vincular /desfazer /ajuda /id`), y también los
+   botones inline de las cinco familias (`opp`/`lead`, `na`, `reg`, `gh`,
+   `cmp`). El ack que ve el vendedor es un mensaje inmediato («🎙 Ouvindo o
+   áudio…») que después se **edita** con la confirmación; el ack que le importa
+   a Telegram es el de la reentrega, que sale por el camino `duplicado` del
+   claim sin volver a procesar nada. 78 tests nuevos en
+   `api/telegram/__tests__/`.
+2. ~~La Edge Function `pairing-code` no existe~~ — **hecho**, y **no** como Edge
+   Function de Supabase sino como `api/pairing-code.ts` (una función más de
+   Vercel; el proyecto ya despliega `api/*.ts` y así hay un solo runtime que
+   mantener). POST autenticado, código de 6 dígitos con `crypto.randomInt`, TTL
+   10 min, los códigos vivos anteriores del mismo vendedor quedan quemados, y el
+   `vendor_id` del cuerpo se **ignora**: vale el del JWT. Techo de 6 códigos por
+   vendedor por hora.
+3. ~~El deploy no existe~~ — **hecho**: `https://ventus3.vercel.app`, con las
+   12 funciones de `api/` declaradas una por una en `vercel.json`.
+4. ~~El `assetlinks.json` tenía el placeholder de 32 ceros~~ — **hecho**: tiene
+   el SHA-256 real del keystore de release, conferido contra el propio keystore
+   (`npm run assetlinks:check`, verde). Lo que **no** se pudo hacer desde acá es
+   verificarlo contra el sitio publicado: el egress bloquea
+   `ventus3.vercel.app` con `CONNECT tunnel failed, response 403`. Ese veredicto
+   lo da el workflow del APK en el primer build.
+5. ~~La URL estaba escrita a mano en cuatro archivos~~ — **hecho**: fuente única
+   en `config/url-publica.txt`, con una prueba
+   (`src/data/__tests__/url-publica.test.ts`) que falla si alguien vuelve a
+   escribir un host a mano en `index.html` o en `android/twa-manifest.json`.
 
 ---
 
@@ -53,11 +102,11 @@ $ npm run type-check
 > tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.worker.json
 EXIT=0   (los 3 proyectos: app, node/api, service worker)
 
-$ npx vitest run
- Test Files  40 passed (40)
-      Tests  781 passed (781)
-   Duration  8.83s
-EXIT=0        ← 636 en la ola 2 · 777 al cerrar la ola 3 · +4 del integrador
+$ npx vitest run                                   # 2026-08-26, corrida real
+ Test Files  45 passed (45)
+      Tests  868 passed (868)
+   Duration  11.57s
+EXIT=0        ← 636 en la ola 2 · 777 al cerrar la ola 3 · 868 hoy
 
 $ npx eslint . --max-warnings 0
 (sin salida: 0 errores, 0 warnings)
@@ -80,6 +129,21 @@ $ node scripts/verificar-pwa.mjs
 53 ok · 0 avisos · 0 errores
 Instalable. ✓
 EXIT=0
+
+$ node scripts/url-publica.mjs --check             # la URL vive en un solo lugar
+✓ android/twa-manifest.json em dia com https://ventus3.vercel.app
+EXIT=0
+
+$ node scripts/gerar-assetlinks.mjs --check        # el fingerprint es el real
+✓ público/.well-known/assetlinks.json está em dia
+  (D4:83:EA:71:…:EE:9F, el mismo que keytool lee del keystore de release)
+EXIT=0
+
+$ node scripts/gerar-assetlinks.mjs --verificar    # contra el sitio publicado
+✖ respondeu HTTP 403                               ← el EGRESS de este contenedor,
+                                                     no el sitio: CONNECT tunnel
+                                                     failed. Queda sin verificar
+                                                     desde acá (§5.1-bis, 18-bis)
 
 $ npx playwright test        (de la ola 3, no se volvió a correr en esta pasada)
  93 tests · 87 passed · 6 skipped (capturas.spec.ts, sólo con CAPTURAS=1)
@@ -105,11 +169,9 @@ cumple.
 
 ## 2 · Qué está construido y funciona
 
-### 2.1 · Base de datos — **las migraciones YA ESTÁN APLICADAS**
+### 2.1 · Base de datos — **las 12 migraciones del v3 están aplicadas**
 
-Corrección importante respecto de la versión anterior de este documento, que
-decía «ninguna migración fue aplicada»: el 2026-08-25 se aplicaron
-`0001`–`0010` más una `0011` correctiva. Verificado con `list_migrations`:
+Verificado con `list_migrations` el 2026-08-26:
 
 | version | nombre |
 |---|---|
@@ -124,6 +186,18 @@ decía «ninguna migración fue aplicada»: el 2026-08-25 se aplicaron
 | 20260825121510 | `ventus3_0009_rpcs` |
 | 20260825121553 | `ventus3_0010_contrato_app` |
 | 20260825121903 | `ventus3_0011_revoke_trigger_fn_anon` |
+| 20260825190039 | `0100_seguranca_rls_grants_views` |
+| 20260825225714 | `ventus3_0012_revoke_trigger_fn_authenticated` |
+
+> **Ojo con la numeración: hay un `0012` en la base y otro en el disco, y no
+> son el mismo.** Lo aplicado como `ventus3_0012` es
+> `revoke_trigger_fn_authenticated`; el archivo `supabase/migrations/0012_cron.sql`
+> es el de los diez jobs de `pg_cron` y sigue **sin aplicar** (`cron.job` tiene
+> 0 jobs `ventus-%`). Y en `supabase/migrations/` **no existen los archivos de
+> `0011` ni del `0012` aplicado**: se corrieron directo contra la base. Eso
+> significa que **el repositorio no puede recrear esta base desde cero**.
+> Antes de aplicar `0012_cron.sql` conviene renumerarlo a `0013_cron.sql` y
+> bajar de la base el SQL de las dos que faltan.
 
 `0011` cierra un hueco que abría `0001`: `ventus_tasks_after_change()` es
 SECURITY DEFINER y quedaba con EXECUTE para `anon`, expuesta en
@@ -152,6 +226,27 @@ El bloque **D2** del propio archivo recrea las 23 policies anteriores si hace
 falta volver atrás. Lo que **no** se pudo hacer desde este entorno: un login
 humano de verdad en el v2 (el egress bloquea `wtrbvgqxgcfjacqcndmb.supabase.co`
 con `CONNECT 403`), así que la prueba es a nivel de rol y JWT, no de navegador.
+
+**Re-verificado el 2026-08-26**, consultando la base:
+
+| medida | valor | lectura |
+|---|---|---|
+| grants de `anon` sobre tablas/vistas de `public` | **0** | el saneamiento se sostiene |
+| policies sobre `anon` | **0** | nada apunta a un rol sin grants |
+| policies sobre `authenticated` | **67** | con `is_admin()` y `current_vendor_name()` envueltos en `(select …)` |
+| EXECUTE de `anon` sobre funciones de `public` | **13** | ← el resto pendiente, abajo |
+
+Las 13 funciones que `anon` todavía puede ejecutar son **todas funciones de
+trigger y todas SECURITY INVOKER** (`ventus_tasks_before_write`,
+`ventus_actions_before_write`, `ventus_scale_evidence_before_write`,
+`update_updated_at_column`, `validate_stage_advancement`, …). Llamarlas directo
+por `/rest/v1/rpc/` levanta `0A000` («trigger functions can only be called as
+triggers»), así que no son explotables — pero son el residuo del riesgo **C9**
+documentado en la propia migración: el `ALTER DEFAULT PRIVILEGES` de `postgres`
+para **funciones** sigue concediendo EXECUTE a `anon`, o sea que **cada función
+nueva nace llamable por PostgREST**. Cerrarlo del todo quedó fuera de aquella
+ventana a propósito; conviene revisar los grants de `anon` después de crear
+cualquier función o tabla desde el panel.
 
 `supabase/migrations/0012_cron.sql` está **escrita y sin aplicar**: son los diez
 jobs de `pg_cron` + `pg_net` del v3 (el archivo que `api/dispatch/jobs.ts` y
@@ -272,7 +367,9 @@ Módulos: `queries`, `mutations`, `db`, `sync`, `outbox`, `transport`,
 ### 2.6 · `api/` — backend serverless
 
 `/api/plan`, `/api/ingest`, `/api/ventus` (SSE), `/api/ventus/feedback`,
-`/api/act`, `/api/health`. 147 tests con un doble del cliente de Supabase.
+`/api/act`, `/api/health`, `/api/telegram` (el webhook del bot) y
+`/api/pairing-code` (el emisor del código de 6 dígitos). 283 tests con un doble
+del cliente de Supabase.
 
 - Auth **fail-closed** con verificación local de firma: JWKS asimétrico
   (ES256/RS256/EdDSA) y el HS256 legado. El algoritmo se decide por el **tipo de
@@ -582,9 +679,13 @@ es que **un andamio siempre se anuncia en pantalla**, en PT-BR y sin fingir.
 - **La transcripción posterior no existe todavía**: los blobs quedan en
   `audioBlobs` con estado `gravado` y la cola los ve, pero falta el pipeline
   `MediaRecorder → Whisper → registrarAtividade` (TODO 12).
-- **`/api/telegram` devuelve 501.** No es un stub olvidado: la biblioteca del
-  bot está entera detrás y lo que falta es el ruteo. Está en la lista de
-  bloqueos (§0) porque tiene consecuencias fuera de sí mismo.
+- **El bot no cubre todavía el Golden Hour completo por Telegram.** El ruteo
+  existe y sirve la fila lead por lead, pero el sello de Hora Cheia lo escribe
+  la app, no el bot: cerrar una sesión desde Telegram no mueve la racha.
+- **El «✅ Feito» de un lead en `/hoje` pregunta el desfecho** en vez de
+  registrar un toque a ciegas: el resultado (`interested` / `meeting_scheduled` /
+  `no_response`) es lo que mueve la cadencia y la etapa, e inventarlo sería
+  corromper el dato. Es un tap más, a propósito.
 - **La sesión de respaldo del Mini App dura una hora y no se refresca.** Cuando
   vence, el Mini App vuelve a entrar con un `initData` nuevo —Telegram lo
   reemite en cada apertura—, así que no se nota; pero está dicho en el código y
@@ -613,8 +714,9 @@ es que **un andamio siempre se anuncia en pantalla**, en PT-BR y sin fingir.
 
 ## 5 · TODOs consolidados (las tres olas + el integrador)
 
-Orden aproximado de dependencia. Lo que bloquea a otra cosa va primero. Los tres
-bloqueos de despliegue están arriba del todo, en §0.
+Orden aproximado de dependencia. Lo que bloquea a otra cosa va primero.
+**La lista corta y priorizada de hoy está en §0**; esto es el inventario
+completo, para no perder nada.
 
 ### 5.1 · Base de datos y despliegue
 
@@ -631,16 +733,18 @@ bloqueos de despliegue están arriba del todo, en §0.
    servidor **tiene que** emitir `abertura` inmediato y `ping` cada 15s o el
    timeout de inactividad de 25s lo corta (los proxies móviles brasileños cortan
    conexiones ociosas a los 30-60s).
-3. **Edge Function `pairing-code`**: no existe. Es el bloqueo 2 de §0.
-4. **El handler de `/api/telegram`**: es el bloqueo 1 de §0. Lo que hay que
-   escribir está especificado en `PLANO.md` §532-545 y las piezas están todas en
-   `api/telegram/_lib/`: `reivindicarUpdate()` para el claim idempotente,
-   `canalDoTelegram()` para la identidad, `partirComando()` + los nueve
-   `comando*`, `lerCallback()`/`callbackVigente()` para los botones, `sessoes`
-   para el estado conversacional y `fluxo` para las escrituras. Falta sólo el
-   ruteo, con ack <1s y procesamiento por la cola.
-5. **Aplicar `0012_cron.sql`** después del deploy, con los dos secretos en el
-   Vault. Ver `DEPLOY.md` §5. Y decidir aparte qué se hace con el job del v2
+3. ~~Edge Function `pairing-code`~~ — **hecha** como `api/pairing-code.ts`
+   (§0). Lo que queda es operativo: emparejar de verdad a Victor Hugo, Andre y
+   Paulo, cada uno desde su teléfono (`DEPLOY.md` §6.4).
+4. ~~El handler de `/api/telegram`~~ — **hecho** (§0). Lo que queda abierto de
+   este punto: nadie llama a `pendentesDeReprocesso()` todavía. La cola de
+   re-drive existe y `processarUpdate()` está exportada justo para eso, pero
+   falta el job de `0012_cron.sql` que la barra cada pocos minutos. Sin él, un
+   update que quedó en `erro:` sólo se recupera si Telegram lo reintenta.
+5. **Aplicar `0012_cron.sql`** — el deploy ya está de pie, así que esto se puede
+   hacer ahora, con los dos secretos en el Vault. Verificado el 26/08:
+   `cron.job` tiene **0** jobs `ventus-%`. Renumerarlo antes a `0013_cron.sql`
+   (§2.1: el `0012` de la base es otra migración). Ver `DEPLOY.md` §5. Y decidir aparte qué se hace con el job del v2
    `check-inactivity-daily` (jobid 1), que sigue insertando una notificación por
    oportunidad por día sin deduplicar: 4.579 filas, 0,0 % de lectura.
 6. **Ampliar `ventus_commit_action`**: hoy despacha 5 tipos y los otros 4
@@ -674,23 +778,40 @@ bloqueos de despliegue están arriba del todo, en §0.
 
 ### 5.1-bis · Plataforma: lo que falta para el primer teléfono
 
+El camino del APK está **listo para apretar un botón**. Lo que queda del lado
+del repositorio es cero; lo que queda es de cuenta, de secretos y de manos.
+
+13-bis. **Cargar los dos secrets del APK en GitHub** (`ANDROID_KEYSTORE_BASE64`
+    y `ANDROID_KEYSTORE_PASSWORD`) y empujar una tag `v*`. Los comandos exactos,
+    desde la raíz del repo, están en `docs/ANDROID.md` §2. Todo lo demás ya
+    está: `assetlinks.json` con el fingerprint real, `twa-manifest.json`
+    alineado con la URL única, y el workflow revisado línea por línea.
 14. **Trámite Google, antes del 30/09/2026**: crear la Limited Distribution
     Account con la cuenta corporativa (no la personal de nadie), registrar
     `br.com.ventapel.ventus` + el SHA-256 del keystore, y dar de alta los 6
-    aparatos con los teléfonos en mano. Paso a paso en `docs/ANDROID.md` §1.
+    aparatos con los teléfonos en mano. Los dos valores están listos para copiar
+    y pegar en `docs/ANDROID.md` §1; el trámite, en §8.
 15. **Guardar el keystore hoy**: `ventus3/android/ventapel-ventus.keystore` al
-    cofre de archivos y `/home/user/ventus-keystore-pass.txt` al gestor de
-    contraseñas. Perderlo = no poder actualizar nunca más la app instalada, sin
-    recuperación posible.
-16. **Definir la URL definitiva de producción antes del primer APK.** El host va
-    firmado dentro del APK: cambiarlo después obliga a recompilar y reinstalar
-    en los 6 teléfonos.
+    cofre de archivos y la contraseña de `/home/user/ventus-keystore-pass.txt`
+    al gestor de contraseñas. **Son dos secretos y van en dos lugares.**
+    Perderlo = no poder actualizar nunca más la app instalada, sin recuperación
+    posible. El secret del GitHub **no** es un respaldo: no se puede leer de
+    vuelta.
+16. ~~Definir la URL definitiva antes del primer APK~~ — **decidido para hoy**:
+    `https://ventus3.vercel.app`, en `config/url-publica.txt`, que es el único
+    lugar donde vive. El día que exista `ventus.ventapel.com.br` hay que cambiar
+    esa línea **y recompilar y reinstalar el APK en los 6 teléfonos**, porque el
+    host va firmado adentro. Procedimiento en `docs/ANDROID.md` §4.
 17. **Registrar el Mini App en @BotFather** (`/newapp`) apuntando al deploy. Sin
     eso `t.me/<bot>/app` no existe y ningún deep link abre nada.
 18. **Probar en hardware real**: un iPhone y un Android del equipo, dentro del
     Mini App y como PWA instalada. Los umbrales de los eventos de safe area,
     `checkHomeScreenStatus` en iOS y que el `apple-touch-icon` no salga con
     fondo negro sólo se validan ahí.
+18-bis. **Verificar el `assetlinks.json` contra el sitio publicado.** Desde este
+    contenedor no se pudo (`CONNECT tunnel failed, response 403` contra
+    `ventus3.vercel.app`). Con red abierta: `npm run assetlinks:verificar`.
+    El workflow del APK también lo hace, como aviso, antes de compilar.
 
 ### 5.2 · Producto
 
@@ -846,10 +967,12 @@ bloqueos de despliegue están arriba del todo, en §0.
   constructor— a propósito, y `montarStartParam` se auto-verifica releyendo lo
   que emite. Un destino sin inverso hace que el botón de un aviso abra otra
   pantalla que la que promete el rótulo.
-- **No agregues una ruta en `api/` sin declararla en `vercel.json`.** Las 11
+- **No agregues una ruta en `api/` sin declararla en `vercel.json`.** Las **12**
   funciones están listadas una por una con su `maxDuration`; una ruta nueva nace
   con el default de 10 s y se corta a la mitad. Y el plan Hobby permite 12:
-  queda **una** libre.
+  **no queda ninguna libre**. La número 12 es `api/pairing-code.ts`. Una ruta
+  más obliga a fusionar dos endpoints o a subir de plan — decidilo antes de
+  escribirla, no después.
 - **No pongas cabeceras de CORS en `vercel.json`.** Las emite `rota()` en
   `api/_lib/http.ts`, con la origen ecoada y `Vary: Origin`. Declararlas también
   en la plataforma las manda duplicadas y el navegador rechaza la respuesta

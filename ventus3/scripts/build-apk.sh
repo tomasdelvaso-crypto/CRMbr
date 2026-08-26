@@ -4,7 +4,8 @@
 # ══════════════════════════════════════════════════════════════════════════
 # USO
 # ══════════════════════════════════════════════════════════════════════════
-#     ./scripts/build-apk.sh https://ventus.ventapel.com.br
+#     ./scripts/build-apk.sh                      # URL de config/url-publica.txt
+#     ./scripts/build-apk.sh https://outra.url    # pisa a fonte única
 #
 # Opções (env ou flag):
 #     --version-code=<n>     código de versão (padrão: nº de commits do git)
@@ -91,12 +92,23 @@ for arg in "$@"; do
   esac
 done
 
+# Sin URL en la línea de comandos usamos la fuente única del repositorio
+# (config/url-publica.txt, o la variable VENTUS_URL si está puesta). Así el
+# comando de todos los días es `./scripts/build-apk.sh` a secas y no hay
+# ninguna URL escrita a mano que pueda quedar vieja.
+if [ -z "$URL" ]; then
+  URL="$(node "$SCRIPT_DIR/url-publica.mjs" 2>/dev/null || true)"
+  [ -n "$URL" ] && aviso "Sem URL na linha de comando: usando $URL (config/url-publica.txt)"
+fi
+
 [ -n "$URL" ] || morrer "Falta a URL.
 
-    ./scripts/build-apk.sh https://ventus.ventapel.com.br
+    ./scripts/build-apk.sh                       # usa config/url-publica.txt
+    ./scripts/build-apk.sh https://outra.url     # pisa a fonte única
 
   É a URL que o APK vai abrir. Depois de distribuído, mudá-la exige
-  recompilar e reinstalar nos 6 telefones — então decida antes."
+  recompilar e reinstalar nos 6 telefones — então decida antes.
+  A fonte única é config/url-publica.txt; se ela não abriu, conserte-a."
 
 # ── 1. valida e normaliza a URL ───────────────────────────────────────────
 passo "1/6  URL"

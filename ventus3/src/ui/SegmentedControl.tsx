@@ -70,7 +70,10 @@ export function SegmentedControl<T extends string>({
   }
 
   const indiceAtivo = options.findIndex((o) => o.value === value)
-  const alturas = size === 'sm' ? 'h-9 text-xs' : 'h-11 text-sm'
+  // El padding va con el tamaño: en `sm` cada segmento tiene 8 px menos de
+  // relleno, que es justo lo que separa a un rótulo de once letras de
+  // aparecer entero o con puntos suspensivos en la columna de un teléfono.
+  const alturas = size === 'sm' ? 'h-9 px-2 text-xs' : 'h-11 px-3 text-sm'
 
   return (
     <div
@@ -113,7 +116,15 @@ export function SegmentedControl<T extends string>({
             disabled={opcao.disabled}
             onClick={() => selecionar(i)}
             className={cx(
-              'relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-pill px-3',
+              // `min-w-0` no es decorativo: sin él, el ítem flex conserva
+              // `min-width: auto` —el ancho intrínseco del rótulo, que va con
+              // `truncate` y por lo tanto en una sola línea— y el control se
+              // niega a encoger. Con cuatro rótulos largos («Necessidade de
+              // solução») el radiogroup medía 419 px dentro de un sheet de
+              // 388 y el editor de escala desbordaba en horizontal. El
+              // `truncate` del <span> sólo puede recortar si el botón puede
+              // encoger.
+              'relative z-10 flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-pill',
               'font-medium tracking-tight tap-highlight-none transition-colors',
               'disabled:opacity-40',
               alturas,

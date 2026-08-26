@@ -35,7 +35,7 @@ export function LinhaDoTempo({ itens, hoje, onRegistrar }: LinhaDoTempoProps) {
         icon={<History size={26} aria-hidden />}
         title="Nenhum registro ainda"
         description="Tudo o que você conversar com este cliente vive aqui. Comece ditando a última conversa: leva 20 segundos."
-        actionLabel="Registrar por voz"
+        actionLabel="Registrar a primeira conversa por voz"
         onAction={onRegistrar}
       />
     )

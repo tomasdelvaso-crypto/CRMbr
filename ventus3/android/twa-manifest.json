@@ -1,6 +1,6 @@
 {
   "packageId": "br.com.ventapel.ventus",
-  "host": "ventus.ventapel.com.br",
+  "host": "ventus3.vercel.app",
   "name": "Ventus",
   "launcherName": "Ventus",
   "display": "standalone",
@@ -14,10 +14,10 @@
   "backgroundColor": "#0b1220",
   "enableNotifications": true,
   "startUrl": "/?source=twa",
-  "iconUrl": "https://ventus.ventapel.com.br/icon-512.png",
-  "maskableIconUrl": "https://ventus.ventapel.com.br/icon-maskable-512.png",
-  "webManifestUrl": "https://ventus.ventapel.com.br/manifest.webmanifest",
-  "fullScopeUrl": "https://ventus.ventapel.com.br/",
+  "iconUrl": "https://ventus3.vercel.app/icon-512.png",
+  "maskableIconUrl": "https://ventus3.vercel.app/icon-maskable-512.png",
+  "webManifestUrl": "https://ventus3.vercel.app/manifest.webmanifest",
+  "fullScopeUrl": "https://ventus3.vercel.app/",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "./ventapel-ventus.keystore",
@@ -29,24 +29,24 @@
     {
       "name": "Registrar por voz",
       "shortName": "Registrar",
-      "url": "https://ventus.ventapel.com.br/registrar?atalho=voz",
-      "chosenIconUrl": "https://ventus.ventapel.com.br/atalho-registrar.png"
+      "url": "https://ventus3.vercel.app/registrar?atalho=voz",
+      "chosenIconUrl": "https://ventus3.vercel.app/atalho-registrar.png"
     },
     {
       "name": "Golden Hour",
       "shortName": "Golden",
-      "url": "https://ventus.ventapel.com.br/golden?atalho=1",
-      "chosenIconUrl": "https://ventus.ventapel.com.br/atalho-golden.png"
+      "url": "https://ventus3.vercel.app/golden?atalho=1",
+      "chosenIconUrl": "https://ventus3.vercel.app/atalho-golden.png"
     },
     {
       "name": "Hoje",
       "shortName": "Hoje",
-      "url": "https://ventus.ventapel.com.br/?atalho=hoje",
-      "chosenIconUrl": "https://ventus.ventapel.com.br/atalho-hoje.png"
+      "url": "https://ventus3.vercel.app/?atalho=hoje",
+      "chosenIconUrl": "https://ventus3.vercel.app/atalho-hoje.png"
     }
   ],
   "shareTarget": {
-    "action": "https://ventus.ventapel.com.br/registrar",
+    "action": "https://ventus3.vercel.app/registrar",
     "method": "POST",
     "enctype": "multipart/form-data",
     "params": {
@@ -56,7 +56,12 @@
       "files": [
         {
           "name": "arquivos",
-          "accept": ["image/*", "audio/*", "application/pdf", "text/plain"]
+          "accept": [
+            "image/*",
+            "audio/*",
+            "application/pdf",
+            "text/plain"
+          ]
         }
       ]
     }
@@ -64,7 +69,9 @@
   "generatorApp": "bubblewrap-cli",
   "fallbackType": "customtabs",
   "features": {},
-  "alphaDependencies": { "enabled": false },
+  "alphaDependencies": {
+    "enabled": false
+  },
   "enableSiteSettingsShortcut": true,
   "isChromeOSOnly": false,
   "isMetaQuest": false,

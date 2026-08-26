@@ -17,7 +17,14 @@ export type { Tone, Size } from './tokens'
 export { haptic, hapticDisponivel, hapticCancelar } from './haptic'
 export type { HapticPattern } from './haptic'
 
-export { useMediaQuery, useTelaLarga, useDebouncedValue, CONSULTA_TELA_LARGA } from './hooks'
+export {
+  useMediaQuery,
+  useTelaLarga,
+  useTelaCurta,
+  useDebouncedValue,
+  CONSULTA_TELA_LARGA,
+  CONSULTA_TELA_CURTA,
+} from './hooks'
 
 // Dictado en vivo (Web Speech). Vivía en Dossie/ y lo importaba también el
 // compositor del Ventus por ruta cruzada: es una primitiva, vive acá.

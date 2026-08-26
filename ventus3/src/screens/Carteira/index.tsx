@@ -74,7 +74,7 @@ import {
  * Android se esconde al scrollear.
  */
 const ALTURA_TELA =
-  'calc(100svh - 3.5rem - var(--safe-top) - var(--spacing-nav) - var(--safe-bottom))'
+  'calc(100svh - 3.5rem - var(--safe-top) - var(--spacing-nav) - var(--safe-bottom) - var(--spacing-chrome))'
 
 export default function CarteiraScreen() {
   const queryClient = useContext(QueryClientContext)

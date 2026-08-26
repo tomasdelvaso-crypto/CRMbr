@@ -17,7 +17,7 @@
 //     quién es → qué hago hoy → qué me traba → con quién hablo → qué pasó.
 
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { FileQuestion, TriangleAlert } from 'lucide-react'
 import {
   SCALE_LABELS,
@@ -34,6 +34,7 @@ import {
   useDossieCompleto,
 } from '@/data'
 import { Badge, Button, Card, EmptyState, Skeleton, confirmar, cx, toast } from '@/ui'
+import { useBackNativo, useBotaoPrimario, type OpcoesDeBotao } from '@/host'
 import { Cabecalho } from './Cabecalho'
 import { ProximoPasso } from './ProximoPasso'
 import { Secao } from './Secao'
@@ -52,6 +53,7 @@ import { useVendorDaSessao } from '@/app/useVendorDaSessao'
 export default function DossieScreen() {
   const params = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const bruto = Number(params['opportunityId'])
   const opportunityId = Number.isInteger(bruto) && bruto > 0 ? bruto : null
 
@@ -61,6 +63,19 @@ export default function DossieScreen() {
   const avancarEtapa = useAvancarEtapa()
 
   const [escalaAberta, setEscalaAberta] = useState<ScaleKey | null>(null)
+  // ¿El host dibuja «Avançar»? Lo informa `AcaoDaFicha` (ver el comentario de
+  // ese componente al final del archivo) y sirve para que el BlocoGate no
+  // pinte un segundo botón para la misma etapa.
+  const [avancarNativo, setAvancarNativo] = useState(false)
+
+  // La ficha se abre empilhada sobre la carteira y el back nativo del Mini App
+  // tiene que volver ahí. Menos cuando la abrió un deep link del bot
+  // (`?startapp=opp_1842`): entonces es la PRIMERA entrada del historial
+  // —`location.key === 'default'`— y `navigate(-1)` no tendría a dónde ir.
+  useBackNativo(() => {
+    if (location.key === 'default') void navigate('/carteira')
+    else void navigate(-1)
+  })
 
   // Revalidación en background: la ficha ya pintó desde Dexie, esto solo la
   // pone al día si hay señal. Sin red no pasa nada.
@@ -138,8 +153,32 @@ export default function DossieScreen() {
     toast({ message: `Agora em ${proxima}.`, tone: 'ok' })
   }
 
+  const proximaEtapa = getStageName((etapa + 1) as StageId)
+
   return (
     <div className="pb-6">
+      {/* Va PRIMERO en el árbol a propósito: ver `AcaoDaFicha`. */}
+      <AcaoDaFicha
+        opcoes={
+          // El editor de escala es un Sheet y declara su propio «Salvar»:
+          // mientras está abierto, la ficha suelta el botón del host.
+          escalaAberta !== null || etapa >= 6
+            ? null
+            : dossie.gate
+              ? // Gate incumplido: el botón queda gris y DICE qué falta. Un
+                // botón deshabilitado sin motivo es la forma más rápida de que
+                // alguien lo toque tres veces y culpe a la app.
+                { rotulo: dossie.gate.texto, ativo: false, aoTocar: () => undefined }
+              : {
+                  rotulo: `Avançar para ${proximaEtapa}`,
+                  aoTocar: () => {
+                    void avancar()
+                  },
+                }
+        }
+        aoMudar={setAvancarNativo}
+      />
+
       <Cabecalho
         opportunity={oportunidade}
         lead={dossie.lead}
@@ -221,6 +260,7 @@ export default function DossieScreen() {
             usadas={dossie.spinUsadas[escalaFoco] ?? []}
             escalaFoco={escalaFoco}
             bloqueado={dossie.gate !== null}
+            acaoNativa={avancarNativo}
             onAlternarPergunta={alternarPergunta}
             onAvancarEtapa={avancar}
             onAbrirEscala={setEscalaAberta}
@@ -307,4 +347,32 @@ export default function DossieScreen() {
       )}
     </div>
   )
+}
+
+/**
+ * Declara la acción crítica de la ficha al host y avisa si el host la dibuja.
+ *
+ * ¿Por qué un componente y no `useBotaoPrimario()` dentro de `DossieScreen`?
+ * Porque React corre los efectos de abajo hacia arriba: los de un hijo antes
+ * que los del padre. El `EditorEscala` es hijo de esta pantalla y declara su
+ * propio «Salvar»; si la ficha llamara al hook desde el componente padre, su
+ * efecto correría DESPUÉS y el `esconder()` de la ficha —que es lo que hace al
+ * pasar a `null` cuando el editor se abre— borraría el botón del editor en el
+ * mismo commit. Declarándolo desde un hermano que va ANTES en el árbol, el
+ * orden queda: ficha suelta el botón → editor lo toma.
+ *
+ * No pinta nada: existe sólo por el efecto y por el orden.
+ */
+function AcaoDaFicha({
+  opcoes,
+  aoMudar,
+}: {
+  opcoes: OpcoesDeBotao | null
+  aoMudar: (nativo: boolean) => void
+}): null {
+  const nativo = useBotaoPrimario(opcoes)
+  useEffect(() => {
+    aoMudar(nativo)
+  }, [nativo, aoMudar])
+  return null
 }

@@ -12,11 +12,19 @@
 //    sesión de verdad: sin provider (test, render aislado) el Shell pinta
 //    igual, y con provider redirige a /login guardando a dónde iba.
 //
-// 2. EL FAB DE MICRÓFONO LLEVA EL BADGE DEL OUTBOX. Es el único lugar donde
+// 2. EL BOTÓN DE MICRÓFONO LLEVA EL BADGE DEL OUTBOX. Es el único lugar donde
 //    el vendedor ve, sin buscarla, la respuesta a «lo que dicté se guardó?».
 //    El contador sale de `usePendentesDoOutbox()`, que escucha el store del
 //    outbox y no una query: el badge tiene que aparecer en el mismo frame en
 //    que la nota se encola, que es cuando la persona todavía está mirando.
+//
+//    Y DONDE HAY BARRA DE COMANDO, EL MICRÓFONO VIVE DENTRO DE ELLA. Antes
+//    flotaba encima, a 5rem del piso: dos capas de chrome fijo, 122 px, sobre
+//    la primera tarjeta de Hoje en un teléfono de 664 px. La barra ya tenía un
+//    micrófono propio que abría el MISMO sheet que su campo de texto —o sea,
+//    redundante— y ese es el lugar que ocupa ahora el de Registrar. Resultado:
+//    una sola franja de chrome, un solo micrófono, y cero superposición sobre
+//    el contenido. Flotando queda sólo donde no hay barra.
 //
 // 3. LA DIRECCIÓN DE LA TRANSICIÓN SE DECIDE POR PROFUNDIDAD DE RUTA.
 //    `direcaoEntreRotas` compara segmentos: /carteira → /carteira/46 es push,
@@ -34,7 +42,14 @@ import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Mic, WifiOff } from 'lucide-react'
 import { BottomNav } from './BottomNav'
 import { SessionContext } from './session-context'
-import { useContagemRevisao, useEstaOnline, usePendentesDoOutbox } from '@/data'
+import {
+  useContagemRevisao,
+  useDiaVigente,
+  useEstaOnline,
+  usePendentesDoOutbox,
+  usePlanoFixado,
+} from '@/data'
+import { definirBadge } from '@/push'
 import { BarraDeComando } from '@/screens/Ventus/BarraDeComando'
 import { barraDeComandoVisivel } from '@/screens/Ventus/rotas'
 import { ConfirmHost, Skeleton, ToastHost, direcaoEntreRotas, haptic } from '@/ui'
@@ -115,27 +130,71 @@ export function Shell() {
 
   useDirecaoDaTransicao(location.pathname)
 
-  // Contador de la Revisão. Se lee acá y no dentro de BottomNav porque el hook
-  // también pinta navigator.setAppBadge, y eso tiene que pasar UNA vez por app,
-  // no una vez por render de la nav. Sin sesión no hay bandeja que contar.
+  // Contador de la Revisão. Se lee acá y no dentro de BottomNav porque el badge
+  // del sistema operativo se pinta UNA vez por app, no una vez por render de la
+  // nav. Sin sesión no hay bandeja que contar.
   const sessao = useContext(SessionContext)
-  const pendentesRevisao = useContagemRevisao(sessao?.vendorName ?? null)
+  const vendorName = sessao?.vendorName ?? null
+  const pendentesRevisao = useContagemRevisao(vendorName)
   const pendentesOutbox = usePendentesDoOutbox()
   const online = useEstaOnline()
+
+  // ── El badge del ícono ────────────────────────────────────────────────
+  // Cuenta LO QUE ESPERA UNA DECISIÓN: las tarjetas del día que siguen sin
+  // resolver más las propuestas del Ventus sin revisar. No cuenta avisos —un
+  // badge de avisos es el mismo ruido que ya mató las notificaciones del v2, y
+  // encima uno que no se puede silenciar.
+  //
+  // Vive en el Shell y en ningún otro lado: el badge es UNO solo y dos
+  // escritores se pisan (el que corre último gana y el número queda a medias).
+  // La query del plano es la MISMA que usa Hoje —misma queryKey—, así que no
+  // agrega ni una lectura: react-query la comparte.
+  const hoje = useDiaVigente()
+  const plano = usePlanoFixado(vendorName, hoje)
+  const dadosDoPlano = plano.data
+  const pendentesDoDia =
+    dadosDoPlano === undefined ? 0 : dadosDoPlano.fixadas.length - dadosDoPlano.resolvidas
+
+  useEffect(() => {
+    // `definirBadge(0)` limpia el badge en vez de pintar un cero, así que el
+    // llegar a cero se apaga solo. Sin sesión tampoco hay nada que contar.
+    void definirBadge(vendorName === null ? 0 : pendentesDoDia + pendentesRevisao)
+  }, [vendorName, pendentesDoDia, pendentesRevisao])
 
   // La Golden Hour es modo foco: sin header, sin nav, sin salidas laterales.
   const modoFoco = location.pathname.startsWith('/golden')
 
-  // El FAB manda a /registrar. Estando YA en /registrar sería un botón que no
-  // hace nada y que además tapa la barra de acción con «Confirmar» —el último
-  // toque del camino feliz—. Se esconde, no se deshabilita.
-  const mostrarFab = !location.pathname.startsWith('/registrar')
-  // Y se apoya sobre la barra de comando sólo cuando la barra existe: si no,
-  // queda flotando 4rem por encima de una franja vacía.
+  // El micrófono manda a /registrar. Estando YA en /registrar sería un botón
+  // que no hace nada y que además tapa la barra de acción con «Confirmar» —el
+  // último toque del camino feliz—. Se esconde, no se deshabilita.
+  const mostrarMicrofone = !location.pathname.startsWith('/registrar')
   const comBarra = barraDeComandoVisivel(location.pathname, sessao?.vendorName ?? null)
-  const alturaDoFab = comBarra
-    ? 'calc(var(--spacing-nav) + env(safe-area-inset-bottom, 0px) + 5rem)'
-    : 'calc(var(--spacing-nav) + env(safe-area-inset-bottom, 0px) + 1rem)'
+
+  const rotuloDoMicrofone =
+    pendentesOutbox > 0
+      ? `Registrar por voz. ${String(pendentesOutbox)} ${pendentesOutbox === 1 ? 'registro pendente de envio' : 'registros pendentes de envio'}`
+      : 'Registrar por voz'
+  const irRegistrar = () => {
+    haptic('impact')
+    void navigate('/registrar')
+  }
+
+  // ── La reserva del chrome de abajo ────────────────────────────────────
+  // Todo lo que scrollea resta `--spacing-chrome` de su alto (ver index.css).
+  // Se escribe en <html> y no en el <div> de acá porque los portales —Sheet,
+  // Toast, Confirm— cuelgan de <body> y no verían la variable.
+  //
+  // Va en un LAYOUT effect: si se escribiera en un efecto normal, el primer
+  // frame de cada navegación mediría el scroll con la reserva de la pantalla
+  // anterior y la lista saltaría.
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return
+    const raiz = document.documentElement
+    raiz.style.setProperty('--spacing-chrome', comBarra ? 'var(--spacing-ventus)' : '0px')
+    return () => {
+      raiz.style.removeProperty('--spacing-chrome')
+    }
+  }, [comBarra])
 
   // ── Guardia de sesión ──────────────────────────────────────────────────
   // Sólo cuando hay provider de verdad. Ver la decisión 1.
@@ -181,40 +240,39 @@ export function Shell() {
         <Outlet />
       </main>
 
-      {/* FAB de micrófono: registrar por voz tiene que costar menos que abrir
-          la libreta. El offset sube 4rem cuando está la barra de comando del
-          Ventus, que ocupa la franja inmediatamente encima de la nav. El badge
-          cuenta lo que el outbox todavía no pudo enviar. */}
-      {mostrarFab && (
-      <button
-        type="button"
-        aria-label={
-          pendentesOutbox > 0
-            ? `Registrar por voz. ${pendentesOutbox} ${pendentesOutbox === 1 ? 'registro pendente de envio' : 'registros pendentes de envio'}`
-            : 'Registrar por voz'
-        }
-        onClick={() => {
-          haptic('impact')
-          void navigate('/registrar')
-        }}
-        className="fixed right-4 z-40 flex size-14 items-center justify-center rounded-full bg-brand text-brand-fg shadow-lg transition-transform active:scale-95"
-        style={{ bottom: alturaDoFab }}
-      >
-        <Mic size={24} aria-hidden />
-        {pendentesOutbox > 0 && (
-          <span
-            aria-hidden
-            className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full border-2 border-bg bg-warn px-1 text-[10px] font-bold leading-4 text-warn-fg"
-          >
-            {pendentesOutbox > 99 ? '99+' : pendentesOutbox}
-          </span>
-        )}
-      </button>
+      {/* Sin barra de comando el micrófono flota, a 1rem por encima de la nav.
+          Con barra, va DENTRO de ella (ver la decisión 2). El badge cuenta lo
+          que el outbox todavía no pudo enviar. */}
+      {mostrarMicrofone && !comBarra && (
+        <button
+          type="button"
+          aria-label={rotuloDoMicrofone}
+          onClick={irRegistrar}
+          className="fixed right-4 z-40 flex size-14 items-center justify-center rounded-full bg-brand text-brand-fg shadow-lg transition-transform active:scale-95"
+          style={{ bottom: 'calc(var(--spacing-nav) + env(safe-area-inset-bottom, 0px) + 1rem)' }}
+        >
+          <Mic size={24} aria-hidden />
+          <BadgeDoOutbox pendentes={pendentesOutbox} />
+        </button>
       )}
 
       {/* Barra persistente do Ventus: perguntar tem que custar menos que
           navegar. Ela mesma se esconde no modo foco e nas telas de captura. */}
-      <BarraDeComando />
+      <BarraDeComando
+        acao={
+          mostrarMicrofone ? (
+            <button
+              type="button"
+              aria-label={rotuloDoMicrofone}
+              onClick={irRegistrar}
+              className="relative flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-fg active:bg-brand-strong"
+            >
+              <Mic size={20} aria-hidden />
+              <BadgeDoOutbox pendentes={pendentesOutbox} />
+            </button>
+          ) : null
+        }
+      />
 
       <BottomNav badges={{ revisao: pendentesRevisao }} />
 
@@ -223,6 +281,23 @@ export function Shell() {
       <ToastHost />
       <ConfirmHost />
     </div>
+  )
+}
+
+/**
+ * El contador de lo que el outbox todavía no pudo enviar. `aria-hidden` porque
+ * el mismo número ya está en el `aria-label` del botón, escrito en palabras:
+ * repetirlo sería leerlo dos veces.
+ */
+function BadgeDoOutbox({ pendentes }: { pendentes: number }) {
+  if (pendentes <= 0) return null
+  return (
+    <span
+      aria-hidden
+      className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full border-2 border-bg bg-warn px-1 text-[10px] font-bold leading-4 text-warn-fg"
+    >
+      {pendentes > 99 ? '99+' : pendentes}
+    </span>
   )
 }
 

@@ -79,6 +79,21 @@ export interface EditorEscalaProps {
 
 const CATEGORIAS: readonly SpinCategory[] = ['situacao', 'problema', 'implicacao', 'necessidade']
 
+/**
+ * Rótulos cortos para el control segmentado, que reparte el ancho del sheet
+ * entre cuatro segmentos: en un iPhone de 390 px cada uno tiene ~87 px.
+ * `SPIN_CATEGORY_LABELS.necessidade` es «Necessidade de solução» —138 px en una
+ * sola línea— y ahí nace el desborde horizontal que corría el sheet de costado
+ * al enfocar «Cargo». El nombre completo sigue estando: es el que encabeza la
+ * ayuda de la categoría elegida, justo arriba del control.
+ */
+const ROTULO_CURTO: Readonly<Record<SpinCategory, string>> = {
+  situacao: 'Situação',
+  problema: 'Problema',
+  implicacao: 'Implicação',
+  necessidade: 'Necessidade',
+}
+
 export function EditorEscala({
   aberto,
   onFechar,
@@ -445,14 +460,19 @@ export function EditorEscala({
         {/* ── Banco SPIN de esta escala, con las usadas marcadas ─────────── */}
         <section>
           <h3 className="text-sm font-semibold">Perguntas para esta escala</h3>
-          <p className="mt-0.5 text-xs text-fg-muted">{SPIN_CATEGORY_HINTS[categoria]}</p>
+          {/* El nombre COMPLETO de la categoría vive acá, en la ayuda, y no en
+              el segmento: en el segmento no entra sin recortarse. */}
+          <p className="mt-0.5 text-xs text-fg-muted">
+            <span className="font-medium text-fg">{SPIN_CATEGORY_LABELS[categoria]}</span>{' '}
+            {SPIN_CATEGORY_HINTS[categoria]}
+          </p>
           <div className="mt-2">
             <SegmentedControl
               label="Categoria SPIN"
               size="sm"
               value={categoria}
               onChange={setCategoria}
-              options={CATEGORIAS.map((c) => ({ value: c, label: SPIN_CATEGORY_LABELS[c] }))}
+              options={CATEGORIAS.map((c) => ({ value: c, label: ROTULO_CURTO[c] }))}
             />
           </div>
           <ul className="mt-2 space-y-1.5">
@@ -473,7 +493,9 @@ export function EditorEscala({
                   <button
                     type="button"
                     aria-pressed={jaUsada}
-                    aria-label={jaUsada ? 'Desmarcar pergunta usada' : 'Marcar pergunta como usada'}
+                    // Con la pregunta adentro: una fila por pregunta, y sin
+                    // esto todas se llaman igual para un lector de pantalla.
+                    aria-label={`${jaUsada ? 'Desmarcar' : 'Marcar'} como pergunta usada: ${q.text}`}
                     onClick={() => {
                       haptic('selection')
                       onAlternarPergunta(escala, q.text)

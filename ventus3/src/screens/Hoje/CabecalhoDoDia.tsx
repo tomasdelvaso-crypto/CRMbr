@@ -12,6 +12,14 @@
 //     alguien ve un 0 después de 14 días es el día que deja de usar el
 //     sistema; estadoDaSequencia() ya devuelve el texto correcto, acá solo se
 //     pinta.
+//
+// EN TELÉFONOS CORTOS EL BLOQUE SE PARTE EN DOS. Los anéis —«dónde estoy»— se
+// quedan arriba, más chicos; la explicación de la largada y la faixa de la
+// racha bajan DEBAJO de las tres tarjetas, junto a la corrente del time. La
+// regla es «arriba, estado y acción; abajo, explicación y motivación»: en un
+// iPhone de 664 px esos dos bloques valían 132 px que se comían la primera
+// tarjeta, que es la única cosa de esta pantalla que hay que hacer AHORA. En
+// un teléfono largo nada de esto se activa y el orden es el de siempre.
 
 import { Flame, Shield, Snowflake } from 'lucide-react'
 import type { EstadoSequencia, RingKey, RingProgress } from '@/core'
@@ -22,6 +30,8 @@ export interface CabecalhoDoDiaProps {
   largada: number
   sequencia: EstadoSequencia | undefined
   carregando: boolean
+  /** Teléfono corto: sólo los anéis, y más chicos. Ver el encabezado. */
+  compacto?: boolean
 }
 
 export function CabecalhoDoDia({
@@ -29,32 +39,54 @@ export function CabecalhoDoDia({
   largada,
   sequencia,
   carregando,
+  compacto = false,
 }: CabecalhoDoDiaProps) {
   if (carregando || !aneis) {
     return (
-      <div className="pt-4">
+      <div className={compacto ? 'pt-2' : 'pt-4'}>
         <Skeleton variant="aneis" />
       </div>
     )
   }
 
   return (
-    <section aria-label="Progresso de hoje" className="pt-4">
+    <section aria-label="Progresso de hoje" className={compacto ? 'pt-2' : 'pt-4'}>
       <RingTrio
-        size={82}
+        size={compacto ? 56 : 82}
         contato={{ value: aneis.contato.current, max: aneis.contato.goal }}
         conversa={{ value: aneis.conversa.current, max: aneis.conversa.goal }}
         avanco={{ value: aneis.avanco.current, max: aneis.avanco.goal }}
       />
 
+      {!compacto && <ContextoDoDia largada={largada} sequencia={sequencia} />}
+    </section>
+  )
+}
+
+export interface ContextoDoDiaProps {
+  largada: number
+  sequencia: EstadoSequencia | undefined
+  className?: string
+}
+
+/**
+ * La explicación de la largada y la faixa de la racha.
+ *
+ * Sale del cabezal para poder pintarse en otro lugar sin duplicarse: dentro
+ * del bloque de arriba en un teléfono largo, debajo de las tres tarjetas en uno
+ * corto. Lo que dice es idéntico en los dos casos.
+ */
+export function ContextoDoDia({ largada, sequencia, className }: ContextoDoDiaProps) {
+  if (largada <= 0 && !sequencia) return null
+  return (
+    <div className={className}>
       {largada > 0 && (
         <p className="mt-2 text-center text-2xs text-fg-subtle">
           {largada} contatos de largada por conferir a agenda e revisar as prioridades.
         </p>
       )}
-
       {sequencia && <FaixaDaSequencia sequencia={sequencia} />}
-    </section>
+    </div>
   )
 }
 

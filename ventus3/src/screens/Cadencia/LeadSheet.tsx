@@ -158,9 +158,19 @@ export function LeadSheet({
   const aberto = linha !== null
 
   const canalDoPasso = passo ? (canalExecutavel(lead, passo) ?? passo.channel) : null
-  const sequencia =
-    nextSequenceNumber(dados.touchpoints) ??
-    (Math.min(lead.touchpoints_count + 1, MAX_TOUCHPOINTS) as TouchpointSeq)
+  // ── Qué número de toque es éste ───────────────────────────────────────
+  // Dos fuentes, y hay que quedarse con la que va MÁS adelante.
+  // `nextSequenceNumber` mira las filas de touchpoints del espejo local y
+  // devuelve 1 cuando no hay ninguna — que no significa «es el primer toque»,
+  // significa «todavía no bajé los toques de este lead». El contador del lead
+  // (`touchpoints_count`) sí viene con la fila y es el que la fila de la lista
+  // muestra. Con el `??` de antes, un lead con 2 toques hechos y el espejo de
+  // toques todavía vacío abría el sheet diciendo «toque 1 de 7» justo al lado
+  // de una fila que decía «Toque 3 de 7» — y ese 1 era el `sequence_number`
+  // que se escribía en la copia local del toque nuevo.
+  const doEspelho = nextSequenceNumber(dados.touchpoints) ?? MAX_TOUCHPOINTS
+  const doLead = Math.min(lead.touchpoints_count + 1, MAX_TOUCHPOINTS)
+  const sequencia = Math.max(doEspelho, doLead) as TouchpointSeq
   const cadenciaViva = lead.touchpoints_count < MAX_TOUCHPOINTS
 
   /* ── Modo: registrar o toque ───────────────────────────────────────────── */
