@@ -1,6 +1,19 @@
 # Android — o APK do Ventus, do zero ao telefone
 
-> Estado em **26/08/2026**. Prazo externo: **30/09/2026** (seção 8).
+> ⏸️ **ESTA VIA ESTÁ PARADA — 26/08/2026.** O dono do produto decidiu que
+> basta o atalho na tela de início, como no CRM v2: instalar a PWA pelo
+> próprio navegador. Não é preciso APK, nem keystore, nem a conta de
+> distribuição limitada do Google, nem o prazo de 30/09.
+>
+> Nada aqui foi apagado porque tudo já está feito e testado: se um dia
+> fizer falta um APK — por exemplo para notificações mais confiáveis no
+> Android — é só retomar a partir da seção 3. O keystore continua em
+> `android/ventapel-ventus.keystore`; enquanto ninguém instalar um APK
+> assinado com ele, perdê-lo não custa nada.
+>
+> Para instalar a app hoje: **`docs/INSTALAR.md`**.
+
+> Estado em **26/08/2026**. Prazo externo original: **30/09/2026** (seção 8).
 > Este documento se lê sem contexto nenhum. Tudo aqui foi executado de
 > verdade, **menos a compilação final** — que não roda neste contêiner por
 > bloqueio de rede e por isso acontece no GitHub (seção 3).

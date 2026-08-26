@@ -18,10 +18,21 @@ import { optionalEnv, requireEnv } from '../_lib/env.js'
 // destino al abrirse. Tener dos tablas —una acá y otra allá— es la forma
 // garantizada de que un aviso lleve a otra pantalla que el link.
 import { linkDoMiniApp, startParamDoCaminho } from '../../src/host/deep-link.js'
+// El troceo a 4096 y el escape de HTML viven en la biblioteca del bot y se
+// importan: este archivo tenía su propia copia de los dos, y la de acá cortaba
+// duro a mitad de un `<b>` cuando una sola línea no entraba —Telegram rechaza
+// el mensaje entero con 400 y el aviso se pierde en silencio, que es
+// exactamente el bug que el encabezado de este archivo dice no repetir—. Un
+// solo troceo, el que cierra y reabre las etiquetas.
+import { esc as escapar, trocear } from '../telegram/_lib/tg.js'
 import type { AcaoDeAviso } from './_tipos.js'
 
-/** Límite de la API de Telegram para el texto de un mensaje. */
-export const MAX_CHARS = 4096
+/**
+ * Límite de la API de Telegram para el texto de un mensaje. Se reexporta desde
+ * la biblioteca del bot para que el número exista UNA sola vez: dos constantes
+ * con el mismo 4096 se separan el día que Telegram lo cambie.
+ */
+export { LIMITE_MENSAGEM as MAX_CHARS } from '../telegram/_lib/tg.js'
 /** Límite de `callback_data`, en BYTES UTF-8, no en caracteres. */
 export const MAX_CALLBACK_BYTES = 64
 
@@ -73,28 +84,6 @@ function baseDaApp(): string {
   const bruto = optionalEnv('APP_URL') ?? optionalEnv('ALLOWED_ORIGIN') ?? 'https://ventus.ventapel.com.br'
   const primeira = bruto.split(',')[0] ?? bruto
   return primeira.trim().replace(/\/+$/, '')
-}
-
-const escapar = (t: string): string =>
-  t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-/**
- * Trocea respetando saltos de línea. Cortar por la mitad de una palabra en un
- * mensaje que lleva bullets de preparo de reunión lo vuelve ilegible.
- */
-export function trocear(texto: string, limite: number = MAX_CHARS): string[] {
-  if (texto.length <= limite) return [texto]
-  const partes: string[] = []
-  let resto = texto
-  while (resto.length > limite) {
-    const janela = resto.slice(0, limite)
-    const corte = janela.lastIndexOf('\n')
-    const fim = corte > limite * 0.5 ? corte : limite
-    partes.push(resto.slice(0, fim))
-    resto = resto.slice(fim).replace(/^\n/, '')
-  }
-  if (resto.length > 0) partes.push(resto)
-  return partes
 }
 
 interface BotaoTelegram {

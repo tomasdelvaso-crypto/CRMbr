@@ -38,16 +38,20 @@ obliga a recompilar y reinstalar en los seis teléfonos.
 
 ### Lo que queda abierto, por orden de prioridad
 
+> ⏸️ **La vía del APK quedó parada el 26/08/2026.** El dueño del producto
+> decidió que alcanza con el atalho en la pantalla de inicio, como en el v2:
+> se instala desde el navegador. Eso saca de la lista los tres ítems que
+> encabezaban esta tabla — cargar los secrets, respaldar el keystore y el
+> trámite de Google con su fecha del 30/09. Nada se borró: `ANDROID.md`
+> queda entero por si algún día hace falta. Para instalar hoy: `INSTALAR.md`.
+
 | # | qué | por qué ahora | dónde |
 |---|---|---|---|
-| 1 | **Cargar los 2 secrets del APK en GitHub** y empujar una tag `v*` | es el único paso que falta para tener el APK; el resto está listo y verificado | `ANDROID.md` §2-3 |
-| 2 | **Respaldar el keystore y su contraseña** | perderlos = no poder actualizar nunca más la app instalada, sin recuperación | `ANDROID.md` §7 |
-| 3 | **Trámite Limited Distribution del Google** | **prazo 30/09/2026**; después de esa fecha un aparato nuevo no instala | `ANDROID.md` §8 |
-| 4 | **Aplicar `0012_cron.sql`** (con los dos secretos en el Vault) | sin los jobs no sale ni un aviso, y la cola de re-drive del bot no se barre | `DEPLOY.md` §5 |
-| 5 | **Webhook del bot de Telegram** | ⚠️ **un token tiene UN webhook**: apuntar el de producción al v3 apaga el bot v1 que el equipo usa hoy. La primera vuelta va con un bot de prueba en el scope *Preview* | `DEPLOY.md` §6.1 |
-| 6 | **Emparejar a los vendedores** y registrar el Mini App en @BotFather | depende del 5 | `DEPLOY.md` §6.4, §7 |
-| 7 | **Probar en hardware real** (un iPhone y un Android) | safe areas, `apple-touch-icon`, umbrales de gesto | §5.1-bis |
-| 8 | El resto de la lista larga | — | §5 |
+| 1 | **Aplicar `0012_cron.sql`** (con los dos secretos en el Vault) | sin los jobs no sale ni un aviso, y la cola de re-drive del bot no se barre | `DEPLOY.md` §5 |
+| 2 | **Webhook del bot de Telegram** | ⚠️ **un token tiene UN webhook**: apuntar el de producción al v3 apaga el bot v1 que el equipo usa hoy. La primera vuelta va con un bot de prueba en el scope *Preview* | `DEPLOY.md` §6.1 |
+| 3 | **Emparejar a los vendedores** y registrar el Mini App en @BotFather | depende del 2 | `DEPLOY.md` §6.4, §7 |
+| 4 | **Probar en hardware real** (un iPhone y un Android) | safe areas, `apple-touch-icon`, umbrales de gesto | §5.1-bis |
+| 5 | El resto de la lista larga | — | §5 |
 
 ### Dos avisos que no vencen
 
