@@ -2,12 +2,15 @@
 
 > Fecha de corte: **2026-08-26** · Rama `claude/crm-web-app-redesign-f7tu7g`
 > **La app está desplegada y respondiendo en https://ventus3.vercel.app.**
-> Documento del integrador. Consolida **tres olas** de trabajo paralelo: la de
-> fundación (dominio, design system, SQL, capa offline), la de nueve agentes
-> que construyeron las 15 pantallas y el backend serverless, y la última —cinco
+> Documento del integrador. Consolida **cuatro olas** de trabajo paralelo: la
+> de fundación (dominio, design system, SQL, capa offline), la de nueve agentes
+> que construyeron las 15 pantallas y el backend serverless, la tercera —cinco
 > agentes— que agregó el Telegram Mini App, el Web Push, la identidad
-> instalable, el APK de Android y la suite de Playwright, y aplicó la migración
-> de seguridad.
+> instalable, el APK de Android y la suite de Playwright y aplicó la migración
+> de seguridad, y la cuarta —cuatro agentes— que cerró el webhook del bot y el
+> emparejamiento por código, cableó la acción crítica de las pantallas al host,
+> arregló los defectos de layout que encontró el QA y parametrizó la URL
+> pública.
 >
 > El plan completo está en `PLANO.md`; la auditoría que lo originó, en
 > `AUDITORIA.md`; los pasos exactos para producción, en `DEPLOY.md`. Este
@@ -45,22 +48,43 @@ obliga a recompilar y reinstalar en los seis teléfonos.
 > trámite de Google con su fecha del 30/09. Nada se borró: `ANDROID.md`
 > queda entero por si algún día hace falta. Para instalar hoy: `INSTALAR.md`.
 
+Nada de esto bloquea el build ni el deploy: los cinco comandos están en verde
+(§1). Es trabajo de **puesta en operación**, y el orden es de dependencia real
+— cada fila necesita la de arriba.
+
 | # | qué | por qué ahora | dónde |
 |---|---|---|---|
-| 1 | **Aplicar `0012_cron.sql`** (con los dos secretos en el Vault) | sin los jobs no sale ni un aviso, y la cola de re-drive del bot no se barre | `DEPLOY.md` §5 |
-| 2 | **Webhook del bot de Telegram** | ⚠️ **un token tiene UN webhook**: apuntar el de producción al v3 apaga el bot v1 que el equipo usa hoy. La primera vuelta va con un bot de prueba en el scope *Preview* | `DEPLOY.md` §6.1 |
-| 3 | **Emparejar a los vendedores** y registrar el Mini App en @BotFather | depende del 2 | `DEPLOY.md` §6.4, §7 |
-| 4 | **Probar en hardware real** (un iPhone y un Android) | safe areas, `apple-touch-icon`, umbrales de gesto | §5.1-bis |
-| 5 | El resto de la lista larga | — | §5 |
+| 1 | **Renumerar `0012_cron.sql` a `0013_cron.sql` y aplicarla** (con los dos secretos en el Vault) | sin los jobs **no sale ni un aviso**, y la cola de re-drive del bot no se barre. Va primero porque no depende de nada. ⚠️ El `0012` **de la base** es `ventus3_0012_revoke_trigger_fn_authenticated`: el número ya está tomado y aplicarla como `0012` choca | `DEPLOY.md` §5, §2.1 |
+| 2 | **Bajar de la base el SQL de `0011` y del `0012` aplicado** | no tienen archivo en `supabase/migrations/`: hoy **el repo no puede recrear la base desde cero**. Es una hora de trabajo que se paga sola el día de un incidente | §2.1 |
+| 3 | **Webhook del bot de Telegram** | ⚠️ **un token tiene UN webhook**: apuntar el de producción al v3 **apaga el bot v1 que el equipo usa hoy**. La primera vuelta va con un bot de prueba y el token en el scope *Preview*. Guardar `getWebhookInfo` en un archivo ANTES de tocar nada: después esa URL no está en ningún lado | `DEPLOY.md` §6.1–6.2, rollback en §6.5 |
+| 4 | **Emparejar a Victor Hugo, Andre y Paulo**, cada uno desde su teléfono, y registrar el Mini App en @BotFather (`/newapp`) | depende del 3. Es trabajo operativo, no de código: Ajustes → Telegram → Gerar código, y `/vincular` en el bot | `DEPLOY.md` §6.4, §7 |
+| 5 | **El job que barre `pendentesDeReprocesso()`** | la cola de re-drive existe y `processarUpdate()` quedó exportada para eso, pero **nadie la llama**. Sin el job, un update que quedó en `erro:` sólo se recupera si Telegram lo reintenta | §5.1 punto 4 |
+| 6 | **Probar en hardware real** (un iPhone y un Android) | safe areas, `apple-touch-icon`, umbrales de gesto: es lo único que no se puede simular | §5.1-bis |
+| 7 | El resto de la lista larga | — | §5 |
 
-### Dos avisos que no vencen
+**Lo que NO está en esta tabla, a propósito:** la vía del APK (parada, ver el
+recuadro de arriba) y diferir `supabase-js` del camino crítico (§5.3) — es una
+optimización de 52 kB gzip que pide volver asíncronos diez consumidores, entre
+ellos el outbox, el pull y la guardia de sesión. Nadie debería tocar eso sin
+antes tener una prueba de arranque en frío **sin red**, que hoy no existe
+porque el service worker está apagado en desarrollo.
+
+### Cuatro avisos que no vencen
 
 - **`TELEGRAM_WEBHOOK_SECRET` es obligatoria.** Sin ella el webhook responde
   500 a todo y no procesa nada, a propósito.
 - **Un token de Telegram tiene UN solo webhook.** No hay forma de tener el v1 y
   el v3 escuchando el mismo bot. `DEPLOY.md` §6.1.
+- **El badge del ícono tiene UN escritor: `definirBadge()`, desde
+  `src/app/Shell.tsx`.** Ya se rompió dos veces por lo mismo —`revisao.ts` y el
+  service worker escribiendo cada uno el suyo—, y el síntoma es sutil: el
+  número queda a medias en vez de desaparecer, así que nadie lo reporta. Un
+  `setAppBadge` nuevo en cualquier otro archivo vuelve a romperlo. §3.6.
+- **`vercel.json` está en 12 funciones, el techo del plan Hobby.** No queda una
+  sola ranura libre: la función 13 no despliega. Agregar un endpoint hoy
+  significa fusionarlo con uno existente o subir de plan. §6.
 
-### Lo que se cerró en las últimas dos vueltas
+### Lo que se cerró en las últimas vueltas
 
 1. ~~`/api/telegram` es un stub que devuelve 501~~ — **hecho**. `api/telegram.ts`
    es ahora el ruteo completo: verificación del `secret_token` en tiempo
@@ -98,47 +122,52 @@ obliga a recompilar y reinstalar en los seis teléfonos.
 
 ## 1 · Verificación (salidas reales, no promesas)
 
+Corrida del **integrador final**, sobre el árbol con las cuatro entregas
+paralelas ya juntas. Los cinco comandos que exige el encargo, en verde:
+
 ```
 $ npm install
-up to date, audited 543 packages in 879ms · found 0 vulnerabilities
+up to date, audited 543 packages in 749ms · found 0 vulnerabilities
+EXIT=0
 
 $ npm run type-check
 > tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.worker.json
 EXIT=0   (los 3 proyectos: app, node/api, service worker)
 
-$ npx vitest run                                   # 2026-08-26, corrida real
- Test Files  45 passed (45)
-      Tests  869 passed (869)
-   Duration  12.32s
-EXIT=0        ← 636 en la ola 2 · 777 al cerrar la ola 3 · 869 hoy
-
-$ npx playwright test                              # 2026-08-26, corrida real
-  6 skipped   (las capturas, que sólo corren con CAPTURAS=1)
-  111 passed (7.9m)                                # 37 pruebas × 3 perfiles
-EXIT=0        ← 87 al cerrar la ola 3 · 111 hoy
+$ npx vitest run
+ Test Files  46 passed (46)
+      Tests  876 passed (876)
+   Duration  12.17s
+EXIT=0        ← 636 en la ola 2 · 777 al cerrar la ola 3 · 781 al abrir esta
+                vuelta · 869 con las cuatro entregas · 876 con los 7 del
+                integrador (`api/dispatch/__tests__/telegram-troceo.test.ts`)
 
 $ npx eslint . --max-warnings 0
 (sin salida: 0 errores, 0 warnings)
 EXIT=0
 
 $ npm run build
-✓ 2546 modules transformed
-dist/assets/index-*.css       64,59 kB │ gzip: 13,05 kB
-dist/assets/index-*.js       290,35 kB │ gzip: 92,56 kB   ← entrada
-dist/assets/ui-*.js          274,65 kB │ gzip: 89,47 kB   ┐
-dist/assets/session-*.js     232,16 kB │ gzip: 74,12 kB   ├ compartidos, precargados
-dist/assets/supabase-*.js    209,54 kB │ gzip: 54,44 kB   ┘
-dist/assets/chunk-*.js        90,70 kB │ gzip: 30,01 kB   ← react-router, compartido
-… + 17 chunks por ruta (Registrar 48 kB … Mais 6 kB) + 20 de íconos
-dist/sw.mjs                   23,81 kB │ gzip:  8,62 kB
-precache 64 entries (1.563,82 KiB)
+✓ 2548 modules transformed
+dist/assets/index-*.css       64,74 kB │ gzip: 13,10 kB
+dist/assets/index-*.js       204,66 kB │ gzip: 65,40 kB   ← entrada
+dist/assets/ui-*.js          262,83 kB │ gzip: 85,44 kB   ┐
+dist/assets/session-*.js     231,59 kB │ gzip: 73,79 kB   ├ compartidos, precargados
+dist/assets/supabase-*.js    209,36 kB │ gzip: 54,28 kB   ┘
+dist/assets/chunk-*.js        90,66 kB │ gzip: 29,98 kB   ← react-router, compartido
+… + los chunks por ruta y los 20 de íconos (44 archivos JS, 1.457,9 kB en total)
+dist/sw.mjs                   23,86 kB │ gzip:  8,60 kB
+precache 66 entries (1.572,15 KiB)
 EXIT=0
 
 $ node scripts/verificar-pwa.mjs
 53 ok · 0 avisos · 0 errores
 Instalable. ✓
 EXIT=0
+```
 
+Y los de apoyo, también reales:
+
+```
 $ node scripts/url-publica.mjs --check             # la URL vive en un solo lugar
 ✓ android/twa-manifest.json em dia com https://ventus3.vercel.app
 EXIT=0
@@ -148,33 +177,37 @@ $ node scripts/gerar-assetlinks.mjs --check        # el fingerprint es el real
   (D4:83:EA:71:…:EE:9F, el mismo que keytool lee del keystore de release)
 EXIT=0
 
-$ node scripts/gerar-assetlinks.mjs --verificar    # contra el sitio publicado
-✖ respondeu HTTP 403                               ← el EGRESS de este contenedor,
-                                                     no el sitio: CONNECT tunnel
-                                                     failed. Queda sin verificar
-                                                     desde acá (§5.1-bis, 18-bis)
+$ grep og: dist/index.html                          # la URL inyectada en el build
+og:url   → https://ventus3.vercel.app/
+og:image → https://ventus3.vercel.app/og-image.png
 
-$ npx playwright test        (de la ola 3, no se volvió a correr en esta pasada)
- 93 tests · 87 passed · 6 skipped (capturas.spec.ts, sólo con CAPTURAS=1)
+$ node scripts/medir-arranque.mjs                   # contra el BUILD, no el dev server
+Camino crítico: 266,8 kB · gzip 77,1 kB (16 recursos)
+Arranque: melhor 98 ms · mediana 103 ms · pior 157 ms
 
 $ git status --porcelain -- src api     # el CRM v2 en producción, desde la raíz
 (sin salida: NO se tocó)
 ```
 
+> ⚠️ **La mediana del arranque quedó en 103 ms, arriba del objetivo de 100 ms.**
+> No es una regresión de código: es la misma medición que dio 93 ms y 97 ms
+> más temprano hoy, en un contenedor sin carga. Los percentiles bajos no se
+> movieron (mejor caso 98 ms contra 88 ms) y el camino crítico **bajó** —16
+> recursos y 77,1 kB gzip contra los 344,5 kB que medía la vuelta anterior—.
+> Se deja anotado en vez de redondear para abajo: la medición vale cuando se
+> corre en una máquina quieta, y el número honesto de hoy es 103.
+>
+> `scripts/medir-arranque.mjs` **estaba roto** al empezar esta vuelta y lo
+> arregló el integrador: ver §3.6.
+
 **Las 15 rutas responden y montan**, verificado por
 `src/app/__tests__/routes.test.tsx`, que monta **cada ruta de verdad con
 React**, espera a que baje su chunk y falla si la pantalla explota o si el
-Suspense se queda colgado. A eso se le sumó, en la ola 3, una suite de
-Playwright de 111 pruebas sobre tres dispositivos (iPhone 14, Pixel 7, desktop)
-que ejercita los gestos como gestos —el swipe es `pointerdown` + doce
-movimientos + `pointerup`, no un `dragTo`— y el micrófono con
-`--use-fake-device-for-media-stream`, o sea recorriendo `getUserMedia` y
-`MediaRecorder` de producción.
-
-El arranque en frío con la cartera ya en el aparato, medido contra el **build**
-(`node scripts/medir-arranque.mjs`, no contra el dev server): **mediana 93 ms**
-hasta las tres tarjetas pintadas, peor caso 109 ms. El objetivo de <100 ms se
-cumple.
+Suspense se queda colgado. A eso se le suma la suite de Playwright sobre tres
+dispositivos (iPhone 14, Pixel 7, desktop), que ejercita los gestos como gestos
+—el swipe es `pointerdown` + doce movimientos + `pointerup`, no un `dragTo`— y
+el micrófono con `--use-fake-device-for-media-stream`, o sea recorriendo
+`getUserMedia` y `MediaRecorder` de producción.
 
 ## 2 · Qué está construido y funciona
 
@@ -652,6 +685,104 @@ Los cinco agentes entregaron en verde. Estos son los huecos del empalme:
 
 ---
 
+### 3.6 · Ola 4 — lo que el integrador final cerró al juntar las cuatro entregas
+
+Las cuatro entregas llegaron en verde y **el empalme también arrancó en verde**:
+`type-check`, `vitest` (869), `eslint`, `build` y `verificar-pwa` pasaron sin
+tocar nada. No hizo falta unificar ninguna API: los cuatro agentes se
+repartieron el árbol sin pisarse. Lo que sí apareció al revisar coherencia
+fueron **tres escritores de un mismo recurso, dos copias de un mismo helper y
+un script de medición roto**:
+
+- **El badge del sistema tenía TRES escritores y cada uno pintaba otra cosa.**
+  `src/data/revisao.ts` y la pantalla Revisão escribían el total de la bandeja;
+  el Shell, el trabajo pendiente del día; y `src/sw-push.ts` —el service
+  worker— la cantidad de **notificaciones abiertas**. El badge del SO es UNO
+  solo: el último en correr ganaba, así que cada push o cada toque en un aviso
+  borraba el número real. Peor, lo del service worker contradecía en la cara al
+  encabezado de `src/push/badge.ts`, que dice que el badge cuenta trabajo
+  pendiente y **nunca avisos** —«un badge que cuenta avisos convierte el ícono
+  en el mismo ruido que ya destruyó las notificaciones del v2»—. Los dos
+  primeros los había unificado el agente de host; el tercero quedaba fuera de
+  su tarea y lo sacó el integrador: `atualizarDistintivo()` ya no existe, con
+  las tres llamadas (`push`, `notificationclick`, `notificationclose`) y el
+  listener de `notificationclose` entero. Escritor único: `definirBadge()`
+  desde `src/app/Shell.tsx`. El service worker **no puede** calcular ese número
+  —no tiene sesión ni cartera— y por eso ya no lo intenta: deja el badge como
+  está y la app lo corrige al abrirse, que es también cuando el vendedor lo
+  mira. El porqué quedó escrito en el lugar del código que se borró, para que
+  nadie lo vuelva a agregar de buena fe.
+- **Dos `trocear()` y dos `escapar()` para lo mismo**, en
+  `api/dispatch/_telegram.ts` y en `api/telegram/_lib/tg.ts`. Y no eran dos
+  copias iguales: la del dispatcher cortaba duro a 4096 sin mirar si el corte
+  caía dentro de un `<b>`. Telegram no perdona eso —rechaza el mensaje **entero**
+  con «can't parse entities»— y como el dispatcher sólo lo escribe en el log
+  del servidor, el aviso largo (justo el que más importa: el preparo de una
+  reunión) desaparecía en silencio. Es, palabra por palabra, el bug nº 1 que el
+  encabezado de ese archivo promete no repetir. Ahora el dispatcher **importa**
+  las dos funciones de la biblioteca del bot, y `MAX_CHARS` es un reexport de
+  `LIMITE_MENSAGEM` en vez de un segundo `4096` esperando separarse el día que
+  Telegram lo cambie.
+- **Y el troceo bueno tenía su propio desborde.** Al unificar, el test nuevo lo
+  encontró de entrada: la versión de la biblioteca llenaba el trozo hasta los
+  4096 y **recién ahí** le pegaba el `</b>` de cierre. Resultado: 4100
+  caracteres, y Telegram lo rechaza con «message is too long» — el mismo bug
+  nº 1, reintroducido por el mismo código que lo arregla. Ahora el cierre se
+  **descuenta del presupuesto antes de cortar**, con reajuste (cortar más
+  temprano puede dejar abierta una etiqueta que antes se cerraba sola dentro
+  del trozo, y entonces el cierre crece) y una red de seguridad para que ningún
+  HTML raro cuelgue el bucle. 7 tests nuevos en
+  `api/dispatch/__tests__/telegram-troceo.test.ts`: mismo límite en los dos
+  módulos, HTML balanceado en cada trozo, ningún trozo por encima del límite
+  con anidamiento de hasta cuatro etiquetas, nada de texto perdido, y límites
+  chicos (16…128) donde el cierre es una fracción grande del presupuesto.
+- **`scripts/medir-arranque.mjs` estaba roto**: moría con
+  `NotFoundError: One of the specified object stores was not found` y no
+  medía nada. La causa es una carrera fina: el script sembraba la cartera con
+  `indexedDB.open('ventus3')` a secas justo después del `domcontentloaded`,
+  y esa llamada **no espera a Dexie** — si Dexie todavía no abrió la base, la
+  crea vacía, versión 1, sin un solo object store, la semilla explota y de paso
+  la base queda envenenada para el Dexie que viene atrás. La app abre Dexie
+  perezosamente, en la primera consulta, que es después. Ahora el script
+  **espera a que el esquema exista** (hasta 15 s) y, si no aparece, dice por
+  qué en vez de tirar un error de IndexedDB.
+- **`.env.example` volvió a quedar completo.** La entrada de
+  `TELEGRAM_WEBHOOK_SECRET` todavía decía que «hoy NINGÚN código lee esta
+  variable, porque /api/telegram es un stub 501» — mentira desde esta ola, y
+  de las peligrosas: es la variable sin la cual el webhook responde 500 a todo.
+  Faltaba además la sección de **variables de build** (`VENTUS_URL` y
+  `VENTUS_KEYSTORE_PASSWORD`, que no van al Vercel ni al bundle) y la línea
+  copiable del alias `CLAUDE_API_KEY`. Se agregaron a la sección de «nombres
+  que NO son variables de este proyecto» cuatro que invitaban a inventarlas:
+  `VERCEL_GIT_COMMIT_SHA` (la inyecta Vercel), `PLAYWRIGHT_CHROMIUM_PATH`
+  (sólo tests), `SUPABASE_ANON_KEY` sin `VITE_` y `PAIRING_CODE_*` — el techo
+  de 6 códigos por vendedor por hora es una **constante del código**, no una
+  env, porque un límite de identidad no es algo que se quiera poder aflojar
+  desde un panel. Hoy la lista está cerrada de las dos puntas: **cada nombre
+  que el código lee está declarado o explicado, y no hay ninguno declarado que
+  el código no lea** (verificado con un barrido sobre `api/`, `src/`,
+  `scripts/`, `vite.config.ts` y `playwright.config.ts`).
+
+**Coherencia, lo que se revisó y estaba bien:** los cuatro barriles
+(`src/ui/index.ts`, `src/data/index.ts`, `src/host/index.ts`, `src/push/index.ts`)
+exportan todo lo nuevo de esta ola —`SegmentedControl`, `useTelaCurta` /
+`CONSULTA_TELA_CURTA`, y lo de `ajustes.ts`, `outbox.ts` y `revisao.ts` por
+`export *`—. Lo que queda fuera de los barriles queda fuera **a propósito** y
+está documentado en el propio barril: `transport.ts` (lo carga el outbox con
+`import()` dinámico, y reexportarlo lo volvía estático), `src/ui/internals.ts`,
+los constructores `criarHostWeb`/`criarHostTelegram` y las primitivas crudas de
+`ponte-telegram`. `api/_lib/` no tiene barril y no debe tenerlo: cada función
+de Vercel importa lo suyo por ruta, y un índice metería todo el `_lib` en el
+bundle de cada una. El barrido de nombres exportados duplicados en `src/` y
+`api/` dio ocho pares, y salvo los dos `trocear`/`escapar` de arriba los otros
+seis son homónimos legítimos de dominios distintos (`lerSessao` de
+`bot_sessions` contra el de la Golden Hour, `carregarCarteira` del servidor
+contra el de Dexie, dos `SheetAdiar` con props distintas, dos `Secao` de
+maquetación) o alias ya resueltos (`registrarSessao`, que `@/host` saca como
+`registrarSessaoDoAtalho`).
+
+---
+
 ## 4 · Qué es andamio (dicho, no escondido)
 
 Nada de esto está roto: está declarado. La regla que se respetó en toda la app
@@ -705,18 +836,23 @@ es que **un andamio siempre se anuncia en pantalla**, en PT-BR y sin fingir.
 - **Las 3 capturas del manifest son mock-ups generados por script**, con
   «Empresa exemplo» adentro. Se ven en la ficha de instalación de Android.
   Cambiarlas es reemplazar los PNG; el manifest no se toca.
-- **`definirBadge()` existe y ninguna pantalla lo llama** con el conteo real de
-  tarjetas sin resolver. El service worker sí mantiene el badge con las
-  notificaciones abiertas.
+- ~~**`definirBadge()` existe y ninguna pantalla lo llama**~~ — **cerrado**.
+  Lo llama `src/app/Shell.tsx`, con tarjetas del día sin resolver + propuestas
+  sin revisar, y es el **único** escritor: `src/data/revisao.ts` y el service
+  worker tenían cada uno el suyo y se pisaban (§3.6).
 - **El respaldo de borradores en CloudStorage está listo y sin usar**
   (`salvarRascunho`/`lerRascunho`). Los candidatos son el editor de escala del
   Dossiê y el compositor del Ventus.
-- **Las pantallas todavía no declaran su acción crítica al host.** La única
-  cableada es la Golden Hour, con `useTelaCheia(emFoco)`. Faltan al menos
-  «Iniciar Golden Hour» en Hoje, «Confirmar» en Registrar y «Avançar etapa» en
-  el Dossiê, con `useBotaoPrimario` / `useBotaoSecundario` / `useBackNativo`.
-  Dentro de Telegram eso es la diferencia entre un botón nativo abajo y uno
-  dibujado en medio de la pantalla.
+- **Cinco pantallas declaran su acción crítica al host; ocho todavía no.**
+  Cableadas: Golden Hour (`useTelaCheia`), Hoje («Iniciar Golden Hour»),
+  Registrar («Confirmar» / «Descartar», con `useBackNativo`), Dossiê («Avançar
+  para {próxima etapa}», también con back nativo) y Revisão («Aceitar» /
+  «Aceitar N de M» / «Descartar tudo»). Faltan Carteira, Cadência, Placar,
+  Rituais, Gestor, Ventus, Ajustes y Mais — casi todas de lectura; los
+  candidatos reales son el compositor del Ventus y el sheet de Ajustes.
+  En las cinco, los botones del host **se apagan mientras hay un sheet
+  abierto**: un botón fijo abajo que dispara sobre lo que quedó detrás del
+  modal es una trampa.
 - `/kitchen` no está linkeada desde ninguna pantalla: se entra a mano.
 
 ---

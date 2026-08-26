@@ -196,13 +196,52 @@ await pagina.goto(BASE, { waitUntil: 'domcontentloaded' })
 // es exactamente el que la app espera.
 await pagina.evaluate(
   async ([d38, d26, d19, d4]) => {
-    const abrir = () =>
+    // OJO CON `indexedDB.open('ventus3')` A SECAS: si Dexie todavía no abrió
+    // la base, esa llamada NO espera —CREA una base vacía, versión 1, sin un
+    // solo object store—. La semilla explota después con
+    // «NotFoundError: One of the specified object stores was not found», y de
+    // paso deja la base envenenada para el Dexie que venga atrás. Es una
+    // carrera de verdad: la app abre Dexie perezosamente, en la primera
+    // consulta, y eso pasa DESPUÉS del `domcontentloaded` que dispara esto.
+    // Por eso se espera a que el esquema exista en vez de asumirlo.
+    const abrirSiTieneEsquema = () =>
       new Promise((resolve, reject) => {
         const req = indexedDB.open('ventus3')
-        req.onsuccess = () => resolve(req.result)
+        req.onsuccess = () => {
+          const db = req.result
+          const tiene = ['vendors', 'opportunities', 'leads'].every((s) =>
+            db.objectStoreNames.contains(s),
+          )
+          if (tiene) {
+            resolve(db)
+            return
+          }
+          db.close()
+          resolve(null)
+        }
         req.onerror = () => reject(req.error)
+        // Si la base no existía, `open` la crea acá mismo y vacía. Se aborta la
+        // creación para no dejarla hecha: la queremos de Dexie, con esquema.
+        req.onupgradeneeded = () => req.transaction?.abort()
       })
-    const db = await abrir()
+
+    let db = null
+    const limite = performance.now() + 15000
+    while (db === null) {
+      try {
+        db = await abrirSiTieneEsquema()
+      } catch {
+        db = null
+      }
+      if (db !== null) break
+      if (performance.now() > limite) {
+        throw new Error(
+          'Dexie nunca creó el esquema de «ventus3»: la app no llegó a consultar la base ' +
+            '(¿pantalla de diagnóstico por falta de config, o login sin sesión?).',
+        )
+      }
+      await new Promise((r) => setTimeout(r, 100))
+    }
     const opp = (id, client, name, value, stage, upd) => ({
       id,
       created_at: '2026-01-10T12:00:00Z',

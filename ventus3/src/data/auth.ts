@@ -34,6 +34,8 @@ import { supabase } from './supabase'
 
 /** Motivo del fallo, ya clasificado. La pantalla decide qué campo marcar. */
 export type MotivoDeFalhaDeLogin =
+  /** A app não consegue falar com o banco: chave pública errada ou ausente. */
+  | 'configuracao'
   | 'credenciais'
   | 'email_invalido'
   | 'email_nao_confirmado'
@@ -122,6 +124,25 @@ export function traduzirErroDeLogin(erro: unknown): Traducao {
       motivo: 'sem_conta',
       mensagem: 'Não existe conta com este e-mail. Fale com o Jordi para liberar o acesso.',
       campo: 'email',
+    }
+  }
+
+  // ANTES del 400/401 genérico: uma anon key inválida ou ausente também volta
+  // 401, mas rejeitada pelo gateway do Supabase — nem chega ao serviço de
+  // autenticação, e por isso não deixa rastro nos logs de auth. Cair no ramo
+  // das credenciais aqui manda a pessoa procurar a senha durante horas quando
+  // o problema é a configuração do deploy. Aconteceu.
+  if (
+    texto.includes('invalid api key') ||
+    texto.includes('no api key') ||
+    texto.includes('invalid authentication credentials')
+  ) {
+    return {
+      motivo: 'configuracao',
+      mensagem:
+        'A app está mal configurada e não consegue falar com o banco. Não é a sua senha. ' +
+        'Avise quem cuida do deploy: a chave pública do Supabase está errada ou ausente.',
+      campo: null,
     }
   }
 
