@@ -30,8 +30,14 @@ const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
  * «Invalid API key · Not a JWT», el cliente lo leía como 401 y la app decía
  * «e-mail ou senha incorretos». Horas de procurar uma senha que estava certa.
  * Uma verificação de formato o teria dito na primeira tela.
+ *
+ * Se exporta para que los ARRANCADORES DE PRUEBA se puedan medir con la misma
+ * vara: el stub de `playwright.config.ts` decía `chave-anon-de-teste`, esta
+ * regla lo rechazó y la suite entera pasó a ver la pantalla de diagnóstico en
+ * vez de la app. La regresión se fija en
+ * `src/data/__tests__/stub-de-teste.test.ts`.
  */
-function pareceJwt(valor: string): boolean {
+export function pareceJwt(valor: string): boolean {
   const partes = valor.split('.')
   return (
     partes.length === 3 &&

@@ -33,7 +33,11 @@ const CHROMIUM = process.env.PLAYWRIGHT_CHROMIUM_PATH ?? '/opt/pw-browsers/chrom
 const AMBIENTE = {
   ...process.env,
   VITE_SUPABASE_URL: 'https://stub.supabase.test',
-  VITE_SUPABASE_ANON_KEY: 'chave-anon-de-teste',
+  // Bien formada a propósito: el arranque rechaza una clave sin forma de JWT
+  // (pareceJwt() en src/data/config-publica.ts) y mostraría la pantalla de
+  // diagnóstico, con lo cual no habría nada que medir. Es igual de falsa.
+  VITE_SUPABASE_ANON_KEY:
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdHViLnN1cGFiYXNlLnRlc3QiLCJyb2xlIjoiYW5vbiIsIm5vdGEiOiJjaGF2ZSBmYWxzYSBkZSB0ZXN0ZSJ9.assinatura-de-teste-sem-valor',
   VITE_INGEST_MOCK: 'on',
   VITE_VENTUS_MOCK: 'on',
 }

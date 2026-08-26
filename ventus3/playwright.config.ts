@@ -119,7 +119,15 @@ export default defineConfig({
     env: {
       // ⚠️ El candado. Ver el encabezado.
       VITE_SUPABASE_URL: 'https://stub.supabase.test',
-      VITE_SUPABASE_ANON_KEY: 'chave-anon-de-teste',
+      // ⚠️ NO es 'chave-anon-de-teste' y no puede volver a serlo. Desde el
+      // arreglo del login (`pareceJwt()` en src/data/config-publica.ts), el
+      // arranque RECHAZA una clave que no tenga forma de JWT y muestra la
+      // pantalla de diagnóstico en vez de la app — con lo cual TODA la suite
+      // caía con «A app nunca resolveu o vendedor da sessão». Este token está
+      // bien formado y es igual de inútil: la firma no vale nada y el host
+      // sigue siendo el que no existe.
+      VITE_SUPABASE_ANON_KEY:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdHViLnN1cGFiYXNlLnRlc3QiLCJyb2xlIjoiYW5vbiIsIm5vdGEiOiJjaGF2ZSBmYWxzYSBkZSB0ZXN0ZSJ9.assinatura-de-teste-sem-valor',
       // Los dos backends que todavía no están desplegados contestan con su
       // mock declarado, para que el camino de la pantalla sea determinístico.
       VITE_INGEST_MOCK: 'on',
