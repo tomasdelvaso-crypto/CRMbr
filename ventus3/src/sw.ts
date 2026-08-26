@@ -249,8 +249,36 @@ setCatchHandler(async ({ request }) => {
    4 · Ciclo de vida
    ══════════════════════════════════════════════════════════════════════════ */
 
-// 'prompt': solo se activa la versión nueva cuando la app lo pide
-// explícitamente. Nunca en medio de una nota de voz.
+/**
+ * Marcador de que ALGUMA versão do Ventus já assumiu esta origem.
+ * Existe só para responder a uma pergunta na instalação: sou eu que estou
+ * substituindo a mim mesmo, ou estou entrando num domínio que era de outra app?
+ */
+const MARCADOR_DE_POSSE = 'ventus-posse-v1'
+
+// A regra normal é 'prompt': a versão nova espera a app pedir, para nunca
+// trocar o service worker no meio de uma nota de voz.
+//
+// A exceção é a PRIMEIRA vez. Este domínio serviu o CRM v2 antes de o Root
+// Directory do projeto Vercel apontar para ventus3/, e o service worker
+// daquele build ficou no comando: ele entrega o shell do v2 de cache e nunca
+// vai mandar SKIP_WAITING, porque o v2 não sabe da nossa existência. Sem esta
+// exceção, quem abriu o site naquela janela fica preso no CRM velho até
+// fechar todas as abas ou limpar os dados do site à mão.
+//
+// Assumir na marra aqui é seguro justamente porque é a primeira vez: não há
+// nenhuma sessão nossa em andamento para interromper.
+self.addEventListener('install', (event: ExtendableEvent) => {
+  event.waitUntil(
+    (async () => {
+      if (!(await caches.has(MARCADOR_DE_POSSE))) {
+        await caches.open(MARCADOR_DE_POSSE)
+        await self.skipWaiting()
+      }
+    })(),
+  )
+})
+
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
   const data: unknown = event.data
   if (typeof data === 'object' && data !== null && 'type' in data) {
@@ -276,7 +304,12 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
       const nomes = await caches.keys()
       await Promise.all(
         nomes
-          .filter((nome) => !nome.startsWith('workbox-precache') && nome !== CACHE_COMPARTILHADO)
+          .filter(
+            (nome) =>
+              !nome.startsWith('workbox-precache') &&
+              nome !== CACHE_COMPARTILHADO &&
+              nome !== MARCADOR_DE_POSSE,
+          )
           .map((nome) => caches.delete(nome)),
       )
     })(),

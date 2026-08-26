@@ -63,12 +63,19 @@ test.describe('Revisão · aceitar por campo', () => {
     // El objetivo de diseño de la pantalla es llegar a cero: la tarjeta se va.
     await expect(cartao).toHaveCount(0, { timeout: 15_000 })
 
+    // Se espera por el COMMIT, que es la última de las dos escrituras: el
+    // outbox las manda en orden y una por vez, así que cuando llegó el commit
+    // el recorte ya llegó. 30 s porque con los tres perfiles corriendo a la vez
+    // el dev server sirve el chunk de Revisão con calma.
     await expect
-      .poll(() => escritasDaProposta(ventus.pedidos).length, {
-        timeout: 15_000,
-        message: 'a decisão nunca saiu para o servidor',
-      })
-      .toBeGreaterThanOrEqual(2)
+      .poll(
+        () =>
+          escritasDaProposta(ventus.pedidos).filter((p) =>
+            p.url.includes('/rpc/ventus_commit_action'),
+          ).length,
+        { timeout: 30_000, message: 'a decisão nunca saiu para o servidor' },
+      )
+      .toBe(1)
 
     const escritas = escritasDaProposta(ventus.pedidos)
 
@@ -90,7 +97,7 @@ test.describe('Revisão · aceitar por campo', () => {
     expect(escritas.indexOf(recorte!)).toBeLessThan(escritas.indexOf(commit!))
 
     // Nada quedó trabado en la cola.
-    await expect.poll(() => ventus.pendentesNoOutbox(), { timeout: 15_000 }).toBe(0)
+    await expect.poll(() => ventus.pendentesNoOutbox(), { timeout: 30_000 }).toBe(0)
   })
 
   test('aceitar os três campos vai direto ao commit, sem recortar nada', async ({
@@ -111,7 +118,7 @@ test.describe('Revisão · aceitar por campo', () => {
           escritasDaProposta(ventus.pedidos).filter((p) =>
             p.url.includes('/rpc/ventus_commit_action'),
           ).length,
-        { timeout: 15_000 },
+        { timeout: 30_000 },
       )
       .toBe(1)
 
