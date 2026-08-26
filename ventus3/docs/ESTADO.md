@@ -104,9 +104,14 @@ EXIT=0   (los 3 proyectos: app, node/api, service worker)
 
 $ npx vitest run                                   # 2026-08-26, corrida real
  Test Files  45 passed (45)
-      Tests  868 passed (868)
-   Duration  11.57s
-EXIT=0        ← 636 en la ola 2 · 777 al cerrar la ola 3 · 868 hoy
+      Tests  869 passed (869)
+   Duration  12.32s
+EXIT=0        ← 636 en la ola 2 · 777 al cerrar la ola 3 · 869 hoy
+
+$ npx playwright test                              # 2026-08-26, corrida real
+  6 skipped   (las capturas, que sólo corren con CAPTURAS=1)
+  111 passed (7.9m)                                # 37 pruebas × 3 perfiles
+EXIT=0        ← 87 al cerrar la ola 3 · 111 hoy
 
 $ npx eslint . --max-warnings 0
 (sin salida: 0 errores, 0 warnings)
@@ -156,7 +161,7 @@ $ git status --porcelain -- src api     # el CRM v2 en producción, desde la ra�
 `src/app/__tests__/routes.test.tsx`, que monta **cada ruta de verdad con
 React**, espera a que baje su chunk y falla si la pantalla explota o si el
 Suspense se queda colgado. A eso se le sumó, en la ola 3, una suite de
-Playwright de 87 pruebas sobre tres dispositivos (iPhone 14, Pixel 7, desktop)
+Playwright de 111 pruebas sobre tres dispositivos (iPhone 14, Pixel 7, desktop)
 que ejercita los gestos como gestos —el swipe es `pointerdown` + doce
 movimientos + `pointerup`, no un `dragTo`— y el micrófono con
 `--use-fake-device-for-media-stream`, o sea recorriendo `getUserMedia` y
@@ -469,7 +474,7 @@ este contenedor**: `dl.google.com` está bloqueado por política de egress
 probó hasta el último paso posible — `bubblewrap update` generó el proyecto
 Android completo con EXIT=0.
 
-**`e2e/` — Playwright.** 87 pruebas verdes sobre tres dispositivos, con dos
+**`e2e/` — Playwright.** 111 pruebas verdes sobre tres dispositivos, con dos
 candados independientes para que **nunca** toquen producción: el dev server
 arranca con `VITE_SUPABASE_URL=https://stub.supabase.test` (un host que no
 existe, así que la URL real ni entra al bundle) y el fixture aborta cualquier

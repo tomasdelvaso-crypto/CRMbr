@@ -648,6 +648,26 @@ Los tres defectos de superficie que estaban acá se arreglaron: son 3.8, 3.9 y
 
 ---
 
+### Nota de despliegue: la pantalla en blanco de `ventus3.vercel.app`
+
+Va acá porque es un diagnóstico que costó y que ninguna prueba de este
+documento podía dar: el harness compila con su propio ambiente y nunca ve la
+configuración de Vercel.
+
+La anon key estaba cargada en Vercel como **variable sensible**. Una variable
+sensible se descifra sólo en tiempo de ejecución y **nunca llega al build**, así
+que Vite inlineaba `VITE_SUPABASE_ANON_KEY` como `undefined`, el bundle abortaba
+al importar el cliente y la app abría en blanco. Se arregla cargándola como
+variable normal de build y redesplegando. Queda escrito para que nadie repita el
+diagnóstico.
+
+> Recuperado del mensaje del commit `5a93c17`: ese commit se llevó por delante
+> la nota original al hacer `git commit` sobre un árbol que otra sesión estaba
+> editando al mismo tiempo. Si el texto original decía algo más, vale el
+> original.
+
+---
+
 ## 6 · Capturas
 
 `docs/capturas/` tiene las 15 pantallas principales en iPhone 14, claro y
