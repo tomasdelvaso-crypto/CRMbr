@@ -6,9 +6,12 @@
 
 interface Props {
   faltando: readonly string[]
+  /** Las que existen pero traen un valor que no puede funcionar. */
+  malformadas?: readonly string[]
 }
 
-export function Diagnostico({ faltando }: Props) {
+export function Diagnostico({ faltando, malformadas = [] }: Props) {
+  const sujas = new Set(malformadas)
   return (
     <main
       style={{
@@ -30,13 +33,22 @@ export function Diagnostico({ faltando }: Props) {
           dados. Não é um problema do seu aparelho nem da sua conta: o build precisa ser refeito.
         </p>
 
-        <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Faltam no build:</p>
+        <p style={{ margin: '0 0 8px', fontWeight: 600 }}>No build:</p>
         <ul style={{ margin: '0 0 20px', paddingLeft: '1.2rem' }}>
           {faltando.map((nome) => (
-            <li key={nome}>
+            <li key={nome} style={{ marginBottom: '6px' }}>
               <code style={{ background: '#1e293b', padding: '2px 6px', borderRadius: '4px' }}>
                 {nome}
-              </code>
+              </code>{' '}
+              {sujas.has(nome) ? (
+                <span style={{ color: '#fca5a5' }}>
+                  — existe, mas o valor não serve. O erro mais comum é ter colado a linha
+                  inteira <code>NOME=valor</code> no campo do valor: ali vai <strong>só</strong>{' '}
+                  o valor.
+                </span>
+              ) : (
+                <span style={{ color: '#94a3b8' }}>— ausente</span>
+              )}
             </li>
           ))}
         </ul>

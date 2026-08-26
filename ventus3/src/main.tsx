@@ -10,7 +10,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import { Diagnostico } from './screens/Diagnostico'
-import { configOk, variaveisFaltando } from './data/config-publica'
+import { configOk, variaveisFaltando, variaveisMalformadas } from './data/config-publica'
 // El nombre del evento sale del módulo que lo escucha, no de un string
 // repetido: si alguien lo renombra allá y acá queda el viejo, el toast de
 // «Nova versão» deja de aparecer y nadie se entera hasta la próxima release.
@@ -40,7 +40,7 @@ if (configOk) {
   // Supabase y éste no puede construirse. Antes esto era un throw en el tope
   // del módulo, o sea pantalla en blanco sin ninguna pista de qué pasó.
   console.error('[ventus] build sem configuração:', variaveisFaltando.join(', '))
-  root.render(<Diagnostico faltando={variaveisFaltando} />)
+  root.render(<Diagnostico faltando={variaveisFaltando} malformadas={variaveisMalformadas} />)
 }
 
 // registerType: 'prompt'. La app NUNCA se recarga sola: el vendedor puede

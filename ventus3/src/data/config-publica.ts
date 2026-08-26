@@ -19,11 +19,43 @@ export interface ConfigPublica {
 const url = import.meta.env.VITE_SUPABASE_URL
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-/** Las variables que faltaron en el build. Vacío = todo bien. */
-export const variaveisFaltando: readonly string[] = [
+/**
+ * ¿Esto tiene forma de JWT? Tres segmentos base64url separados por punto, y el
+ * primero empieza en `eyJ` (que es `{"` en base64).
+ *
+ * Existe porque el error más caro de este proyecto no fue una variable
+ * ausente sino una PRESENTE Y SUCIA: en Vercel se pegó la línea entera
+ * `VITE_SUPABASE_ANON_KEY=eyJ…` dentro del campo de valor, así que la clave
+ * viajaba con el nombre de la variable adelante. Supabase respondía
+ * «Invalid API key · Not a JWT», el cliente lo leía como 401 y la app decía
+ * «e-mail ou senha incorretos». Horas de procurar uma senha que estava certa.
+ * Uma verificação de formato o teria dito na primeira tela.
+ */
+function pareceJwt(valor: string): boolean {
+  const partes = valor.split('.')
+  return (
+    partes.length === 3 &&
+    partes[0]?.startsWith('eyJ') === true &&
+    partes.every((p) => p.length > 0 && /^[A-Za-z0-9_-]+$/.test(p))
+  )
+}
+
+/** Variables ausentes en el build. */
+const ausentes: readonly string[] = [
   ...(url ? [] : ['VITE_SUPABASE_URL']),
   ...(anonKey ? [] : ['VITE_SUPABASE_ANON_KEY']),
 ]
+
+/** Variables presentes pero con un valor que no puede funcionar. */
+export const variaveisMalformadas: readonly string[] = [
+  ...(url && !/^https:\/\/[a-z0-9-]+\.supabase\./.test(url.trim())
+    ? ['VITE_SUPABASE_URL']
+    : []),
+  ...(anonKey && !pareceJwt(anonKey.trim()) ? ['VITE_SUPABASE_ANON_KEY'] : []),
+]
+
+/** Las variables que el build no dejó utilizables. Vacío = todo bien. */
+export const variaveisFaltando: readonly string[] = [...ausentes, ...variaveisMalformadas]
 
 export const configOk = variaveisFaltando.length === 0
 
