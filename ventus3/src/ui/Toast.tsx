@@ -35,7 +35,11 @@ export function ToastHost() {
       // Región viva: el lector de pantalla anuncia sin robar el foco.
       role="region"
       aria-label="Avisos"
-      className="pointer-events-none fixed inset-x-0 z-[60] flex flex-col items-center gap-2 px-3"
+      // `lg:left-60`: en escritorio el DesktopRail ocupa los primeros 15rem
+      // fijos de la pantalla (ver Shell.tsx). Sin este corrimiento el toast
+      // se centra contra el viewport ENTERO y queda descentrado respecto de
+      // la columna de contenido, que sí vive a la derecha del rail.
+      className="pointer-events-none fixed inset-x-0 z-[60] flex flex-col items-center gap-2 px-3 lg:inset-x-auto lg:left-60 lg:right-0"
       style={{ bottom: 'var(--toast-bottom)' }}
     >
       {itens.map((item) => (

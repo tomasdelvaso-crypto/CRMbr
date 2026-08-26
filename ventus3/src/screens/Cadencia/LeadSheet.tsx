@@ -205,7 +205,7 @@ export function LeadSheet({
                   })
                   fechar()
                 }}
-                className="flex min-h-touch-lg w-full items-center gap-3 rounded-lg border border-border bg-surface px-4 text-left active:bg-surface-2"
+                className="flex min-h-touch-lg w-full items-center gap-3 rounded-lg border border-border bg-surface px-4 text-left active:bg-surface-2 lg:hover:bg-surface-2"
               >
                 <span className="flex-1 text-sm font-medium">
                   {TOUCHPOINT_RESULT_LABELS[resultado]}

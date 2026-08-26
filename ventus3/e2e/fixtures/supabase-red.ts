@@ -23,10 +23,13 @@
 
 import type { Page, Route } from '@playwright/test'
 
-/** auth_id real de Tomás en la tabla vendors. */
+/** auth_id real de Tomás en la tabla vendors (admin). */
 export const AUTH_ID_TOMAS = '7525a8ed-1e6b-4dfe-809d-22c4d5de5a92'
 export const EMAIL_TOMAS = 'tripoll@ventapel.com'
-/** La contraseña es de mentira: el doble acepta cualquiera para este e-mail. */
+/** auth_id real de Renata (vendedora, NO admin) — la variante «vendedor» de los tests de rol. */
+export const AUTH_ID_RENATA = '0fd48e8e-e5f4-43f1-8c91-fc24a2b5b438'
+export const EMAIL_RENATA = 'rmorais@ventapel.com'
+/** La contraseña es de mentira: el doble acepta cualquiera para cualquier e-mail seedeado. */
 export const SENHA_TOMAS = 'senha-de-teste'
 
 /** Host real del proyecto. El fixture lo intercepta; nada sale del proceso. */
@@ -110,27 +113,33 @@ function base64url(valor: string): string {
   return Buffer.from(valor, 'utf8').toString('base64url')
 }
 
-/** La respuesta de POST /auth/v1/token?grant_type=password, forma real. */
-export function sessaoDeTomas(): Record<string, unknown> {
+/**
+ * La respuesta de POST /auth/v1/token?grant_type=password, forma real, para
+ * CUALQUIER usuario seedeado en `VENDORS` — no sólo Tomás. Necesario para los
+ * tests de rol (§5 del encargo): «Painel do Gestor» tiene que aparecer con
+ * Tomás (admin) y desaparecer con Renata (vendedora), y las dos sesiones
+ * viajan por el MISMO doble de red.
+ */
+export function sessaoPara(authId: string, email: string): Record<string, unknown> {
   const agora = Math.floor(Date.now() / 1000)
   const header = base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
   const payload = base64url(
     JSON.stringify({
       iss: `https://${HOST_SUPABASE}/auth/v1`,
-      sub: AUTH_ID_TOMAS,
+      sub: authId,
       aud: 'authenticated',
       role: 'authenticated',
-      email: EMAIL_TOMAS,
+      email,
       session_id: 'e2e-sessao-real',
       iat: agora,
       exp: agora + 60 * 60 * 8,
     }),
   )
   const user = {
-    id: AUTH_ID_TOMAS,
+    id: authId,
     aud: 'authenticated',
     role: 'authenticated',
-    email: EMAIL_TOMAS,
+    email,
     email_confirmed_at: '2025-09-21T12:08:04Z',
     app_metadata: { provider: 'email', providers: ['email'] },
     user_metadata: {},
@@ -146,6 +155,18 @@ export function sessaoDeTomas(): Record<string, unknown> {
     refresh_token: 'e2e-refresh-token',
     user,
   }
+}
+
+/** La sesión de Tomás (admin). Se mantiene como función propia: es la que usan
+ * la mayoría de los specs, y no vale la pena que todos pasen el e-mail a mano. */
+export function sessaoDeTomas(): Record<string, unknown> {
+  return sessaoPara(AUTH_ID_TOMAS, EMAIL_TOMAS)
+}
+
+/** Busca por e-mail (case-insensitive) en `VENDORS`, para resolver el login. */
+function vendorPorEmail(email: string): (typeof VENDORS)[number] | null {
+  const alvo = email.trim().toLowerCase()
+  return VENDORS.find((v) => v.email?.toLowerCase() === alvo) ?? null
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -228,6 +249,12 @@ export interface OpcoesSupabaseRede {
   demoraVendorsMs?: number
   /** Contesta [] en /rest/v1/vendors — la variante «sesión sin vendedor». */
   vendorsVazio?: boolean
+  /**
+   * Tablas que contestan 500 en los GET de /rest/v1. Reproduce el pull
+   * PARCIAL: la 4G que se cae a mitad de la sincronización de arranque, que es
+   * lo que dejaba la pantalla Hoje en esqueletos para siempre.
+   */
+  tabelasComFalha?: readonly string[]
 }
 
 export interface RegistroDeRede {
@@ -244,6 +271,11 @@ export async function instalarSupabaseDeRede(
   opcoes: OpcoesSupabaseRede = {},
 ): Promise<RegistroDeRede> {
   const registro: RegistroDeRede = { pedidos: [] }
+  // Quién «está logueado» en ESTE doble — se actualiza en el login y la usa
+  // /auth/v1/user después, para que la sesión sea consistente con QUIEN sea
+  // que entró (Tomás, Renata, o cualquier otro vendor seedeado), y no siempre
+  // Tomás. Vive por instalación: dos tests en paralelo no se pisan.
+  let sessaoAtual = { authId: AUTH_ID_TOMAS, email: EMAIL_TOMAS }
 
   const responder = async (rota: Route): Promise<void> => {
     const pedido = rota.request()
@@ -277,11 +309,21 @@ export async function instalarSupabaseDeRede(
 
     // ── Auth ─────────────────────────────────────────────────────────────
     if (url.pathname.includes('/auth/v1/token')) {
-      await json(sessaoDeTomas())
+      // El formulario manda { email, password } en el body: se busca ese
+      // e-mail entre los vendors seedeados para saber CON QUIÉN se está
+      // entrando. Sin body reconocible (o e-mail que no está en `VENDORS`),
+      // se cae a Tomás — el default de siempre, para no romper los specs que
+      // ya llaman a `entrarComoTomas` sin pensar en esto.
+      const body = pedido.postDataJSON() as { email?: string } | null
+      const vendor = body?.email ? vendorPorEmail(body.email) : null
+      sessaoAtual = vendor
+        ? { authId: vendor.auth_id, email: vendor.email }
+        : { authId: AUTH_ID_TOMAS, email: EMAIL_TOMAS }
+      await json(sessaoPara(sessaoAtual.authId, sessaoAtual.email))
       return
     }
     if (url.pathname.includes('/auth/v1/user')) {
-      await json((sessaoDeTomas() as { user: unknown }).user)
+      await json((sessaoPara(sessaoAtual.authId, sessaoAtual.email) as { user: unknown }).user)
       return
     }
     if (url.pathname.includes('/auth/v1/logout')) {
@@ -313,22 +355,40 @@ export async function instalarSupabaseDeRede(
       }
     }
 
+    const tabelaPedida = /\/rest\/v1\/([a-zA-Z_]+)/.exec(url.pathname)?.[1] ?? ''
+    if (opcoes.tabelasComFalha?.includes(tabelaPedida)) {
+      await json({ message: 'simulação de queda no meio do pull' }, 500)
+      return
+    }
+
     const { status, body } = responderRest(url)
     await json(body, status)
   }
 
-  await page.route(`**://${HOST_SUPABASE}/**`, responder)
+  // context.route y NO page.route: con el service worker registrado (que es como
+  // corre producción), los pedidos que salen DESDE el worker no pasan por
+  // page.route y se irían a la red de verdad. A nivel de contexto se
+  // interceptan los dos caminos, que es la única forma de que este doble sea
+  // el ÚNICO servidor que la app ve.
+  await page.context().route(`**://${HOST_SUPABASE}/**`, responder)
   return registro
 }
 
 /**
  * Login REAL por el formulario: e-mail, senha, «Entrar». Es el camino que el
  * dueño del producto recorrió — nada de sesión inyectada en localStorage.
+ * Sirve para CUALQUIER e-mail seedeado en `VENDORS` (la senha es de mentira,
+ * el doble la acepta igual): así los tests de rol pueden entrar como Tomás
+ * (admin) o como Renata (vendedora) contra el MISMO doble de red.
  */
-export async function entrarComoTomas(page: Page): Promise<void> {
+export async function entrarComo(page: Page, email: string, senha = SENHA_TOMAS): Promise<void> {
   await page.goto('/login', { waitUntil: 'domcontentloaded' })
-  await page.getByLabel('E-mail').fill(EMAIL_TOMAS)
-  await page.getByLabel('Senha', { exact: true }).fill(SENHA_TOMAS)
+  await page.getByLabel('E-mail').fill(email)
+  await page.getByLabel('Senha', { exact: true }).fill(senha)
   await page.getByRole('button', { name: 'Entrar', exact: true }).click()
   await page.waitForURL('**/', { timeout: 15_000 })
+}
+
+export async function entrarComoTomas(page: Page): Promise<void> {
+  await entrarComo(page, EMAIL_TOMAS)
 }

@@ -157,13 +157,55 @@ export function Sheet({
     }
   }
 
+  /* ── El punto de partida de la entrada se coloca UNA vez por apertura ────
+     `y.set(alturaRef.current)` deja el panel entero por debajo del borde de la
+     pantalla para que el efecto de abajo lo suba animando. Es la POSICIÓN DE
+     ARRANQUE, no un estado que haya que mantener — y sin este candado se
+     volvía a aplicar en cada corrida del efecto.
+
+     Lo que eso costaba, medido: este efecto depende de `footer`, que es un
+     ReactNode que la pantalla de arriba vuelve a crear en CADA render. En un
+     sheet sin `snapPoints` el reposo abierto es exactamente `y === 0`, así que
+     el primer re-render del padre con el sheet abierto encontraba la condición
+     cumplida y TELETRANSPORTABA el panel un alto entero hacia abajo. El efecto
+     que anima no depende de `footer`, así que no volvía a correr: el panel se
+     quedaba ahí, fuera de la pantalla, para siempre.
+
+     Lo que se veía: en «Adiar» (tela Hoje), tocar una fecha hacía DESAPARECER
+     el sheet —y con él la fecha recién elegida y el botón que la confirma—
+     mientras la app seguía en modo modal, con el scroll bloqueado y el foco
+     atrapado en un panel invisible. O sea: la pantalla dejaba de responder a
+     todo. Medido en el build de producción, en los dos tamaños:
+
+         adiar-aberto        painel.top = 435   transform: none
+         después de «+7d»    painel.top = 844   transform: translateY(409px)
+         1,7 s más tarde     painel.top = 844   (no vuelve)
+
+     Le pasaba a los sheets SIN `snapPoints` y con `footer` propio — «Adiar» de
+     Hoje y de Carteira, Filtros, os quatro Rituais, Próximo Passo, Kudos,
+     Descartar y Editar Campo da Revisão. Los que tienen snaps se salvaban de
+     casualidad: su reposo abierto no es 0, sino el offset del snap.
+
+     El candado es un ref y no una dependencia menos: hay que seguir midiendo
+     el alto y recalculando la reserva del pie cuando el contenido cambia. Lo
+     único que pasa a ocurrir una sola vez es la colocación inicial. */
+  const arranqueColocado = useRef(false)
+
   useLayoutEffect(() => {
     if (!montado) return
     const el = painelRef.current
     if (!el) return
     alturaRef.current = Math.max(el.offsetHeight, 1)
     setReservaDoRodape(alturaFixa && footer ? reservaMaxima() : 0)
-    if (open && y.get() === 0) y.set(alturaRef.current)
+
+    if (!open) {
+      // Cerrando: la próxima apertura vuelve a necesitar su punto de partida.
+      arranqueColocado.current = false
+      return
+    }
+    if (arranqueColocado.current) return
+    arranqueColocado.current = true
+    if (y.get() === 0) y.set(alturaRef.current)
   }, [montado, open, y, alturaFixa, footer, reservaMaxima])
 
   useEffect(() => {
@@ -341,7 +383,12 @@ export function Sheet({
   const rotulado = title ? idTitulo : labelledBy
 
   return createPortal(
-    <div className="fixed inset-0 z-50" data-ventus-sheet="">
+    // `lg:flex lg:items-center lg:justify-center`: en escritorio (≥1024px) un
+    // bottom sheet pegado al piso de un monitor de 27" es tan absurdo como el
+    // gesto que lo abre; acá se convierte en modal centrado. El backdrop
+    // sigue `absolute inset-0` —no participa del centrado, ya cubre todo— y
+    // es el panel el que pasa de anclado abajo a ítem centrado por flexbox.
+    <div className="fixed inset-0 z-50 lg:flex lg:items-center lg:justify-center lg:p-6" data-ventus-sheet="">
       <motion.div
         aria-hidden
         onPointerDown={dismissible ? fechar : undefined}
@@ -362,6 +409,14 @@ export function Sheet({
           'absolute inset-x-0 bottom-0 mx-auto flex w-full max-w-col flex-col',
           'rounded-t-sheet border border-b-0 border-border bg-surface text-fg shadow-sheet',
           'outline-none will-change-transform',
+          // Desktop: deja de estar anclado al borde inferior de la pantalla y
+          // pasa a ser un ítem más del flex centrado de arriba. `lg:relative`
+          // y no `lg:static`: sigue necesitando quedar en el mismo grupo de
+          // apilado que el backdrop (`position` distinto de `static`) para
+          // pintarse ENCIMA de él — si no, el backdrop, que es `absolute`,
+          // gana el apilado sobre un panel `static` sin importar el orden en
+          // el DOM.
+          'lg:relative lg:inset-auto lg:mx-0 lg:w-full lg:max-w-md lg:rounded-sheet lg:border-b',
           className,
         )}
       >
@@ -374,7 +429,12 @@ export function Sheet({
           onPointerCancel={soltarArraste}
         >
           {showHandle && (
-            <div className="flex h-6 items-center justify-center pt-2">
+            // La barrita de arrastre es una convención de bottom sheet. En el
+            // modal centrado de escritorio no hay de dónde «tirar hacia
+            // abajo»: se esconde, no el gesto —el mouse puede seguir
+            // arrastrando desde este bloque si quiere, ver el comentario de
+            // arriba del componente.
+            <div className="flex h-6 items-center justify-center pt-2 lg:hidden">
               <span aria-hidden className="h-1 w-10 rounded-pill bg-border-strong" />
             </div>
           )}

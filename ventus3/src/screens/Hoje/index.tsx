@@ -53,6 +53,7 @@ import {
   useTelaCurta,
 } from '@/ui'
 import { useBotaoPrimario } from '@/host'
+import { SessaoSemVendedor } from '@/app/SessaoSemVendedor'
 import { SessionContext } from '@/app/session-context'
 import { CabecalhoDoDia, ContextoDoDia } from './CabecalhoDoDia'
 import { CardAcao } from './CardAcao'
@@ -74,6 +75,25 @@ export default function HojeScreen() {
   const sessao = useContext(SessionContext)
 
   if (!queryClient || !sessao) return <EsqueletoDoDia />
+  if (sessao.loading) return <EsqueletoDoDia />
+  // ── Sesión sin vendedor: se dice, no se disimula ──────────────────────
+  // Todas las queries de esta pantalla llevan `enabled: vendor !== null`, y
+  // TanStack Query reporta una query deshabilitada como `isPending` PARA
+  // SIEMPRE. Con el render normal, eso son tres esqueletos, un rectángulo
+  // gris pulsante donde va la Golden Hour y ni un solo control tocable —una
+  // pantalla que se ve cargada y no responde a nada—. Es literalmente lo que
+  // el dueño del producto reportó en su primer login.
+  //
+  // Hoy el Shell corta este caso ANTES del Outlet, para las 14 rutas de una
+  // sola vez, así que en la app esta rama no llega a pintarse. Se queda igual,
+  // como defensa en profundidad, para quien monte esta pantalla fuera del
+  // Shell —los smoke tests del router lo hacen— y porque el costo es una
+  // línea. Lo que NO se queda es una segunda copia del texto: es el MISMO
+  // componente que usa el Shell. Llegaron dos, de dos arreglos distintos, y
+  // sólo una podía verse; la otra iba a envejecer sin que nadie lo notara.
+  if (sessao.vendorName === null) {
+    return <SessaoSemVendedor onTentar={sessao.revalidarVendor} />
+  }
   return <Hoje vendorName={sessao.vendorName} />
 }
 
@@ -277,7 +297,7 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
           bottom nav (4rem + safe-bottom, que el <main> ya pone como padding)
           abajo. Total = 100svh exactos, y el body no scrollea. */}
       <PullToRefresh
-        className="h-[calc(100svh-var(--spacing-header)-var(--safe-top)-var(--spacing-nav)-var(--safe-bottom)-var(--spacing-chrome))]"
+        className="h-[calc(100svh-var(--spacing-header)-var(--safe-top)-var(--spacing-nav-visivel)-var(--safe-bottom)-var(--spacing-chrome))]"
         onRefresh={async () => {
           await Promise.all([
             plano.refetch(),

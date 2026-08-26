@@ -66,7 +66,7 @@ export function Kanban({ linhas, hoje, onAbrir }: KanbanProps) {
                     <button
                       type="button"
                       onClick={() => onAbrir(linha)}
-                      className="w-full rounded-lg border border-border bg-surface p-2.5 text-left active:bg-surface-2"
+                      className="w-full rounded-lg border border-border bg-surface p-2.5 text-left active:bg-surface-2 lg:hover:bg-surface-2"
                     >
                       <span className="block truncate text-sm font-semibold">
                         {linha.lead.company_name}

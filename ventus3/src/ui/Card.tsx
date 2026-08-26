@@ -75,7 +75,7 @@ export function Card({
         className={cx(
           base,
           'min-h-touch tap-highlight-none transition-transform duration-150 ease-ios',
-          'active:scale-[0.985] active:bg-surface-2',
+          'active:scale-[0.985] active:bg-surface-2 lg:hover:bg-surface-2',
         )}
       >
         {conteudo}

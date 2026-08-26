@@ -28,7 +28,6 @@ import {
   LogOut,
   MessageSquare,
   Settings,
-  ShieldCheck,
   Sparkles,
   Trophy,
   Users,
@@ -41,8 +40,9 @@ import {
   useForcarEnvio,
   usePendentesDoOutbox,
 } from '@/data'
-import { Avatar, Button, Card, Skeleton, TONE_TEXT, confirmar, cx, toast } from '@/ui'
+import { Button, Card, Skeleton, TONE_TEXT, confirmar, cx, toast } from '@/ui'
 import type { Tone } from '@/ui'
+import { PerfilChip } from '@/app/PerfilChip'
 import { SessionContext } from '@/app/session-context'
 
 interface ItemDoHub {
@@ -121,7 +121,7 @@ function Mais({ vendorName, isAdmin }: { vendorName: string | null; isAdmin: boo
 
   return (
     <div className="flex flex-col gap-5 px-4 py-4">
-      <CartaoDeIdentidade vendorName={vendorName} isAdmin={isAdmin} />
+      <CartaoDeIdentidade />
 
       <EstadoDeSync vendorName={vendorName} />
 
@@ -159,42 +159,17 @@ function Mais({ vendorName, isAdmin }: { vendorName: string | null; isAdmin: boo
   )
 }
 
-function CartaoDeIdentidade({
-  vendorName,
-  isAdmin,
-}: {
-  vendorName: string | null
-  isAdmin: boolean
-}) {
-  if (!vendorName) {
-    return (
-      <Card padding="md">
-        <div className="flex items-center gap-3">
-          <Avatar name="?" size="lg" />
-          <div className="min-w-0">
-            <p className="font-semibold">Sessão sem vendedor</p>
-            <p className="text-sm leading-snug text-fg-muted">
-              Você entrou, mas este e-mail ainda não está ligado a um vendedor. Avise o Jordi:
-              é um ajuste de um minuto.
-            </p>
-          </div>
-        </div>
-      </Card>
-    )
-  }
-
+/**
+ * O perfil, no topo de tudo: é a resposta a «quem sou eu, e que papel eu
+ * tenho aqui» — o reclamo real do dono do produto no primeiro login. Vem do
+ * `PerfilChip` compartilhado (ver src/app/PerfilChip.tsx) para que a mesma
+ * lógica de nome, e-mail e chip de papel não se repita em Ajustes nem no rail
+ * de escritório.
+ */
+function CartaoDeIdentidade() {
   return (
     <Card padding="md">
-      <div className="flex items-center gap-3">
-        <Avatar name={vendorName} size="lg" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-lg font-semibold tracking-tight">{vendorName}</p>
-          <p className="flex items-center gap-1.5 text-sm text-fg-muted">
-            {isAdmin && <ShieldCheck size={14} aria-hidden className="text-brand" />}
-            {isAdmin ? 'Gestor' : 'Vendedor de campo'}
-          </p>
-        </div>
-      </div>
+      <PerfilChip tamanho="lg" comEmail link={false} />
     </Card>
   )
 }
@@ -288,7 +263,7 @@ function Grupo({ titulo, itens }: { titulo: string; itens: readonly ItemDoHub[] 
                 type="button"
                 onClick={() => void navigate(item.to)}
                 className={cx(
-                  'flex min-h-touch-lg w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2',
+                  'flex min-h-touch-lg w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2 lg:hover:bg-surface-2',
                   i > 0 && 'border-t border-border',
                 )}
               >

@@ -32,7 +32,7 @@ export function Feedback({ voto, onVotar }: FeedbackProps) {
           }}
           className={cx(
             'flex size-11 items-center justify-center rounded-lg transition-colors',
-            voto === 'bom' ? 'text-ok' : 'text-fg-subtle active:bg-surface-2',
+            voto === 'bom' ? 'text-ok' : 'text-fg-subtle active:bg-surface-2 lg:hover:bg-surface-2',
           )}
         >
           <ThumbsUp size={16} aria-hidden />
@@ -47,7 +47,7 @@ export function Feedback({ voto, onVotar }: FeedbackProps) {
           }}
           className={cx(
             'flex size-11 items-center justify-center rounded-lg transition-colors',
-            voto === 'ruim' ? 'text-danger' : 'text-fg-subtle active:bg-surface-2',
+            voto === 'ruim' ? 'text-danger' : 'text-fg-subtle active:bg-surface-2 lg:hover:bg-surface-2',
           )}
         >
           <ThumbsDown size={16} aria-hidden />

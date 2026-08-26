@@ -41,7 +41,9 @@ import { useContext, useEffect, useLayoutEffect, useRef } from 'react'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Mic, WifiOff } from 'lucide-react'
 import { BottomNav } from './BottomNav'
-import { SessionContext } from './session-context'
+import { DesktopRail } from './DesktopRail'
+import { SessaoSemVendedor } from './SessaoSemVendedor'
+import { SessionContext, type SessionContextValue } from './session-context'
 import {
   useContagemRevisao,
   useDiaVigente,
@@ -52,7 +54,7 @@ import {
 import { definirBadge } from '@/push'
 import { BarraDeComando } from '@/screens/Ventus/BarraDeComando'
 import { barraDeComandoVisivel } from '@/screens/Ventus/rotas'
-import { ConfirmHost, Skeleton, ToastHost, direcaoEntreRotas, haptic } from '@/ui'
+import { ConfirmHost, Skeleton, ToastHost, confirmar, direcaoEntreRotas, haptic } from '@/ui'
 
 /** Títulos del header por ruta. En PT-BR, como todo lo visible. */
 const TITULOS: Readonly<Record<string, string>> = {
@@ -73,18 +75,47 @@ const TITULOS: Readonly<Record<string, string>> = {
 }
 
 /**
- * Rutas que necesitan más ancho que la columna de teléfono.
+ * Ancho de la columna de contenido, por ruta y por tamaño de pantalla.
  *
- * El resto de la app vive en `max-w-lg` a propósito: es una app de campo que
- * se usa con una mano. El Painel do Gestor es la excepción declarada del
- * PLANO —«optimizada para tablet y desktop, usable en teléfono»— porque
- * comparar seis vendedores en una columna de 32rem obliga a scrollear para
- * comparar, que es justo lo que el panel existe para no hacer.
+ * En móvil TODA la app vive en `max-w-lg` a propósito: es una app de campo
+ * que se usa con una mano. En escritorio (`lg:`, ≥1024px) esa misma columna
+ * de 32rem flotando en el centro de un monitor es lo que el dueño del
+ * producto leyó como «está roto», no como decisión de diseño — así que cada
+ * ruta gana el ancho que le corresponde por densidad de contenido:
+ *
+ *  · Hoje es una lista de foco (3 tarjetas, una decisión por vez): se angosta
+ *    apenas, a `max-w-2xl`. Estirarla al ancho de la Carteira le daría a una
+ *    lista de tres ítems el mismo peso visual que a una tabla de 65 filas.
+ *  · Carteira, Cadência, Revisão y Placar son listas densas que hoy usan cada
+ *    píxel del teléfono: en escritorio pasan a `max-w-4xl` para mostrar más
+ *    columnas por fila sin estirar el texto a un ancho ilegible.
+ *  · Dossiê es una ficha de UNA oportunidad: `max-w-3xl`, entre las dos.
+ *  · El Painel do Gestor ya tenía su excepción declarada del PLANO
+ *    —«optimizada para tablet e desktop»— y no cambia acá.
+ *  · La Golden Hour es modo foco y ni pasa por esta función: ver `modoFoco`.
+ *  · Registrar queda en `max-w-lg` en TODOS los tamaños, sin excepción: la
+ *    barra de acción del final es `fixed` y centra su propio `max-w-lg`
+ *    independiente de este ancho —lo necesita para no moverse cuando el
+ *    teclado empuja el layout—, así que ensanchar el contenido de arriba sin
+ *    tocar esa barra dejaría los botones más angostos que el formulario que
+ *    confirman. Es la misma razón por la que la Golden Hour tampoco cambia.
+ *  · Todo lo demás (Mais, Ajustes, Rituais, Ventus…) son pantallas de
+ *    formulario o de una sola tarjeta: el mismo `max-w-2xl` de Hoje evita que
+ *    sigan viéndose como teléfono sin volverse una plana de texto larga.
  */
-const ROTAS_LARGAS: readonly string[] = ['/gestor']
+const ROTAS_5XL: readonly string[] = ['/gestor']
+const ROTAS_4XL: readonly string[] = ['/carteira', '/cadencia', '/revisao', '/placar']
+const ROTAS_ANGOSTAS: readonly string[] = ['/registrar']
 
 function larguraDe(pathname: string): string {
-  return ROTAS_LARGAS.includes(pathname) ? 'max-w-5xl' : 'max-w-lg'
+  if (ROTAS_5XL.includes(pathname)) return 'max-w-5xl'
+  if (ROTAS_ANGOSTAS.includes(pathname)) return 'max-w-lg'
+  if (pathname === '/') return 'max-w-lg lg:max-w-2xl'
+  // /carteira/46 → Dossiê. Antes del check de ROTAS_4XL: si no, /carteira
+  // (sin id) lo captura primero y listo, pero /carteira/46 empieza igual.
+  if (pathname.startsWith('/carteira/')) return 'max-w-lg lg:max-w-3xl'
+  if (ROTAS_4XL.includes(pathname)) return 'max-w-lg lg:max-w-4xl'
+  return 'max-w-lg lg:max-w-2xl'
 }
 
 function tituloDe(pathname: string): string {
@@ -120,6 +151,27 @@ function useDirecaoDaTransicao(pathname: string): void {
     }, 400)
     return () => window.clearTimeout(id)
   }, [pathname])
+}
+
+/**
+ * La salida de la pantalla de «sessão sem vendedor». Con confirmación porque
+ * el dispositivo puede llevar registros de OTRO vendedor esperando en el
+ * outbox —el outbox no filtra por sesión— y salir sin avisar los dejaría
+ * varados hasta el próximo login.
+ */
+async function sairSemVendedor(
+  sessao: SessionContextValue,
+  navigate: (to: string, opts?: { replace?: boolean }) => void,
+): Promise<void> {
+  const ok = await confirmar({
+    title: 'Sair da conta?',
+    description: 'Você ainda não está ligado a um vendedor, então não há nada seu pendente de envio. Para voltar, é só entrar de novo.',
+    confirmLabel: 'Sair',
+    tone: 'perigo',
+  })
+  if (!ok) return
+  await sessao.signOut()
+  navigate('/login', { replace: true })
 }
 
 export function Shell() {
@@ -203,6 +255,42 @@ export function Shell() {
     if (!sessao.session) {
       return <Navigate to="/login" replace state={{ from: location.pathname }} />
     }
+
+    // ── Sesión sin vendedor: UNA sola pantalla, para TODAS las rutas ──────
+    // `resolverVendorDaSessao` volvió null: hay usuario de auth pero ninguna
+    // fila de `vendors` lo reclama. Es el modo de falla de cualquier cuenta
+    // nueva mal dada de alta, y antes de esta guardia cada pantalla lo vivía
+    // a su manera —o no lo vivía—: Hoje se quedaba en esqueletos, la mayoría
+    // ni se enteraba. Se corta acá, una vez, para las 14 rutas de una sola
+    // vez, y se deja el chrome (header + nav) para que la única salida
+    // disponible no sea recargar la app a mano.
+    if (sessao.vendorAusente) {
+      return (
+        <div className="flex min-h-screen-svh flex-col bg-bg text-fg lg:pl-60">
+          <DesktopRail
+            isAdmin={false}
+            mostrarMicrofone={false}
+            rotuloDoMicrofone={rotuloDoMicrofone}
+            pendentesOutbox={0}
+            onRegistrar={irRegistrar}
+          />
+          <header className="sticky top-0 z-30 border-b border-border bg-bg/90 px-safe pt-safe backdrop-blur">
+            <div className="mx-auto flex h-14 max-w-lg items-center px-4 lg:max-w-2xl">
+              <h1 className="truncate text-lg font-semibold tracking-tight">Ventus</h1>
+            </div>
+          </header>
+          <main className="mx-auto w-full max-w-lg flex-1 px-safe pb-nav-safe lg:max-w-2xl">
+            <SessaoSemVendedor
+              onTentar={sessao.revalidarVendor}
+              onSair={() => void sairSemVendedor(sessao, navigate)}
+            />
+          </main>
+          <BottomNav />
+          <ToastHost />
+          <ConfirmHost />
+        </div>
+      )
+    }
   }
 
   if (modoFoco) {
@@ -217,7 +305,18 @@ export function Shell() {
   }
 
   return (
-    <div className="flex min-h-screen-svh flex-col bg-bg text-fg">
+    <div className="flex min-h-screen-svh flex-col bg-bg text-fg lg:pl-60">
+      {/* Rail lateral: reemplaza a la BottomNav en lg+ (≥1024px). Ver
+          DesktopRail.tsx — mismos 5 destinos + Gestor (si admin) + Ajustes,
+          el micrófono como acción destacada y el indicador de perfil al pie. */}
+      <DesktopRail
+        isAdmin={sessao?.isAdmin === true}
+        mostrarMicrofone={mostrarMicrofone}
+        rotuloDoMicrofone={rotuloDoMicrofone}
+        pendentesOutbox={pendentesOutbox}
+        onRegistrar={irRegistrar}
+      />
+
       <header className="sticky top-0 z-30 border-b border-border bg-bg/90 px-safe pt-safe backdrop-blur">
         <div className={`mx-auto flex h-14 ${largura} items-center justify-between gap-3 px-4`}>
           <h1 className="truncate text-lg font-semibold tracking-tight">{titulo}</h1>
@@ -242,13 +341,17 @@ export function Shell() {
 
       {/* Sin barra de comando el micrófono flota, a 1rem por encima de la nav.
           Con barra, va DENTRO de ella (ver la decisión 2). El badge cuenta lo
-          que el outbox todavía no pudo enviar. */}
+          que el outbox todavía no pudo enviar.
+
+          `lg:hidden`: en escritorio esta acción vive en el DesktopRail (ver la
+          decisión 2 de ese archivo) — un FAB flotando sobre un monitor de 27"
+          es la misma rareza que un bottom sheet ahí abajo. */}
       {mostrarMicrofone && !comBarra && (
         <button
           type="button"
           aria-label={rotuloDoMicrofone}
           onClick={irRegistrar}
-          className="fixed right-4 z-40 flex size-14 items-center justify-center rounded-full bg-brand text-brand-fg shadow-lg transition-transform active:scale-95"
+          className="fixed right-4 z-40 flex size-14 items-center justify-center rounded-full bg-brand text-brand-fg shadow-lg transition-transform active:scale-95 lg:hidden"
           style={{ bottom: 'calc(var(--spacing-nav) + env(safe-area-inset-bottom, 0px) + 1rem)' }}
         >
           <Mic size={24} aria-hidden />
@@ -265,7 +368,7 @@ export function Shell() {
               type="button"
               aria-label={rotuloDoMicrofone}
               onClick={irRegistrar}
-              className="relative flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-fg active:bg-brand-strong"
+              className="relative flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-fg active:bg-brand-strong lg:hidden"
             >
               <Mic size={20} aria-hidden />
               <BadgeDoOutbox pendentes={pendentesOutbox} />

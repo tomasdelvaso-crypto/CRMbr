@@ -17,16 +17,51 @@
 // `executablePath` a mano y se corre con lo que hay: nunca
 // `playwright install`, que en esta máquina no tiene salida a internet.
 //
-// LOS PROYECTOS son tres y cubren dos formas de usar la app: teléfono (los
-// dos que el equipo tiene en la mano — un iPhone y un Android — con touch,
-// que es donde vive el 100% del uso de campo) y escritorio (el Painel do
-// Gestor y el teclado, que es donde vive la accesibilidad).
+// LOS PROYECTOS son cinco. Tres corren contra el dev server y cubren dos
+// formas de usar la app: teléfono (los dos que el equipo tiene en la mano — un
+// iPhone y un Android — con touch, que es donde vive el 100% del uso de campo)
+// y escritorio (el Painel do Gestor y el teclado, que es donde vive la
+// accesibilidad). Los otros dos son la SESIÓN REAL: el mismo bundle que
+// publica Vercel, servido por `vite preview`, para recorrer el camino
+// completo login → sesión → vendedor → datos → pantalla. Ver más abajo.
 
 import { defineConfig, devices } from '@playwright/test'
 
 /** Puerto propio: no pisa el 5173 de quien esté desarrollando al lado. */
 const PORTA = 5288
 const BASE_URL = `http://127.0.0.1:${String(PORTA)}`
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════
+ * EL SEGUNDO SERVIDOR: EL BUILD DE PRODUCCIÓN, TAL CUAL
+ * ══════════════════════════════════════════════════════════════════════════
+ * `e2e/sessao-real.spec.ts` recorre el camino que recorrió el dueño del
+ * producto —formulario de login → POST /auth/v1/token → resolución del
+ * vendedor → pull de la cartera → tela Hoje— y para eso NO sirve el dev server
+ * de arriba: aquel arranca apuntando a `stub.supabase.test` y la app nunca
+ * llegaría a hablar con el host de producción. Este sirve `dist/`, o sea el
+ * MISMO bundle que Vercel publica, con el service worker registrado y todo.
+ *
+ * ¿Y el candado? Sigue habiendo tres, en capas independientes:
+ *   1. `instalarSupabaseDeRede()` —que es quien declara el host, no este
+ *      archivo— intercepta a nivel de CONTEXTO todo lo que apunte a él, tanto
+ *      del navegador como del service worker, y contesta con un doble. Ningún
+ *      pedido sale del proceso.
+ *   2. Ese doble es de SOLO LECTURA hacia afuera: los POST/PATCH se contestan
+ *      con un 2xx de mentira y jamás tocan la base.
+ *   3. La máquina de CI/QA no tiene salida a `*.supabase.co`.
+ * La prueba, además, verifica al final que todo lo que la app pidió lo
+ * contestó el doble; si algo se escapara, falla.
+ *
+ * Que el host viva SOLO en el fixture no es prolijidad: `stub-de-teste.test.ts`
+ * comprueba que no aparezca en ningún arrancador de pruebas, justamente para
+ * que nadie pueda apuntar un lanzador a producción sin darse cuenta.
+ */
+const PORTA_PREVIEW = 5289
+const BASE_URL_PREVIEW = `http://127.0.0.1:${String(PORTA_PREVIEW)}`
+
+/** El único archivo que corre contra el build de producción. */
+const SESSAO_REAL = /sessao-real\.spec\.ts$/
 
 /** Chromium preinstalado. Ver el encabezado. */
 const CHROMIUM = process.env['PLAYWRIGHT_CHROMIUM_PATH'] ?? '/opt/pw-browsers/chromium'
@@ -79,6 +114,7 @@ export default defineConfig({
   projects: [
     {
       name: 'mobile',
+      testIgnore: SESSAO_REAL,
       use: {
         ...devices['iPhone 14'],
         // El descriptor del iPhone pide WebKit y acá sólo hay Chromium: se
@@ -91,6 +127,7 @@ export default defineConfig({
     },
     {
       name: 'mobile-pixel7',
+      testIgnore: SESSAO_REAL,
       use: {
         ...devices['Pixel 7'],
         browserName: 'chromium',
@@ -100,6 +137,7 @@ export default defineConfig({
     },
     {
       name: 'desktop',
+      testIgnore: SESSAO_REAL,
       use: {
         ...devices['Desktop Chrome'],
         browserName: 'chromium',
@@ -107,9 +145,37 @@ export default defineConfig({
         launchOptions,
       },
     },
+
+    // ── La sesión real, contra el build de producción ────────────────────
+    // Los dos tamaños que el dueño del producto nombró: el monitor donde dijo
+    // que «no puedo accionar ningún botón» y el teléfono donde vive el resto
+    // del equipo.
+    {
+      name: 'sessao-real-escritorio',
+      testMatch: SESSAO_REAL,
+      use: {
+        ...devices['Desktop Chrome'],
+        browserName: 'chromium',
+        viewport: { width: 1440, height: 900 },
+        baseURL: BASE_URL_PREVIEW,
+        launchOptions,
+      },
+    },
+    {
+      name: 'sessao-real-telefone',
+      testMatch: SESSAO_REAL,
+      use: {
+        ...devices['iPhone 14'],
+        browserName: 'chromium',
+        defaultBrowserType: 'chromium',
+        viewport: { width: 390, height: 844 },
+        baseURL: BASE_URL_PREVIEW,
+        launchOptions,
+      },
+    },
   ],
 
-  webServer: {
+  webServer: [{
     command: `npx vite --port ${String(PORTA)} --strictPort`,
     url: BASE_URL,
     reuseExistingServer: !process.env['CI'],
@@ -134,4 +200,19 @@ export default defineConfig({
       VITE_VENTUS_MOCK: 'on',
     },
   },
+  {
+    // El build de producción, servido tal cual. Se reconstruye a propósito:
+    // un `dist/` viejo probaría código que ya no existe, que es peor que no
+    // probar nada. `npm run build` es exactamente lo que corre Vercel.
+    command: `npm run build && npx vite preview --port ${String(PORTA_PREVIEW)} --strictPort`,
+    url: BASE_URL_PREVIEW,
+    // Y NUNCA se reusa uno que ya esté levantado, ni en local. Un preview
+    // olvidado de una corrida anterior sirve el `dist/` de ANTES del arreglo y
+    // la suite pasa —o falla— por código que ya no existe. Pasó mientras se
+    // depuraba esto: cuarenta segundos de build valen menos que un verde falso.
+    reuseExistingServer: false,
+    stdout: 'ignore',
+    stderr: 'pipe',
+    timeout: 240_000,
+  }],
 })

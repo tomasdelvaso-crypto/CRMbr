@@ -27,6 +27,7 @@
 //    panel que dice «sem conexão».
 
 import { useContext, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
@@ -366,13 +367,23 @@ function AbaSaude({ painel }: { painel: PainelDoGestor }) {
    Estados
    ══════════════════════════════════════════════════════════════════════════ */
 
+/**
+ * A guardia de ruta: quem não é admin e digita `/gestor` a mão cai aqui, não
+ * num painel vazio com zeros nem numa tela em branco. Com botão de volta —
+ * a BottomNav/DesktopRail já levam pra qualquer lugar, mas uma saída
+ * explícita na própria tela é o que faz o estado se sentir terminal e não um
+ * beco sem saída.
+ */
 function SemAcesso() {
+  const navigate = useNavigate()
   return (
     <div className="px-4 py-10">
       <EmptyState
         icon={<Users size={28} aria-hidden />}
         title="Este painel é do gestor"
         description="Ele mostra a carteira de todo o time, então fica com quem faz o acompanhamento semanal. O seu Placar e a sua Cadência estão em «Mais»."
+        actionLabel="Voltar"
+        onAction={() => void navigate('/')}
       />
     </div>
   )

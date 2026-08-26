@@ -77,7 +77,7 @@ export function SheetVincular({
                 onClick={() => {
                   onEscolher(alvo)
                 }}
-                className="flex min-h-touch w-full items-center gap-3 py-3 text-left active:bg-surface-2"
+                className="flex min-h-touch w-full items-center gap-3 py-3 text-left active:bg-surface-2 lg:hover:bg-surface-2"
               >
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-base font-medium">{alvo.nome}</div>

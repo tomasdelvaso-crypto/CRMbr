@@ -385,9 +385,13 @@
 }
 /* Espacio para que el contenido no quede debajo del chrome fijo de abajo: la
    bottom nav, el home indicator y —cuando está— la barra de comando del
-   Ventus. Ver --spacing-chrome. */
+   Ventus. Ver --spacing-chrome.
+   `--spacing-nav-visivel` y no `--spacing-nav`: en escritorio la bottom nav
+   desaparece (la reemplaza el DesktopRail) y esta reserva tiene que
+   desaparecer con ella; ver el comentario junto a esa variable, más abajo en
+   este archivo, sobre por qué NO es la misma que usa `--toast-bottom`. */
 @utility pb-nav-safe {
-  padding-bottom: calc(var(--spacing-nav) + var(--safe-bottom) + var(--spacing-chrome));
+  padding-bottom: calc(var(--spacing-nav-visivel) + var(--safe-bottom) + var(--spacing-chrome));
 }
 
 /* Alto de pantalla ÚTIL: 100svh menos las dos safe areas. */
@@ -510,5 +514,37 @@
   }
   to {
     transform: translate3d(100%, 0, 0);
+  }
+}
+
+/* ── Escritorio (lg, ≥1024px) ────────────────────────────────────────────
+   La BottomNav se esconde a favor del DesktopRail (`src/app/DesktopRail.tsx`)
+   — y con ella, el hueco que reservaba. `pb-nav-safe` (el fondo del scroll) y
+   la barra de comando del Ventus (que baja a ocupar el lugar) tienen que
+   dejar de contarlo; si no, queda una franja vacía de 4rem al pie de un
+   monitor.
+
+   Variable PROPIA (`--spacing-nav-visivel`) y NO `--spacing-nav` a secas:
+   `--toast-bottom` también se arma con `--spacing-nav`, y el toast no tiene
+   por qué compartir la reserva de la nav con esos otros dos — de hecho,
+   zerar `--spacing-nav` directamente fue el primer intento, y rompió la
+   Golden Hour: el toast de «Reunião marcada com…» bajó a superponerse con
+   los cuatro botones de acción (Ligou · Falou · Agendou · Passar), que viven
+   en su propia franja inferior, ajena por completo a la bottom nav —
+   `os quatro botões avançam o carrossel` se puso en rojo, 100% reproducible,
+   porque el click a «Passar» le llegaba al toast que estaba encima.
+
+   Va SIN `@layer`, a propósito: `--spacing-nav` nace en el bloque `@theme`
+   de arriba, que Tailwind emite sobre `:root` sin capa. Una regla adentro de
+   `@layer base` pierde contra cualquier regla sin capa —las reglas sin capa
+   siempre ganan sobre las que están en una capa, sin importar el orden en el
+   archivo—, así que esta variable tiene que nacer afuera de cualquier
+   `@layer` para poder pisarse a los 1024px. */
+:root {
+  --spacing-nav-visivel: var(--spacing-nav);
+}
+@media (min-width: 1024px) {
+  :root {
+    --spacing-nav-visivel: 0px;
   }
 }

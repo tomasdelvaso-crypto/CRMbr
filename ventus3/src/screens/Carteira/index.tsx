@@ -72,9 +72,13 @@ import {
  * (h-14), la bottom nav y las dos safe areas. Se calcula en CSS y no en JS a
  * propósito: con `100svh` el valor no salta cuando la barra de Chrome en
  * Android se esconde al scrollear.
+ *
+ * `--spacing-nav-visivel` y no `--spacing-nav`: en escritorio (lg+) la
+ * bottom nav desaparece a favor del DesktopRail, y la lista tiene que
+ * recuperar esos 4rem en vez de dejarlos como una franja vacía al pie.
  */
 const ALTURA_TELA =
-  'calc(100svh - 3.5rem - var(--safe-top) - var(--spacing-nav) - var(--safe-bottom) - var(--spacing-chrome))'
+  'calc(100svh - 3.5rem - var(--safe-top) - var(--spacing-nav-visivel) - var(--safe-bottom) - var(--spacing-chrome))'
 
 export default function CarteiraScreen() {
   const queryClient = useContext(QueryClientContext)

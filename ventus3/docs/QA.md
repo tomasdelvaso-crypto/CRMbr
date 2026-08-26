@@ -4,6 +4,14 @@
 >
 > Este documento dice **qué se prueba**, **cómo se corre** y **qué encontró**.
 > Los números son salidas reales pegadas de la corrida, no estimaciones.
+>
+> **Última vuelta: la sesión real.** El 26/08 el dueño del producto entró por
+> primera vez con su usuario y reportó tres cosas; la suite entera estaba en
+> verde y no veía ninguna. Lo que faltaba era una prueba que arrancara con el
+> aparato **vacío** y dejara llegar todo por la red —sesión, vendedor, cartera—
+> contra el **build de producción**. Esa prueba existe ahora (§2,
+> `sessao-real.spec.ts` y `fluxo-completo.sessao-real.spec.ts`) y encontró dos
+> defectos que ninguna otra podía ver: §3.14 y §3.15.
 
 ---
 
@@ -13,9 +21,15 @@
 cd ventus3
 npm install                       # @playwright/test ya está en devDependencies
 
-npx playwright test               # los 3 proyectos: mobile, mobile-pixel7, desktop
-npx playwright test --project=mobile
+# El binario NO se baja: esta máquina no tiene salida. Ver «El navegador».
+export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+
+npx playwright test               # los 5 proyectos (139 pruebas, ~9,5 min)
+npx playwright test --project=mobile --project=desktop   # sin rebuild de dist/
 npx playwright test hoje.spec.ts -g "Pronto por hoje"
+
+# La sesión real: contra el build de producción, con el doble de red.
+npx playwright test --project=sessao-real-escritorio --project=sessao-real-telefone
 
 CAPTURAS=1 npx playwright test --project=mobile capturas.spec.ts   # docs/capturas/
 node scripts/medir-arranque.mjs                                     # peso + arranque real
@@ -24,7 +38,13 @@ npx tsc --noEmit -p tsconfig.e2e.json                               # tipos de e
 
 **No hace falta levantar nada a mano.** `playwright.config.ts` arranca el dev
 server en el puerto 5288 con su propio ambiente y lo apaga al terminar. Si ya
-hay uno escuchando ahí, lo reusa.
+hay uno escuchando ahí, lo reusa. El segundo servidor —`npm run build && vite
+preview` en el 5289, para los dos proyectos de sesión real— **nunca** se reusa,
+a propósito: ver §7.
+
+> ⚠️ **No toques ningún archivo del repo mientras la suite corre.** El watcher
+> de Vite recarga la página en medio de las pruebas y mueren con «Execution
+> context was destroyed». Ya se pagó dos veces; la última está documentada en §7.
 
 ### El navegador
 
@@ -37,17 +57,29 @@ bajarlo.
 
 Los tres proyectos corren sobre ese mismo Chromium:
 
-| Proyecto | Perfil | Para qué |
-|---|---|---|
-| `mobile` | iPhone 14 (390×664, DPR 3, touch) | El teléfono más chico del equipo. Es donde aparecen los problemas de espacio. |
-| `mobile-pixel7` | Pixel 7 (412×915, touch) | El Android del equipo, pantalla larga. |
-| `desktop` | 1280×900, sin touch | Teclado, foco visible y el Painel do Gestor. |
+| Proyecto | Perfil | Sirve | Para qué |
+|---|---|---|---|
+| `mobile` | iPhone 14 (390×664, DPR 3, touch) | dev server | El teléfono más chico del equipo. Es donde aparecen los problemas de espacio. |
+| `mobile-pixel7` | Pixel 7 (412×915, touch) | dev server | El Android del equipo, pantalla larga. |
+| `desktop` | 1280×900, sin touch | dev server | Teclado, foco visible y el Painel do Gestor. |
+| `sessao-real-escritorio` | 1440×900 | **`dist/`** | El monitor del reporte. El camino login → sesión → vendedor → datos → pantalla, contra el bundle de producción. |
+| `sessao-real-telefone` | 390×844 | **`dist/`** | Lo mismo, en el tamaño donde vive el equipo. |
+
+Los dos últimos son **la sesión real** y no corren contra el dev server: sirven
+`dist/` con `vite preview`, o sea el MISMO bundle que publica Vercel, con el
+service worker registrado. El `dist/` se **reconstruye en cada corrida** a
+propósito (`reuseExistingServer: false`): un preview olvidado sirve el build de
+antes del arreglo y da un verde falso. Cuestan ~40 s de build; si molestan en
+local, `--project=mobile --project=desktop`.
+
+Sólo esos dos hablan con el host real de Supabase — y no lo hacen: ver el
+candado 3, abajo.
 
 Los descriptores de iPhone piden WebKit; acá se conserva la pantalla, el DPR,
 el user agent y el touch, y se cambia el motor a Chromium. Es emulación de
 **forma**, no de motor, y está dicho en el archivo.
 
-### La base de producción no se toca. Dos candados
+### La base de producción no se toca. Tres candados
 
 1. El dev server de las pruebas arranca con
    `VITE_SUPABASE_URL=https://stub.supabase.test`, un host que no existe. La
@@ -56,10 +88,39 @@ el user agent y el touch, y se cambia el motor a Chromium. Es emulación de
 2. El fixture intercepta ese host con un doble de PostgREST y **aborta**
    cualquier pedido a `*.supabase.co` / `*.supabase.in`.
 
+3. Los dos proyectos de **sesión real** sí llevan el host de producción en el
+   bundle —no podrían probar el camino de login si no—, y por eso
+   `instalarSupabaseDeRede()` intercepta a nivel de **contexto** (no de página:
+   los pedidos que salen del service worker no pasan por `page.route`) todo lo
+   que apunte a ese host, y contesta con un doble. Ese doble es de **sólo
+   lectura hacia afuera**: los POST/PATCH se responden con un 2xx de mentira y
+   jamás tocan la base. La prueba, además, verifica al final que **todo** lo que
+   la app pidió lo contestó el doble; si algo se escapara, falla. Y el host vive
+   **sólo en el fixture**, nunca en un arrancador de pruebas:
+   `stub-de-teste.test.ts` lo comprueba.
+
 `scripts/medir-arranque.mjs` compila a `dist-qa/` con el mismo ambiente de
 prueba: nunca pisa `dist/` ni puede hablarle a la base real.
 
 ### Cómo se siembran los datos
+
+Hay **dos** caminos, y la diferencia entre los dos es la que dejó pasar el bug
+del 26/08.
+
+**A · Por Dexie** (`e2e/fixtures/app.ts`) — lo que usan las pruebas de pantalla.
+**B · Por la red** (`e2e/fixtures/supabase-red.ts`) — lo que usan los dos
+proyectos de sesión real. Sirve las **filas reales** de producción del 26/08,
+con la forma exacta que devuelve PostgREST, y hace pasar a la app por el camino
+completo: `POST /auth/v1/token` → sesión con JWT → `GET /rest/v1/vendors` →
+pull de la cartera → pantalla.
+
+El camino A siembra Dexie con las entidades **ya construidas con la forma
+local**, así que salta el paso de traducir la fila del servidor — que era
+justamente el que fallaba (§3.14). Una suite entera en verde no lo veía. Si
+cambia el esquema hay que refrescar el fixture B consultando la base por MCP,
+**nunca inventando columnas**.
+
+Lo que sigue describe el camino A.
 
 En **Dexie**, que es de donde la app lee. Todas las pantallas leen IndexedDB y
 nunca la red, así que sembrar ahí es sembrar el estado real del producto y no
@@ -248,18 +309,84 @@ Con la red cortada de verdad (`context.setOffline`), no con un mock de
 
 Ver la sección 4.
 
+### `sessao-real.spec.ts` — el primer login del dueño del producto (7 pruebas × 2 tamaños)
+
+El único archivo que arranca con el aparato **vacío** y hace que todo —sesión,
+vendedor, cartera— llegue por la red, contra el build de producción. El resto de
+la suite no podía ver el bug del 26/08 justamente por eso: `fixtures/app.ts`
+siembra Dexie con tareas ya construidas **con la forma local**, así que salta el
+único paso que fallaba (traducir la fila del servidor).
+
+- Login real por el formulario → la sesión resuelve al vendedor → Hoje muestra
+  **las 3 tarjetas** y no «Baixando a sua carteira». Es la regresión.
+- **Ningún control visible queda debajo de otra cosa**, en 5 rutas × 2 viewports:
+  `elementFromPoint` sobre el centro de cada `button`, `a[href]` y `[role=switch]`
+  con todos los scrollers al fondo. Sólo se juzga la franja que el chrome fijo
+  deja libre —el contenido pasa por debajo del header y de la nav **por diseño**,
+  y se llega scrolleando—; lo que busca es una capa que no debería estar ahí.
+- Con una tabla caída a mitad del pull, **lo que sí bajó igual llega a la
+  pantalla**.
+- Sin vendedor ligado, hay una **salida** («Tentar de novo») en vez de un
+  esqueleto eterno, y la navegación sigue viva.
+- Con el vendedor tardando 2 s, la app **espera** en vez de mostrarse cargada sin
+  responder.
+- **El rol se ve**: Tomás (`is_admin`) ve el chip «Administrador» y entra a
+  `/gestor`; Renata ve «Vendedor», no ve la entrada del Painel, y si escribe
+  `/gestor` a mano ve la guardia con su botón «Voltar». Las dos son las filas
+  **reales** de `vendors`.
+
+### `fluxo-completo.sessao-real.spec.ts` — el recorrido entero (2 pruebas × 2 tamaños)
+
+La prueba de fuego: **una** sesión, de punta a punta, sin recargar, con
+**21 clicks reales** en cada viewport. Es la diferencia entre «el botón existe y
+está encima de todo» y «el botón hace lo que dice»: cada paso exige las cuatro
+cosas —se ve, `elementFromPoint` lo devuelve a él, se lo clickea, y algo
+observable cambia (la URL, un diálogo, un `aria-checked`, un texto nuevo)—. Un
+click que no deja rastro no cuenta como respondido.
+
+El recorrido: login → Hoje → «Por que isto?» (abrir y cerrar) → «Adiar» → sheet
+de fecha y elegir otra → Carteira → Dossiê con morph → editor de escala y un
+nivel canónico → volver → Mais con el chip «Administrador» → Painel do Gestor y
+una pestaña → Ajustes y el stepper de la meta → Sair con su confirmación →
+`/login`. Escribe `docs/capturas/fluxo-{desktop,mobile}-*.png` **después** de
+cada aserción, así que las capturas muestran un estado ya verificado.
+
+La segunda prueba es la regresión de §3.15: elegir una fecha no puede hacer
+desaparecer el sheet.
+
+Dos detalles del arnés, que se pagaron con dos rojos falsos:
+
+- **La alcanzabilidad se mide con `expect.poll`, no una vez.** Los sheets entran
+  animando desde abajo; medir en el frame en que `toBeVisible()` pasa agarra al
+  control todavía en viaje. Una persona también espera a que el sheet suba.
+- **El control se centra antes de medir** (`scrollIntoView({block:'center'})`, no
+  `scrollIntoViewIfNeeded()`). El chrome fijo se apoya sobre el contenido por
+  diseño y a todo se llega scrolleando: dejar el control pegado al borde lo
+  reporta «tapado» por la nav o por el pie del sheet cuando en la app real se
+  clickea sin problema.
+
+### `capturas-desktop.sessao-real.spec.ts` — el layout de escritorio (2 pruebas)
+
+No es sólo vitrina: verifica que el rail esté presente (y que sea **vertical**,
+midiendo su caja), que la BottomNav no ocupe lugar, y que los anchos por ruta se
+apliquen. Es la regresión concreta de «está en formato para celular a pesar de
+ser web». Escribe `docs/capturas/desktop-{1440x900,1920x1080}-*.png`.
+
 ### `capturas.spec.ts` — vitrina, apagada por defecto
 
 No afirma nada: escribe `docs/capturas/`. Corre solo con `CAPTURAS=1`.
 
 ---
 
-## 3 · Qué encontró: 13 defectos, arreglados
+## 3 · Qué encontró: 15 defectos, arreglados
 
 Todos se encontraron con el navegador, no leyendo el código, y todos están
 corregidos en esta rama. Del 3.1 al 3.7 son de la primera pasada; del 3.8 al
 3.13, de la segunda —los tres de superficie que habían quedado anotados en §5 y
-tres que aparecieron al escribir la cobertura que faltaba—.
+tres que aparecieron al escribir la cobertura que faltaba—. El 3.14 y el 3.15
+son de la vuelta de la **sesión real**: el primero es el que el dueño del
+producto reportó como «no puedo accionar ningún botón», el segundo apareció
+recorriendo el camino entero para comprobar que el primero estaba cerrado.
 
 ### 3.1 · `src/data/realtime.ts` — la app rompía al no poder conectar el socket
 
@@ -525,6 +652,93 @@ Regresión cubierta en dos niveles: `outbox.test.ts` traba el transporte en la
 primera mutación, encola una segunda y comprueba que sale igual; y
 `revisao.spec.ts` lo ejerce por el camino real de la pantalla.
 
+### 3.14 · `src/data/conflicts.ts` — la fila del servidor no tenía la forma que el motor lee
+
+**El defecto del reporte.** En Postgres la fila de `tasks` es
+`{titulo, opportunity_id, lead_id, snoozed_to, origem, prioridade…}`;
+`core/types.Task` es `{title, target: EntityRef, snoozed_until, kind}`.
+`aplicarRemoto()` escribía la fila **cruda** en Dexie y
+`core/planner.indexarTasks()` hacía `t.target.kind` sobre cada tarea `pending`:
+
+```
+TypeError: Cannot read properties of undefined (reading 'kind')
+```
+
+Ese throw sube por `rankDay()` → `fetchPlanoFixado()` → la query `plano` de
+Hoje. TanStack Query conserva el último dato bueno cuando la query falla, y el
+último dato bueno era el del arranque en frío con Dexie vacía: `carteiraVazia`.
+Resultado en pantalla, **para siempre y sin ningún error visible**: tres
+esqueletos grises y «Baixando a sua carteira. Isso acontece uma vez só.». Sin
+las tres tarjetas no existen «Fazer agora», ni «Adiar», ni «Por que isto?»: no
+hay nada que tocar. Ni esperar ni navegar y volver lo arreglaban.
+
+Por qué la suite no lo veía: hasta el backfill del 26/08 la tabla `tasks` del
+servidor estaba **vacía**, las tareas que crea la app se escriben con la forma
+local, y `e2e/fixtures/app.ts` siembra Dexie con tareas ya construidas. La suite
+entera salteaba justo el paso que fallaba. **No era sólo Tomás**: las 36 filas
+del backfill están todas en `pending`, así que se rompía el Hoje de los 5
+vendedores con tareas.
+
+**Arreglo:** `normalizarRemoto()` al tope de `aplicarRemoto()` —el único camino
+de entrada de datos remotos, lo usan el pull **y** realtime, y normalizar antes
+del merge es lo que hace que `mergeByField` compare local contra remoto con la
+misma forma—. Conserva las columnas crudas junto a las normalizadas: el PATCH
+del outbox manda sólo los campos que tocó, con nombres de Postgres.
+
+Y cuatro defensas más, que salieron de reproducirlo: el guard de
+`indexarTasks()` (una tarea rota puede costar una tarjeta, nunca el plan del día
+entero), el aislamiento por tabla de `pull()` (antes un fallo abortaba el bucle
+**y** se comía `notificarMudancas()`, el único aviso que invalida el cache), la
+resolución del vendedor con reintentos y estado terminal, y los `sr-only` de
+`SwipeRow` que medían 44×44 de verdad y tapaban el borde derecho de cada fila de
+la Carteira (4 controles muertos en `/carteira`, en los dos tamaños).
+
+Regresión cubierta en `src/data/__tests__/tasks-do-servidor.test.ts` y, por el
+camino real, en `sessao-real.spec.ts`. Sin el arreglo, esa prueba falla con
+«element(s) not found» buscando las tarjetas.
+
+### 3.15 · `src/ui/Sheet.tsx` — elegir una fecha hacía desaparecer el sheet
+
+No lo reportó nadie porque no se ve como un error: se ve como que la app se
+congeló. En «Adiar» (tela Hoje), **tocar una fecha hacía desaparecer el sheet**
+—y con él la fecha recién elegida y el botón que la confirma— mientras la app
+seguía en modo modal: scroll bloqueado, foco atrapado en un panel invisible,
+nada que tocar.
+
+El `useLayoutEffect` que coloca el **punto de partida** de la animación de
+entrada (`y.set(alturaRef.current)`: el panel entero por debajo del borde)
+depende de `footer`, que es un ReactNode que la pantalla de arriba vuelve a
+crear en **cada** render. En un sheet **sin `snapPoints`** el reposo abierto es
+exactamente `y === 0`, así que el primer re-render del padre con el sheet
+abierto cumplía la condición y teletransportaba el panel un alto entero hacia
+abajo. El efecto que anima no depende de `footer`, así que no volvía a correr.
+
+Medido en el build de producción, en los dos tamaños:
+
+```
+adiar-aberto        painel.top = 435   transform: none
+después de «+7d»    painel.top = 844   transform: translateY(409px)
+1,7 s más tarde     painel.top = 844   (no vuelve)
+```
+
+Afectaba a los sheets sin snaps y con pie propio: «Adiar» de Hoje y de Carteira,
+Filtros, los cuatro Rituais, Próximo Passo, Kudos, Descartar y Editar Campo da
+Revisão. Los que tienen snaps se salvaban de casualidad —su reposo abierto no es
+0, sino el offset del snap—. Es **preexistente**: el efecto está así desde que
+existe el componente.
+
+**Arreglo:** un candado de un ref. La colocación inicial ocurre **una vez por
+apertura**; la medición del alto y la reserva del pie siguen corriendo cuando el
+contenido cambia, que es para lo que están.
+
+Regresión en `fluxo-completo.sessao-real.spec.ts`. Se comprueba por los **dos
+controles de borde** del sheet —el botón del pie y el «Fechar»— y no por la caja
+del panel: cuando el panel se escapa hacia abajo, en un monitor alto su borde
+superior sigue dentro de la ventana (top 635 en 900 px) y una prueba que mire
+eso da verde con el sheet roto. Sin el arreglo, la prueba falla en los dos
+tamaños con «o botão do rodapé não recebe o clique: nada: o centro do alvo cai
+fora da janela».
+
 ---
 
 ## 4 · Los números
@@ -626,6 +840,18 @@ red antes de tocar nada.
 Los tres defectos de superficie que estaban acá se arreglaron: son 3.8, 3.9 y
 3.10. Lo que queda anotado es esto, y nada de esto rompe un flujo.
 
+0. ⚠️ **El camino de ESCRITURA de `tasks` está roto, y ninguna prueba lo cubre.**
+   `mutations.criarTask` encola un payload con `kind`, `title` y `snoozed_until`;
+   la tabla real no tiene ninguna de las tres (verificado contra
+   `information_schema` el 26/08: son `titulo`, `snoozed_to`, `origem`, y
+   `client_uuid`/`due_date` son `NOT NULL`). Cada «Registrar» crea una tarea que
+   PostgREST rechaza: queda en Dexie y en el outbox reintentando para siempre.
+   La suite no lo ve porque el doble de red contesta 201 a todo POST — y ahí
+   está el límite honesto de un doble: prueba la FORMA de lo que la app lee, no
+   valida lo que escribe. Es lo primero que hay que mirar, y es lo que decide si
+   la próxima acción del vendedor llega al servidor. **Ojo al arreglarlo:**
+   `campos_tocados` se compara contra nombres de campo LOCALES en
+   `mergeByField`, así que la traducción va en el transporte, no en el payload.
 1. **El chunk de Supabase sigue en el camino crítico.** 52 kB gzip que la
    primera pantalla no usa. Por qué no se sacó y qué haría falta, en 4.3.
 2. **El service worker está apagado en desarrollo** (`devOptions.enabled:
@@ -691,36 +917,86 @@ comparar contra lo que había.
 | `09-registrar-confirmacao` | La tarjeta de confirmación con el gate de fecha |
 | `10-cadencia` … `15-ajustes` | Cadência, Placar, Rituais, Ventus, Mais, Ajustes |
 
+### Las de escritorio y las del recorrido (sesión real)
+
+Estas **no** dependen de `CAPTURAS=1`: salen de los proyectos de sesión real, o
+sea del build de producción con las filas reales de Tomás, y son la evidencia de
+los tres problemas del reporte.
+
+```bash
+npx playwright test --project=sessao-real-escritorio --project=sessao-real-telefone
+```
+
+| | |
+|---|---|
+| `desktop-1440x900-{hoje,carteira,dossie}` | El layout de escritorio en el monitor del reporte: rail a la izquierda, sin BottomNav, anchos por ruta |
+| `desktop-1920x1080-{…}` | Lo mismo en un 27" corriente |
+| `fluxo-desktop-1…11` | El recorrido entero en 1440×900: Hoje → «Por que isto?» → Adiar → Carteira → Dossiê → editor de escala → Mais (chip «Administrador») → Gestor → Ajustes → Sair → login |
+| `fluxo-mobile-1…11` | El mismo recorrido en 390×844 |
+
+Las del recorrido se toman **después** de cada aserción: cada PNG muestra un
+estado que la prueba ya verificó, no una pose.
+
 ---
 
 ## 7 · Salida real de la última corrida
 
 ```
-$ npx playwright test
-Running 117 tests using 2 workers
+$ PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright test
+Running 139 tests using 2 workers
 ...
   6 skipped
-  111 passed (7.9m)
+  133 passed (9.4m)
 EXIT=0
 ```
 
-Los 6 salteados son las capturas, que solo corren con `CAPTURAS=1`. Los 111 son
-37 pruebas × 3 perfiles.
+Los 6 salteados son `capturas.spec.ts`, que solo corre con `CAPTURAS=1`. Los 133
+son 39 pruebas × 3 perfiles de dev server, más 8 × 2 perfiles de **sesión real**
+(contra `dist/`).
 
 ```
+$ npm run type-check
+EXIT=0   (los 3 proyectos: app, node/api, service worker)
+
+$ npx vitest run
+ Test Files  51 passed (51)
+      Tests  907 passed (907)
+   Duration  12.81s
+EXIT=0
+
+$ npx eslint . --max-warnings 0
+(sin salida)
+EXIT=0
+
 $ npx tsc --noEmit -p tsconfig.e2e.json
 EXIT=0
 
-$ npm run type-check
-EXIT=0   (los 3 proyectos)
-
-$ npx vitest run
- Test Files  45 passed (45)
-      Tests  869 passed (869)
-
-$ npx eslint . --max-warnings 0
+$ npm run build
+✓ built in 1.72s · PWA · precache 65 entries (1.586,19 KiB)
 EXIT=0
 ```
+
+### La corrida anterior a esta, y por qué no contaba
+
+```
+$ npx playwright test
+  2 failed
+    [mobile] › e2e/golden.spec.ts:111:3 › o fechamento se destrava sozinho aos 60 segundos
+    [mobile] › e2e/hoje.spec.ts:24:3    › mostra exatamente 3 cartões, com 5 negócios
+  6 skipped
+  131 passed (9.5m)
+```
+
+Las dos fueron del integrador **escribiendo `docs/ESTADO.md` mientras la suite
+corría**. El error de `hoje.spec.ts` lo dice con todas las letras —«Execution
+context was destroyed, most likely because of a navigation»—: el watcher de Vite
+ve el archivo nuevo y recarga la página en medio de la prueba. El de
+`golden.spec.ts:111` es el mismo golpe sobre la prueba más frágil de la suite,
+que espera **60 segundos de reloj real** con 70 de presupuesto.
+
+Es el aviso que ya estaba escrito en `ESTADO.md` §1 y que igual se volvió a
+pisar, así que queda acá también: **no se toca un archivo del repo mientras
+`npx playwright test` corre.** La corrida limpia, sin tocar nada, dio 133/0.
 
 ### Antes de este trabajo, con la misma máquina y el mismo comando
 

@@ -58,7 +58,7 @@ export const LinhaCadencia = memo(function LinhaCadencia({
       type="button"
       onClick={() => onAbrir(linha)}
       style={{ height: ALTURA_LINHA }}
-      className="flex w-full items-center gap-3 border-b border-border px-4 text-left tap-highlight-none active:bg-surface-2"
+      className="flex w-full items-center gap-3 border-b border-border px-4 text-left tap-highlight-none active:bg-surface-2 lg:hover:bg-surface-2"
     >
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold leading-5">{lead.company_name}</span>

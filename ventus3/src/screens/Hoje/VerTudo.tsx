@@ -57,7 +57,7 @@ export function VerTudo({ itens, onAbrir }: VerTudoProps) {
                 <button
                   type="button"
                   onClick={() => onAbrir(item)}
-                  className="flex min-h-touch w-full items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 text-left active:bg-surface-2"
+                  className="flex min-h-touch w-full items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 text-left active:bg-surface-2 lg:hover:bg-surface-2"
                 >
                   <span
                     aria-hidden

@@ -323,6 +323,75 @@ function tabelaLocal(tabla: SyncTable): Table<LinhaGenerica, string | number> {
   return getDb().table(storeDe(tabla)) as Table<LinhaGenerica, string | number>
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Normalización de forma: el servidor y el modelo del motor no hablan igual
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * `tasks` es la ÚNICA tabla cuyo esquema en Postgres no coincide con el tipo
+ * que consume el motor. En el servidor la fila es
+ * `{ titulo, opportunity_id, lead_id, snoozed_to, origem, prioridade… }`;
+ * `core/types.Task` es `{ title, target: EntityRef, snoozed_until, kind }`.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * ESTA FUNCIÓN ES EL ARREGLO DE «NO PUEDO ACCIONAR NINGÚN BOTÓN»
+ * ══════════════════════════════════════════════════════════════════════════
+ * Sin ella, el pull escribía la fila cruda del servidor en `db.tasks` y
+ * `core/planner.indexarTasks()` hacía `t.target.kind` sobre un `target`
+ * inexistente:
+ *
+ *     TypeError: Cannot read properties of undefined (reading 'kind')
+ *
+ * Ese throw sube por `rankDay()` → `fetchPlanoFixado()` → la query `plano` de
+ * la tela Hoje. TanStack Query conserva el último dato bueno cuando la query
+ * falla, y el último dato bueno era el del arranque en frío: cartera vacía.
+ * Resultado en pantalla, para siempre y sin ningún error visible: tres
+ * esqueletos grises, «Baixando a sua carteira. Isso acontece uma vez só.» y
+ * NINGÚN control que tocar. Ni el tiempo ni navegar y volver lo arreglaban —
+ * solo recargar la app a mano.
+ *
+ * Nadie lo vio antes porque hasta el backfill de esta mañana
+ * (`created_by: 'backfill-v2'`) la tabla `tasks` del servidor estaba VACÍA, y
+ * las tareas que crea la propia app (`mutations.criarTask`) sí se escriben con
+ * la forma local. El primer login del dueño del producto fue el primero con
+ * tareas del servidor en la cartera — y las 36 filas del backfill están todas
+ * en `pending`, así que la pantalla Hoje del equipo entero se rompía igual.
+ *
+ * Lo que NO se toca: las columnas crudas viajan intactas junto a las
+ * normalizadas. Un PATCH del outbox manda solo los campos que tocó, así que
+ * conservar `titulo` y `snoozed_to` es lo que mantiene el round-trip honesto.
+ */
+export function normalizarRemoto(tabla: SyncTable, remoto: LinhaGenerica): LinhaGenerica {
+  if (tabla !== 'tasks') return remoto
+
+  const num = (v: unknown): number | null => (typeof v === 'number' ? v : null)
+  const opportunityId = num(remoto['opportunity_id'])
+  const leadId = num(remoto['lead_id'])
+
+  // Sin entidad no hay a qué acción apuntar. Se deja `target` ausente a
+  // propósito: el planner ya ignora las tareas sin alvo (ver indexarTasks).
+  const target =
+    opportunityId !== null
+      ? { kind: 'opportunity' as const, id: opportunityId }
+      : leadId !== null
+        ? { kind: 'lead' as const, id: leadId }
+        : null
+
+  const titulo = remoto['titulo']
+  const title = typeof remoto['title'] === 'string' ? remoto['title'] : titulo
+
+  return {
+    ...remoto,
+    ...(target ? { target } : {}),
+    ...(typeof title === 'string' ? { title } : {}),
+    // `origem` del servidor ('manual', 'backfill-v2'…) no es un TaskKind. Todo
+    // lo que llega de afuera es la próxima acción de un negocio, que es
+    // exactamente lo que `next_action` significa acá.
+    kind: typeof remoto['kind'] === 'string' ? remoto['kind'] : 'next_action',
+    snoozed_until: remoto['snoozed_until'] ?? remoto['snoozed_to'] ?? null,
+  }
+}
+
 export type ResultadoAplicacao = 'inserido' | 'mesclado' | 'sem_mudanca'
 
 /**
@@ -332,10 +401,13 @@ export type ResultadoAplicacao = 'inserido' | 'mesclado' | 'sem_mudanca'
  */
 export async function aplicarRemoto(
   tabla: SyncTable,
-  remoto: LinhaGenerica,
+  remotoCru: LinhaGenerica,
   opcoes: { vendor?: string | null } = {},
 ): Promise<ResultadoAplicacao> {
   const vendor = opcoes.vendor ?? null
+  // Antes de cualquier regla: la fila tiene que tener la forma que el motor
+  // sabe leer. Ver normalizarRemoto().
+  const remoto = normalizarRemoto(tabla, remotoCru)
 
   // ── Regla 1: append-only ────────────────────────────────────────────────
   if (ehAppendOnly(tabla)) {

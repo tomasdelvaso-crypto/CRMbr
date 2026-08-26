@@ -26,12 +26,17 @@ import type { Page } from '@playwright/test'
 /**
  * El badge del FAB va en su rótulo accesible: es el contador del outbox.
  *
- * `.last()` porque el Dossiê tiene su propio botón «Registrar por voz» en el
- * encabezado y el FAB del Shell se pinta después del <main>. (Que dos botones
- * de la misma pantalla tengan rótulo idéntico está anotado en docs/QA.md.)
+ * `:visible` y no `.last()`: hay hasta TRES botones con este prefijo en el
+ * DOM al mismo tiempo —el FAB flotante, el de la barra de comando y el del
+ * DesktopRail (lg+)— pero sólo uno visible por vez según ruta y tamaño de
+ * pantalla; los otros dos quedan `lg:hidden`/ocultos por `!comBarra` sin
+ * dejar de existir en el DOM. `.last()` dependía del orden en que el Shell
+ * los escribe, que cambió con el rail; `:visible` no depende de ese orden.
+ * (Que dos botones de la misma pantalla tengan rótulo idéntico está anotado
+ * en docs/QA.md.)
  */
 function fab(page: Page) {
-  return page.locator('button[aria-label^="Registrar por voz"]').last()
+  return page.locator('button[aria-label^="Registrar por voz"]:visible')
 }
 
 async function pendentesNoBadge(page: Page): Promise<number> {

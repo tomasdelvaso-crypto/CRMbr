@@ -44,12 +44,42 @@ export interface SwipeRowProps {
   threshold?: number
   /** Colapsa la fila al ejecutar. `false` la deja en su lugar. */
   collapseOnAction?: boolean
+  /**
+   * En lg+ (mouse), revela los botones «Feito»/«Adiar» al pasar el mouse por
+   * la fila —el equivalente clickeable de un gesto que en escritorio nadie
+   * hace—. `false` por defecto: sólo tiene sentido donde el swipe es la
+   * ÚNICA forma de ejecutar la acción. Donde ya hay un botón visible en el
+   * cuerpo de la fila (las tarjetas de Hoje, las de Revisão) esto sería un
+   * segundo control invisible flotando sobre el mismo contenido —y en
+   * Revisão llegó a tapar el botón «Aceitar/Recusar» de un campo, porque esa
+   * tarjeta es más alta que una fila de la Carteira—. Se activa a mano donde
+   * hace falta: hoy, sólo `LinhaCarteira`.
+   */
+  hoverVisivelEmDesktop?: boolean
   className?: string
   /** Rótulo accesible de la fila entera (nombre del cliente, p. ej.). */
   'aria-label'?: string
 }
 
 const LOCK_EIXO = 10
+
+/**
+ * Clases que revelan el botón al pasar el mouse por la fila, en lg+.
+ * Ver `hoverVisivelEmDesktop` en `SwipeRowProps`.
+ *
+ * TODO bajo `lg:group-hover:`, sin un estado intermedio «visible pero
+ * inerte» — a propósito. Una versión anterior dejaba el botón SIEMPRE
+ * `lg:not-sr-only` (44×44 reales) y sólo tapaba con `opacity-0` en reposo;
+ * dos auditorías la cazaron igual, porque miden geometría y no `opacity`:
+ * la de alvos de 44px (cuenta el botón visible, chico, y falla) y la de
+ * controles tapados de `sessao-real.spec.ts` (mide el tamaño real y no lo
+ * descarta por chico, así que un botón de 0×0 lo hubiera salvado pero uno de
+ * 44×44 con `pointer-events-none` cuenta como «tapado por lo de abajo»).
+ * `sr-only` es 1×1 —lo bastante chico para que ambas auditorías lo salten
+ * sin mirar más— y sólo dejar de serlo bajo `group-hover` hace que en reposo
+ * el botón NO EXISTA para ninguna medición, ni a medias. */
+const CLASSES_HOVER_DESKTOP =
+  'lg:group-hover:not-sr-only lg:group-hover:relative lg:group-hover:flex lg:group-hover:min-h-touch lg:group-hover:items-center lg:group-hover:rounded-lg lg:group-hover:px-3 lg:group-hover:text-sm lg:group-hover:font-semibold lg:group-hover:pointer-events-auto lg:hover:brightness-110'
 
 export function SwipeRow({
   children,
@@ -63,6 +93,7 @@ export function SwipeRow({
   undoMs = 5000,
   threshold = 96,
   collapseOnAction = true,
+  hoverVisivelEmDesktop = false,
   className,
   'aria-label': ariaLabel,
 }: SwipeRowProps) {
@@ -223,7 +254,11 @@ export function SwipeRow({
     <div
       ref={raiz}
       aria-label={ariaLabel}
-      className={cx('relative overflow-hidden', className)}
+      // `group`: en lg+ los botones de la franja derecha (ver más abajo) se
+      // revelan al pasar el mouse por CUALQUIER punto de la fila, no sólo al
+      // enfocarlos con teclado. El gesto de swipe sigue intacto arriba —esto
+      // es sólo el equivalente clickeable para quien no arrastra.
+      className={cx('group relative overflow-hidden', className)}
       style={{
         height: altura,
         opacity: colapsada ? 0 : 1,
@@ -272,13 +307,53 @@ export function SwipeRow({
         {children}
 
         {/* Las mismas dos acciones, alcanzables con teclado y lector de
-            pantalla. Visibles solo al recibir foco. */}
-        <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-1">
+            pantalla. En touch/móvil, visibles solo al recibir foco. En lg+
+            (mouse) con `hoverVisivelEmDesktop`, también al pasar el mouse
+            por la fila: ahí no hay gesto de swipe que las reemplace por
+            tacto, así que necesitan un equivalente clickeable que se vea sin
+            tener que adivinar que el teclado las revela.
+
+            ── Por qué `sr-only` se queda puesto hasta el hover, y no al
+            revés (visible + `opacity-0`) ──────────────────────────────────
+            La primera versión hacía lo natural: el botón medía 44×44 SIEMPRE
+            —`lg:not-sr-only lg:min-h-touch`— y sólo el `opacity` cambiaba con
+            el hover, tapado el resto del tiempo por el `pointer-events-none`
+            del padre. Dos auditorías de punta a punta lo cazaron igual,
+            porque ninguna de las dos mira `opacity`: una mide si hay un
+            control de menos de 44px que además sea inalcanzable (el botón
+            medía 44px, así que NO se salvaba por chico) y la otra recorre
+            todo `button, a[href]` visible y compara contra qué devuelve
+            `elementFromPoint` en su centro (el botón media 44×44 reales con
+            `pointer-events-none`, así que SIEMPRE aparecía «tapado por lo de
+            abajo», hovered o no). Un control que técnicamente EXISTE a
+            tamaño real todo el tiempo, aunque invisible, es el mismo control
+            fantasma que el resto de este archivo existe para no tener.
+
+            La solución no es una franja más chica: es que el botón NO EXISTA
+            —ni a medias— hasta que hace falta. `sr-only` mide 1×1, y 1×1 es
+            chico de sobra para que las dos auditorías lo salten sin mirar
+            más. Sólo al entrar en `lg:group-hover:` (el mouse en la fila) o
+            en `focus-visible:` (el teclado, a cualquier tamaño) el botón
+            pasa a `not-sr-only`, mide 44×44 de verdad, y recién ahí tiene
+            sentido preguntarle a `elementFromPoint` si alguien lo tapa —cosa
+            que no pasa, porque en ese momento SÍ es el control de más arriba
+            en su franja.
+
+            El padre queda SIEMPRE `pointer-events-none`: el hover de la fila
+            se detecta igual —el navegador calcula `:hover` contra lo que SÍ
+            recibe el puntero, el contenido de abajo, y ese elemento hereda
+            el estado a sus ancestros, entre ellos esta fila—, y cada botón
+            reactiva `pointer-events-auto` PARA SÍ MISMO bajo `group-hover:`
+            o `focus-visible:`, sin heredarlo el resto de la franja. */}
+        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center gap-1 pr-1">
           {onSwipeRight && (
             <button
               type="button"
               onClick={() => executar('right')}
-              className="sr-only min-h-touch rounded-lg bg-ok px-3 text-sm font-semibold text-ok-fg focus-visible:not-sr-only focus-visible:relative"
+              className={cx(
+                'sr-only bg-ok text-ok-fg focus-visible:pointer-events-auto focus-visible:not-sr-only focus-visible:relative focus-visible:min-h-touch focus-visible:rounded-lg focus-visible:px-3 focus-visible:text-sm focus-visible:font-semibold',
+                hoverVisivelEmDesktop && CLASSES_HOVER_DESKTOP,
+              )}
             >
               {rightLabel}
             </button>
@@ -287,7 +362,10 @@ export function SwipeRow({
             <button
               type="button"
               onClick={() => executar('left')}
-              className="sr-only min-h-touch rounded-lg bg-warn px-3 text-sm font-semibold text-warn-fg focus-visible:not-sr-only focus-visible:relative"
+              className={cx(
+                'sr-only bg-warn text-warn-fg focus-visible:pointer-events-auto focus-visible:not-sr-only focus-visible:relative focus-visible:min-h-touch focus-visible:rounded-lg focus-visible:px-3 focus-visible:text-sm focus-visible:font-semibold',
+                hoverVisivelEmDesktop && CLASSES_HOVER_DESKTOP,
+              )}
             >
               {leftLabel}
             </button>

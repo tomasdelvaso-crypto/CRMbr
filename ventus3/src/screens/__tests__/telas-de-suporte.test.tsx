@@ -53,6 +53,8 @@ function sessaoDe(overrides: Partial<SessionContextValue> = {}): SessionContextV
     vendorName: VENDEDOR.name,
     isAdmin: false,
     loading: false,
+    vendorAusente: false,
+    revalidarVendor: () => undefined,
     signOut: async () => undefined,
     ...overrides,
   }

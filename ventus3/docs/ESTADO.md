@@ -126,6 +126,164 @@ porque el service worker está apagado en desarrollo.
    en `config/url-publica.txt`, con una prueba
    (`src/data/__tests__/url-publica.test.ts`) que falla si alguien vuelve a
    escribir un host a mano en `index.html` o en `android/twa-manifest.json`.
+6. ~~«No puedo accionar ningún botón», «está en formato para celular» y «no sé
+   si tengo perfil administrador»~~ — **hecho**, los tres, y verificados contra
+   el build de producción con el usuario real. Es lo que reportó el dueño del
+   producto en su primer login del 26/08. **Está todo en §0-bis**, incluidos los
+   dos defectos que aparecieron al recorrer el camino entero y lo que queda
+   abierto (el camino de **escritura** de `tasks`, que sigue roto).
+
+---
+
+## 0-bis · Sessão real verificada
+
+> **26/08/2026.** El dueño del producto entró por primera vez con su usuario
+> real —`tripoll@ventapel.com`, vendedor «Tomás», `is_admin=true`— y reportó
+> tres cosas: **«no puedo accionar ningún botón»**, **«está en formato para
+> celular a pesar de ser web»** y **«no sé si tengo perfil administrador»**.
+> Esta sección dice qué era cada una, qué se arregló y con qué evidencia.
+> Las tres están cerradas y verificadas contra el **build de producción**.
+
+### Qué era cada cosa
+
+**1 · «No puedo accionar ningún botón» — no era una metáfora, y no era suyo solo.**
+La tabla `tasks` de Postgres manda `{titulo, opportunity_id, snoozed_to, origem}`
+y el motor (`core/types.Task`) espera `{title, target: EntityRef, snoozed_until,
+kind}`. El pull escribía la fila **cruda** en Dexie y `core/planner.indexarTasks()`
+hacía `t.target.kind` sobre un `target` inexistente:
+
+```
+TypeError: Cannot read properties of undefined (reading 'kind')
+```
+
+Ese throw sube por `rankDay()` → `fetchPlanoFixado()` → la query `plano` de la
+tela Hoje. TanStack Query conserva el último dato bueno cuando la query falla, y
+el último dato bueno era el del arranque en frío con Dexie vacía. Resultado en
+pantalla, **para siempre y sin ningún error visible**: tres esqueletos grises y
+«Baixando a sua carteira. Isso acontece uma vez só.». Sin las tres tarjetas no
+existen «Fazer agora», ni «Adiar», ni el chip «Por que isto?»: literalmente no
+hay nada que tocar.
+
+Nadie lo había visto porque hasta el backfill del mismo 26/08 (`created_by:
+'backfill-v2'`) la tabla `tasks` del servidor estaba **vacía**, y las tareas que
+crea la propia app se escriben con la forma local. Las 36 filas del backfill
+están todas en `pending`: **se rompía el Hoje de los 5 vendedores con tareas**,
+no sólo el de Tomás.
+
+Arreglado con `normalizarRemoto()` (`src/data/conflicts.ts`), aplicada al tope de
+`aplicarRemoto()` —el único camino de entrada de datos remotos, lo usan el pull
+y realtime—, más cuatro defensas que salieron de reproducirlo: el guard de
+`indexarTasks()`, el aislamiento por tabla de `pull()` (antes un fallo abortaba
+el bucle **y** se comía `notificarMudancas()`, el único aviso que invalida el
+cache), la resolución del vendedor con reintentos en `SessionProvider`, y los
+`sr-only` de `SwipeRow` que medían 44×44 de verdad y tapaban el borde derecho de
+cada fila de la Carteira.
+
+**2 · «Está en formato para celular» — era una decisión de diseño que se leía como rotura.**
+El Shell fijaba `max-w-lg` (512 px) en todas las rutas salvo `/gestor`. En un
+monitor eso es una columna de teléfono flotando en el medio. Ahora hay un
+**rail lateral fijo** (`src/app/DesktopRail.tsx`, `lg:` ≥1024 px) que reemplaza a
+la BottomNav, con los mismos 5 destinos más Gestor (si admin) y Ajustes, el
+micrófono como acción destacada y el perfil al pie; y cada ruta gana el ancho que
+le corresponde por densidad (Hoje `2xl`, Carteira/Cadência/Revisão/Placar `4xl`,
+Dossiê `3xl`, Gestor `5xl`). Los sheets pasan a **modal centrado** en `lg:` y
+`Registrar` queda congelado en `max-w-lg` a propósito: su barra de acción es
+`fixed` y arma su propio ancho.
+
+**3 · «No sé si tengo perfil administrador» — el rol no se veía en ninguna parte.**
+`sessao.isAdmin` existía en el contexto y sólo lo usaba la entrada del Painel do
+Gestor. Ahora hay un `PerfilChip` (`src/app/PerfilChip.tsx`) con nombre, e-mail y
+chip de rol —«Administrador» / «Vendedor»—, en el pie del rail (siempre visible)
+y en Mais y Ajustes. La guardia de `/gestor` ganó su botón «Voltar», y la sesión
+sin vendedor pasó de limbo repartido por pantalla a **una** pantalla terminal en
+el Shell, con «Tentar de novo» y «Sair da conta».
+
+### Lo que encontró el integrador al recorrer el camino entero
+
+**4 · El sheet se iba de la pantalla al primer toque.** No lo reportó nadie
+porque no llega a verse como un error: se ve como que la app se congeló. En
+«Adiar» (tela Hoje), **tocar una fecha hacía desaparecer el sheet** —y con él la
+fecha recién elegida y el botón que la confirma— mientras la app seguía en modo
+modal: scroll bloqueado, foco atrapado en un panel invisible, nada que tocar.
+
+El `useLayoutEffect` de `src/ui/Sheet.tsx` que coloca el **punto de partida** de
+la animación de entrada (`y.set(alturaRef.current)`, o sea el panel entero por
+debajo del borde) depende de `footer`, que es un ReactNode que la pantalla de
+arriba vuelve a crear en cada render. En un sheet **sin `snapPoints`** el reposo
+abierto es exactamente `y === 0`, así que el primer re-render del padre con el
+sheet abierto cumplía la condición y teletransportaba el panel un alto entero
+hacia abajo; el efecto que anima no depende de `footer`, así que no volvía a
+correr. Medido en el build de producción, en los dos tamaños:
+
+```
+adiar-aberto        painel.top = 435   transform: none
+después de «+7d»    painel.top = 844   transform: translateY(409px)
+1,7 s más tarde     painel.top = 844   (no vuelve)
+```
+
+Afectaba a los sheets sin snaps y con pie propio: «Adiar» de Hoje y de Carteira,
+Filtros, los cuatro Rituais, Próximo Passo, Kudos, Descartar y Editar Campo da
+Revisão. Los que tienen snaps se salvaban de casualidad —su reposo abierto no es
+0, sino el offset del snap—. Es **preexistente**, no de esta vuelta: el efecto
+está así desde que existe el componente. Arreglado con un candado de un ref: la
+colocación inicial ocurre una vez por apertura, la medición del alto y la reserva
+del pie siguen corriendo cuando el contenido cambia.
+
+**5 · Dos pantallas distintas para el mismo estado.** Los arreglos 1 y 3
+llegaron cada uno con su propia «sessão sem vendedor», con el mismo título y
+distinta bajada: la de Hoje y la del Shell. Como el Shell corta **antes** del
+Outlet, la de Hoje no podía verse nunca — iba a envejecer sin que nadie lo
+notara. Ahora Hoje monta el MISMO `SessaoSemVendedor` del Shell (sin `onSair`,
+que ahí no tendría a quién pedírselo); la guardia se queda como defensa en
+profundidad para quien monte la pantalla fuera del Shell.
+
+### La evidencia
+
+Todo contra `vite preview` sobre `dist/` —el mismo bundle que publica Vercel, con
+el service worker registrado— y con el doble de red de `e2e/fixtures/supabase-red.ts`,
+que sirve las **filas reales** de producción del 26/08 y contesta todo pedido al
+host de Supabase sin que nada salga del proceso.
+
+| archivo | qué prueba |
+|---|---|
+| `e2e/sessao-real.spec.ts` | los tres arreglos por separado: login real → vendedor → las 3 tarjetas; ningún control tapado (9 rutas × 2 viewports); pull parcial; sesión sin vendedor; vendedor lento; rol admin vs. vendedora, con las dos filas reales (Tomás y Renata) |
+| `e2e/fluxo-completo.sessao-real.spec.ts` | **el recorrido entero, 21 clicks reales en cada viewport**, cada uno con su efecto verificado — y la regresión del sheet que se va de la pantalla |
+| `e2e/capturas-desktop.sessao-real.spec.ts` | el rail presente, la BottomNav ausente y los anchos por ruta, en 1440×900 y 1920×1080 |
+
+Las capturas del recorrido están en `docs/capturas/fluxo-desktop-*.png` (1440×900)
+y `fluxo-mobile-*.png` (390×844), once por tamaño, tomadas **después** de cada
+aserción: muestran un estado que la prueba ya verificó.
+
+### Lo que sigue abierto de esta vuelta
+
+> ⚠️ **El camino de ESCRITURA de `tasks` sigue roto, y es lo próximo que hay que
+> mirar.** `mutations.criarTask` encola un payload con `kind`, `title` y
+> `snoozed_until`; la tabla real **no tiene ninguna de las tres** (verificado
+> contra `information_schema` el 26/08: las columnas son `titulo`, `snoozed_to`,
+> `origem`, y `client_uuid`/`due_date` son `NOT NULL`). Cada «Registrar» crea una
+> tarea que PostgREST rechaza: queda en Dexie y en el outbox reintentando para
+> siempre. No causa el bug de los botones —por eso no se tocó acá— pero decide si
+> la próxima acción del vendedor llega al servidor. **Ojo al arreglarlo:**
+> `campos_tocados` se compara contra nombres de campo LOCALES en `mergeByField`,
+> así que la traducción tiene que ir en el transporte, no en el payload, o se
+> rompe la regla dura de «el remoto no pisa un campo con mutación pendiente».
+
+- Las otras pantallas gateadas por `vendorName` (Carteira, Revisão, Placar,
+  Cadência, Gestor) ya no tienen la ventana transitoria ni el limbo permanente
+  —el Shell las cubre a todas—, pero ninguna dice nada por su cuenta. Si se
+  quiere un estado propio por pantalla, es una pasada más.
+- En un pull **parcial**, `pull()` lanza después de avisar, así que `syncNow`
+  rechaza y el reporte no llega a `aoSincronizar`: «Última sincronização» en
+  Ajustes puede no actualizarse aunque haya bajado casi todo. Preexistente y
+  menor, pero ahora es visible.
+- `OfertaDeAtalho.tsx` (el banner del Mini App de Telegram) vive
+  `fixed inset-x-0 bottom-0` sin el corrimiento `lg:left-60` del rail. Sólo se
+  ofrece dentro de Telegram, casi siempre móvil: quedó fuera de alcance a
+  propósito.
+- `e2e/fixtures/supabase-red.ts` lleva una copia literal de las filas de
+  producción del 26/08. Si cambia el esquema hay que refrescarla por MCP, nunca
+  inventar columnas — el bug de este día fue exactamente una forma de fila que
+  nadie había mirado.
 
 ---
 
@@ -209,6 +367,77 @@ $ npx playwright test                              # 117 pruebas × 3 perfiles
 
 $ git status --porcelain -- src api     # el CRM v2 en producción, desde la raíz
 (sin salida: NO se tocó)
+```
+
+### La corrida de la vuelta de la sesión real (26/08, la última)
+
+Sobre el árbol con las tres entregas de esta vuelta ya juntas, más los dos
+defectos que encontró el integrador (§0-bis). **Los cinco comandos, en verde:**
+
+```
+$ npm run type-check
+> tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.worker.json
+(sin salida)
+EXIT=0
+
+$ npx vitest run
+ Test Files  51 passed (51)
+      Tests  907 passed (907)
+   Duration  12.81s
+EXIT=0        ← 890 al cerrar la vuelta anterior · 907 ahora, con los del
+                mapeo de `tasks`, los del PerfilChip y los de la sessão sem
+                vendedor
+
+$ npx eslint . --max-warnings 0
+(sin salida: 0 errores, 0 warnings)
+EXIT=0
+
+$ npx tsc --noEmit -p tsconfig.e2e.json
+EXIT=0
+
+$ npm run build
+dist/assets/index-*.css            68,88 kB │ gzip: 13,75 kB
+dist/assets/index-*.js            205,37 kB │ gzip: 65,74 kB   ← entrada
+dist/assets/ui-*.js               263,94 kB │ gzip: 85,67 kB   ┐
+dist/assets/session-context-*.js  232,39 kB │ gzip: 74,06 kB   ├ compartidos
+dist/assets/supabase-*.js         209,36 kB │ gzip: 54,27 kB   ┘
+dist/assets/chunk-*.js             90,67 kB │ gzip: 29,99 kB   ← react-router
+✓ built in 1.72s · PWA · precache 65 entries (1.586,19 KiB)
+EXIT=0
+
+$ PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright test
+Running 139 tests using 2 workers
+  6 skipped
+  133 passed (9.4m)
+EXIT=0        ← 139 y no 117: se sumaron los dos proyectos de SESIÓN REAL
+                (1440×900 y 390×844, contra `dist/`) con sus 9 pruebas cada uno
+```
+
+> **Lo que hace fallar Playwright y no es el código, otra vez.** La corrida
+> anterior a esta dio 131/2, y las dos fallas fueron del integrador escribiendo
+> **este mismo documento** mientras la suite corría: el watcher de Vite recarga
+> la página y las pruebas mueren con «Execution context was destroyed» (fue
+> literalmente el mensaje de `hoje.spec.ts:24`) o pierden la cuenta de los 60
+> segundos de `golden.spec.ts:111`. Es el aviso que ya estaba escrito acá arriba
+> y que igual se volvió a pisar. La corrida limpia, sin tocar un archivo, dio
+> 133/0.
+
+**El recorrido completo, click por click.** `fluxo-completo.sessao-real.spec.ts`
+hace **21 clicks reales** en cada uno de los dos tamaños, y cada uno tiene que
+dejar rastro observable (URL, diálogo, `aria-checked`, texto nuevo):
+
+```
+  1. Login: preencher e-mail + senha e clicar «Entrar»
+  2. Hoje · chip «Por que isto?» (abrir)          12. Dossiê · «Voltar para a carteira»
+  3. Hoje · chip «Por que isto?» (fechar)         13. Navegação · «Mais»
+  4. Hoje · «Adiar» (abre o sheet de data)        14. Mais · «Painel do Gestor»
+  5. Sheet Adiar · píldora «+7d»                  15. Gestor · aba «Riscos»
+  6. Sheet Adiar · «Fechar»                       16. Navegação · «Mais» (volta)
+  7. Navegação · «Carteira»                       17. Mais · «Ajustes»
+  8. Carteira · abrir a ficha «Prueba Tripolla»   18. Ajustes · «Aumentar Toques»
+  9. Dossiê · fila da escala «Dor»                19. Navegação · «Mais» (sair)
+ 10. Editor de escala · nível «Pessoa de …»       20. Mais · «Sair da conta»
+ 11. Editor de escala · «Fechar»                  21. Confirmação · «Sair»
 ```
 
 > **Dos cosas que hacen fallar Playwright y no son el código.** (1) **Editar
@@ -1145,6 +1374,21 @@ del repositorio es cero; lo que queda es de cuenta, de secretos y de manos.
 
 - **No mandes un argumento de más a una RPC.** PostgREST resuelve por conjunto
   exacto de nombres. `contrato-rpc.test.ts` te avisa.
+- **No escribas en Dexie la fila del servidor sin normalizarla.** `tasks` es la
+  única tabla cuyo esquema en Postgres no coincide con el tipo que consume el
+  motor, y esa diferencia dejó la tela Hoje muerta para el equipo entero (§0-bis).
+  El único lugar donde se traduce es `normalizarRemoto()`, al tope de
+  `aplicarRemoto()`. Si aparece otra tabla así, va ahí y no en el pull.
+- **No pongas un `ReactNode` en las dependencias de un efecto que MUEVE algo.**
+  Un `footer={<Button …/>}` es un objeto nuevo en cada render del padre, así que
+  el efecto corre en cada render. Si además coloca una posición de arranque, la
+  vuelve a colocar: es exactamente cómo el sheet de «Adiar» se iba de la pantalla
+  al tocar una fecha (§0-bis, defecto 4). Medir en ese efecto está bien; mover,
+  sólo una vez por apertura.
+- **No juzgues «el sheet está en pantalla» por el borde superior del panel.** En
+  un monitor alto, un panel que se escapó un alto entero hacia abajo todavía
+  tiene el borde de arriba dentro de la ventana. Lo que la persona pierde primero
+  es el botón del pie: medí ése.
 - **No registres los mutation defaults después de hidratar el cache.** Las
   mutaciones pausadas se restauran sin `mutationFn` y no se reanudan nunca.
 - **No hagas `UPDATE` del jsonb `scales` entero.** Pisa las otras cinco escalas.

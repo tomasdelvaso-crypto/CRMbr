@@ -190,7 +190,7 @@ export function Hexagono({
               <button
                 type="button"
                 onClick={() => onEscolher(k)}
-                className="flex min-h-touch w-full items-center gap-3 py-3 text-left tap-highlight-none active:bg-surface-2"
+                className="flex min-h-touch w-full items-center gap-3 py-3 text-left tap-highlight-none active:bg-surface-2 lg:hover:bg-surface-2"
               >
                 <span
                   className={cx(

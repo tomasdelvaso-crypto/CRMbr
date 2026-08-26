@@ -59,6 +59,7 @@ import type {
   Activity,
   Commitment,
   EntidadeRef,
+  EntityRef,
   IsoDate,
   Lead,
   MotivoEstruturado,
@@ -186,12 +187,24 @@ function indexarAtividades(activities: readonly Activity[]): Map<number, Activit
   return idx
 }
 
-/** Tareas pendientes agrupadas por entidad. */
+/**
+ * Tareas pendientes agrupadas por entidad.
+ *
+ * `t.target` se comprueba en vez de darse por hecho, y no es paranoia: una
+ * fila de `tasks` sin `target` —porque llegó del servidor sin normalizar, o
+ * porque no apunta ni a una oportunidad ni a un lead— hacía que este `for`
+ * lanzara un TypeError. Ese throw se lleva puesto TODO `rankDay()`, o sea el
+ * plan del día entero, y la tela Hoje se queda con el último resultado bueno
+ * —la cartera vacía del arranque— sin un solo botón que tocar. Una tarea rota
+ * puede costar una tarjeta; nunca la pantalla.
+ */
 function indexarTasks(tasks: readonly Task[]): Map<string, Task[]> {
   const idx = new Map<string, Task[]>()
   for (const t of tasks) {
     if (t.status !== 'pending') continue
-    const chave = `${t.target.kind}:${t.target.id}`
+    const alvo: EntityRef | undefined = t.target
+    if (!alvo || typeof alvo.kind !== 'string' || typeof alvo.id !== 'number') continue
+    const chave = `${alvo.kind}:${String(alvo.id)}`
     const lista = idx.get(chave)
     if (lista) lista.push(t)
     else idx.set(chave, [t])

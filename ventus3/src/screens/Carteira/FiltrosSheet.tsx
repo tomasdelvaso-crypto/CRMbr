@@ -132,7 +132,7 @@ export function FiltrosSheet({ open, onClose, filtros, onAplicar, contar }: Filt
                 className={
                   rascunho.ordem === ordem
                     ? 'flex min-h-touch items-center rounded-lg bg-brand-soft px-3 text-left text-sm font-semibold text-brand-soft-fg'
-                    : 'flex min-h-touch items-center rounded-lg px-3 text-left text-sm text-fg active:bg-surface-2'
+                    : 'flex min-h-touch items-center rounded-lg px-3 text-left text-sm text-fg active:bg-surface-2 lg:hover:bg-surface-2'
                 }
               >
                 {ORDEM_LABELS[ordem]}

@@ -34,7 +34,7 @@ export function Secao({ id, titulo, resumo, alerta, padraoAberta = true, childre
             haptic('tap')
             alternar()
           }}
-          className="flex min-h-touch w-full items-center gap-3 px-4 py-3 text-left tap-highlight-none active:bg-surface-2"
+          className="flex min-h-touch w-full items-center gap-3 px-4 py-3 text-left tap-highlight-none active:bg-surface-2 lg:hover:bg-surface-2"
         >
           <span className="flex-1 text-sm font-semibold uppercase tracking-wide text-fg-muted">
             {titulo}

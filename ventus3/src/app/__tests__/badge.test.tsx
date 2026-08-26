@@ -42,6 +42,8 @@ const sessao: SessionContextValue = {
   vendorName: VENDOR,
   isAdmin: false,
   loading: false,
+  vendorAusente: false,
+  revalidarVendor: () => undefined,
   signOut: async () => {},
 }
 

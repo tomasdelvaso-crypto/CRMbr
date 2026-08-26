@@ -62,7 +62,7 @@ export function Chip({
             base,
             // El chip es más bajo que 44px a propósito (es una etiqueta densa),
             // así que se le agranda el área táctil sin agrandar el dibujo.
-            'relative tap-highlight-none transition-transform duration-150 ease-ios active:scale-95',
+            'relative tap-highlight-none transition-transform duration-150 ease-ios active:scale-95 lg:hover:brightness-95',
             "before:absolute before:inset-x-0 before:-inset-y-2 before:content-['']",
             onRemove ? 'pr-1.5' : '',
           )}
@@ -104,7 +104,7 @@ function RemoveDot({
         type="button"
         aria-label={label ?? 'Remover'}
         onClick={acionar}
-        className="ml-0.5 flex size-5 shrink-0 items-center justify-center rounded-pill opacity-70 transition-opacity active:opacity-100"
+        className="ml-0.5 flex size-5 shrink-0 items-center justify-center rounded-pill opacity-70 transition-opacity active:opacity-100 lg:hover:opacity-100"
       >
         <X size={13} aria-hidden />
       </button>
@@ -127,7 +127,7 @@ function RemoveDot({
           acionar()
         }
       }}
-      className="relative z-10 ml-0.5 flex size-5 shrink-0 items-center justify-center rounded-pill opacity-70 transition-opacity active:opacity-100"
+      className="relative z-10 ml-0.5 flex size-5 shrink-0 items-center justify-center rounded-pill opacity-70 transition-opacity active:opacity-100 lg:hover:opacity-100"
     >
       <X size={13} aria-hidden />
     </span>

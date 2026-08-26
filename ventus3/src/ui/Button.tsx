@@ -43,12 +43,16 @@ export interface ButtonProps
   ref?: Ref<HTMLButtonElement>
 }
 
+// `lg:hover:` al lado de cada `active:`: en mouse/trackpad (escritorio, ≥1024px)
+// el estado de pressed no existe, y sin hover el botón se ve inerte hasta el
+// click. En touch (`active:`) el hover no se activa porque no hay `:hover`
+// real, así que las dos reglas conviven sin pisarse.
 const VARIANTES: Readonly<Record<ButtonVariant, string>> = {
-  primary: 'bg-brand text-brand-fg shadow-xs active:bg-brand-strong',
-  secondary: 'bg-surface-2 text-fg border border-border active:bg-surface-3',
-  ghost: 'bg-transparent text-brand active:bg-brand-soft',
-  danger: 'bg-danger text-danger-fg shadow-xs',
-  success: 'bg-ok text-ok-fg shadow-xs',
+  primary: 'bg-brand text-brand-fg shadow-xs active:bg-brand-strong lg:hover:bg-brand-strong',
+  secondary: 'bg-surface-2 text-fg border border-border active:bg-surface-3 lg:hover:bg-surface-3',
+  ghost: 'bg-transparent text-brand active:bg-brand-soft lg:hover:bg-brand-soft',
+  danger: 'bg-danger text-danger-fg shadow-xs lg:hover:brightness-110',
+  success: 'bg-ok text-ok-fg shadow-xs lg:hover:brightness-110',
 }
 
 const TAMANHOS: Readonly<Record<Size, string>> = {

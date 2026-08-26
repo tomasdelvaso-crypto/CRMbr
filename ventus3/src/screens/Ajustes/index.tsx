@@ -22,7 +22,8 @@
 //    lo único que sí funciona sin identidad.
 
 import { useContext, useState } from 'react'
-import { Skeleton } from '@/ui'
+import { Card, Skeleton } from '@/ui'
+import { PerfilChip } from '@/app/PerfilChip'
 import { SessionContext } from '@/app/session-context'
 import { SecaoCookbook } from './SecaoCookbook'
 import { SecaoGoldenHour } from './SecaoGoldenHour'
@@ -58,6 +59,12 @@ function Ajustes({
 
   return (
     <div className="px-4 py-4">
+      {/* O papel, no topo: quem entra em Ajustes pra ver metas e Golden Hour
+          tem que saber, sem procurar, se é admin ou vendedor. */}
+      <Card padding="md" className="mb-6">
+        <PerfilChip tamanho="lg" comEmail link={false} />
+      </Card>
+
       {vendorName === null && (
         <div className="mb-6 rounded-card border border-warn/40 bg-warn-soft px-4 py-3">
           <p className="text-sm font-semibold text-warn-soft-fg">

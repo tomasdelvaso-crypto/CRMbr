@@ -52,7 +52,12 @@ export function BottomNav({ badges }: BottomNavProps) {
   return (
     <nav
       aria-label="Navegação principal"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 pb-safe backdrop-blur"
+      // `lg:hidden`: en escritorio la navegación vive en el DesktopRail. Va
+      // acá adentro y no en cada lugar que monta el componente —son dos—
+      // porque «esta barra nunca aparece en escritorio» es una regla del
+      // componente, no una decisión que cada caller tenga que acordarse de
+      // repetir.
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 pb-safe backdrop-blur lg:hidden"
     >
       <ul className="mx-auto flex h-nav max-w-lg items-stretch justify-around">
         {DESTINOS.map(({ to, label, Icon, labelLongo, badgeKey }) => {

@@ -185,25 +185,58 @@ export async function pullTabela(
   return total
 }
 
-/** Pull de todas las tablas de la cartera. */
+/**
+ * Pull de todas las tablas de la cartera.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * UNA TABLA QUE FALLA NO PUEDE LLEVARSE PUESTAS A LAS QUE YA BAJARON
+ * ══════════════════════════════════════════════════════════════════════════
+ * Antes este bucle no atrapaba nada: el primer `pullTabela` que lanzaba
+ * abortaba el `for` y —lo grave— se saltaba `notificarMudancas()`, que es el
+ * ÚNICO aviso que invalida el cache de TanStack Query. Consecuencia real, con
+ * la que el dueño del producto se encontró en su primer login: las filas SÍ
+ * quedaban escritas en Dexie, pero la pantalla Hoje seguía mostrando el
+ * resultado del arranque —cartera vacía— para siempre. Es decir: tres
+ * esqueletos grises, «Baixando a sua carteira. Isso acontece uma vez só.» y
+ * NINGÚN botón que tocar, hasta recargar a mano. `staleTime` es de 60 s pero
+ * `refetchOnWindowFocus` está apagado, así que nada volvía a preguntar.
+ *
+ * `touchpoints` es la más frágil de las siete —va última, no tiene columna
+ * `vendor` y se acota con un `in.(…)` que crece con la cartera— pero cualquiera
+ * de ellas alcanzaba: un 5xx, un token vencido a mitad de camino o un corte de
+ * 4G en la puerta de una planta.
+ *
+ * Ahora cada tabla se aísla, se avisa SIEMPRE lo que sí bajó, y recién después
+ * se propaga el primer error para que el backoff y el reporte de Ajustes lo
+ * sigan viendo.
+ */
 export async function pull(vendor: string): Promise<SyncReport> {
   const relatorio = relatorioVazio()
   if (!talvezOnline()) return relatorio
 
+  let primeiraFalha: unknown = null
+
   for (const config of TABELAS_SYNC) {
-    const idsLead =
-      config.tabla === 'touchpoints'
-        ? await getDb().leads.where('vendor').equals(vendor).primaryKeys()
-        : undefined
-    const n = await pullTabela(config, vendor, idsLead as number[] | undefined)
-    relatorio.puxados += n
-    if (n > 0) relatorio.tabelas.push(config.tabla)
+    try {
+      const idsLead =
+        config.tabla === 'touchpoints'
+          ? await getDb().leads.where('vendor').equals(vendor).primaryKeys()
+          : undefined
+      const n = await pullTabela(config, vendor, idsLead as number[] | undefined)
+      relatorio.puxados += n
+      if (n > 0) relatorio.tabelas.push(config.tabla)
+    } catch (erro) {
+      primeiraFalha ??= erro
+      relatorio.falhados += 1
+    }
   }
 
   await podarAtividades()
   await podarConflitos()
   relatorio.terminadoEm = new Date().toISOString()
+  // Antes de cualquier rethrow: lo que llegó tiene que llegar a la pantalla.
   notificarMudancas(relatorio.tabelas)
+  if (primeiraFalha !== null) throw primeiraFalha
   return relatorio
 }
 
@@ -335,9 +368,18 @@ export function instalarGatilhosDeSync(
   let vivo = true
   const disparar = (redeVoltou = false): void => {
     if (!vivo || !talvezOnline()) return
-    void syncNow(vendor, { redeVoltou }).then((r) => {
-      if (vivo) aoSincronizar?.(r)
-    })
+    void syncNow(vendor, { redeVoltou })
+      .then((r) => {
+        if (vivo) aoSincronizar?.(r)
+      })
+      .catch(() => {
+        // Un sync que falla es el caso NORMAL en campo (galpón sin señal, 4G
+        // que se cae a mitad). Sin este catch la promesa quedaba sin manejar y
+        // el navegador la reportaba como error no capturado de la página —
+        // ruido que tapa los errores de verdad en la consola de producción.
+        // Lo que sí bajó ya se avisó dentro de pull(); el resto lo reintenta
+        // el próximo disparador.
+      })
   }
 
   // 1) Vuelta de la red. Es el único disparador que sabe que la condición que

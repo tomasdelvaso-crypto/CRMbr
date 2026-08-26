@@ -62,12 +62,16 @@ export const LinhaCarteira = memo(function LinhaCarteira({
       // La fila no se colapsa: registrar navega y adiar abre um sheet. Colapsar
       // dejaría un hueco en la lista para una fila que sigue existiendo.
       collapseOnAction={false}
+      // Acá SÍ hace falta: «Registrar»/«Adiar» sólo existen como gesto —no
+      // hay otro botón en la fila que haga lo mismo—, así que en lg+ (mouse)
+      // necesitan un equivalente clickeable visible al pasar el mouse.
+      hoverVisivelEmDesktop
     >
       <button
         type="button"
         onClick={(evento) => onAbrir(opp.id, evento.currentTarget)}
         style={{ height: ALTURA_LINHA }}
-        className="flex w-full items-center gap-3 border-b border-border px-4 text-left tap-highlight-none active:bg-surface-2"
+        className="flex w-full items-center gap-3 border-b border-border px-4 text-left tap-highlight-none active:bg-surface-2 lg:hover:bg-surface-2"
       >
         {/* Semáforo de riesgo: las 6 reglas de risk.ts en un punto. */}
         <Badge
@@ -80,10 +84,13 @@ export const LinhaCarteira = memo(function LinhaCarteira({
 
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold leading-5">{nome}</span>
-          <span className="block truncate text-xs leading-4 text-fg-muted">
+          {/* En lg+ cliente, etapa y contato pasan a columnas propias (más
+              abajo): repetirlos acá en una sola línea truncada sería la misma
+              información dos veces en la misma fila. */}
+          <span className="block truncate text-xs leading-4 text-fg-muted lg:hidden">
             {cliente} · {etapa}
           </span>
-          <span className="mt-0.5 flex items-center gap-2 text-2xs leading-4">
+          <span className="mt-0.5 flex items-center gap-2 text-2xs leading-4 lg:hidden">
             <span className={cx('tnum', silencioso ? 'text-warn-soft-fg' : 'text-fg-subtle')}>
               {silencioTexto(linha.daysSinceContact)}
             </span>
@@ -94,6 +101,25 @@ export const LinhaCarteira = memo(function LinhaCarteira({
               <span className="text-warn-soft-fg">Sem veredicto</span>
             )}
           </span>
+        </span>
+
+        {/* Columnas de escritorio: la fila tiene ancho de sobra en lg+ para
+            mostrar cliente, etapa y último contato por separado en vez de
+            amontonarlos en el subtítulo truncado de arriba. Mismo alto de
+            72px — sólo se agrega ancho, nunca alto: es lo que la VirtualList
+            necesita para no medir nada. */}
+        <span className="hidden w-32 shrink-0 truncate text-xs text-fg-muted lg:block">{cliente}</span>
+        <span className="hidden w-28 shrink-0 lg:block">
+          <Badge tone="neutro">{etapa}</Badge>
+        </span>
+        <span className="hidden w-32 shrink-0 flex-col gap-0.5 text-2xs leading-4 lg:flex">
+          <span className={cx('tnum', silencioso ? 'text-warn-soft-fg' : 'text-fg-subtle')}>
+            {silencioTexto(linha.daysSinceContact)}
+          </span>
+          {linha.nextActionDate === null && <span className="text-brand">Sem data</span>}
+          {linha.compromissosSemVeredicto > 0 && (
+            <span className="text-warn-soft-fg">Sem veredicto</span>
+          )}
         </span>
 
         <span className="flex shrink-0 flex-col items-end gap-1">

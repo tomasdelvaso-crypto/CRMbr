@@ -884,7 +884,7 @@ export default function RegistrarScreen() {
             // viewport, así que sin esto la barra queda DEBAJO del teclado.
             transform: `translateY(-${String(alturaTeclado)}px)`,
             paddingBottom:
-              alturaTeclado > 0 ? '0.75rem' : 'calc(var(--safe-bottom) + var(--spacing-nav))',
+              alturaTeclado > 0 ? '0.75rem' : 'calc(var(--safe-bottom) + var(--spacing-nav-visivel))',
           }}
         >
           <div className="mx-auto flex max-w-lg flex-col gap-2 px-4 pt-3">
