@@ -9,7 +9,8 @@ import '@/host/arranque'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
-import { App } from './app/App'
+import { Diagnostico } from './screens/Diagnostico'
+import { configOk, variaveisFaltando } from './data/config-publica'
 // El nombre del evento sale del módulo que lo escucha, no de un string
 // repetido: si alguien lo renombra allá y acá queda el viejo, el toast de
 // «Nova versão» deja de aparecer y nadie se entera hasta la próxima release.
@@ -19,11 +20,28 @@ import './index.css'
 const container = document.getElementById('root')
 if (!container) throw new Error('Elemento #root não encontrado em index.html')
 
-createRoot(container).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+const root = createRoot(container)
+
+if (configOk) {
+  // Import DINÁMICO a propósito: `./app/App` arrastra el cliente de Supabase,
+  // que no puede construirse sin configuración. Un import estático se evalúa
+  // ANTES del cuerpo de este módulo — los módulos ES resuelven todo su grafo
+  // primero —, así que el fallo ocurriría antes de que este `if` corriera y
+  // volveríamos a la pantalla en blanco que este archivo existe para evitar.
+  void import('./app/App').then(({ App }) => {
+    root.render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    )
+  })
+} else {
+  // Sin configuración no se monta la app: `./app/App` arrastra el cliente de
+  // Supabase y éste no puede construirse. Antes esto era un throw en el tope
+  // del módulo, o sea pantalla en blanco sin ninguna pista de qué pasó.
+  console.error('[ventus] build sem configuração:', variaveisFaltando.join(', '))
+  root.render(<Diagnostico faltando={variaveisFaltando} />)
+}
 
 // registerType: 'prompt'. La app NUNCA se recarga sola: el vendedor puede
 // estar en medio de una nota de voz. Se emite un evento y la UI decide cuándo

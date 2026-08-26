@@ -150,6 +150,58 @@ describe('flush', () => {
     expect(await pendingCount()).toBe(0)
   })
 
+  it('lo encolado DURANTE un flush sale igual, sin esperar otro disparador', async () => {
+    // `executarFlush` lee la cola UNA vez, al principio. Antes, una mutación
+    // encolada después de esa lectura recibía el promise del flush que ya
+    // corría —o sea, «ya salió»— y se quedaba en la cola hasta el siguiente
+    // disparador, que puede no llegar nunca en esa sesión. Es exactamente lo
+    // que hace `aceitarProposta`: encola el recorte del payload y enseguida el
+    // commit.
+    //
+    // Para reproducirlo hay que encolar CON EL FLUSH YA ADENTRO del envío: se
+    // traba el transporte en la primera mutación, se encola la segunda y recién
+    // ahí se suelta.
+    await enqueue(atividade('a primeira'))
+
+    let soltar: () => void = () => undefined
+    const trava = new Promise<void>((resolver) => {
+      soltar = resolver
+    })
+    let primeiraEmVoo: (() => void) | null = null
+    const chegouAoTransporte = new Promise<void>((resolver) => {
+      primeiraEmVoo = resolver
+    })
+    const enviarNormal = transporte.enviar.bind(transporte)
+    let travou = false
+    transporte.enviar = async (m: OutboxMutation) => {
+      if (!travou) {
+        travou = true
+        primeiraEmVoo?.()
+        await trava
+      }
+      await enviarNormal(m)
+    }
+
+    const emCurso = flush()
+    await chegouAoTransporte
+
+    // Con el flush adentro del envío, se encola otra y se pide flush, como
+    // hace `encolarEDisparar`.
+    await enqueue(atividade('encolada no meio'))
+    void flush()
+
+    soltar()
+    await emCurso
+    // La vuelta extra se agenda en el `finally` del primer flush.
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(await pendingCount()).toBe(0)
+    expect(transporte.enviados.map((m) => m.payload['description'])).toEqual([
+      'a primeira',
+      'encolada no meio',
+    ])
+  })
+
   it('un client_uuid ya existente en el servidor cuenta como éxito', async () => {
     await enqueue(atividade('reintento de una nota ya enviada'))
     transporte.falha = new ErroOutbox('duplicate key', 'duplicado')

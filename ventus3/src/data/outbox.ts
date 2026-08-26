@@ -258,6 +258,22 @@ export async function uuidsEncolados(tabla: string): Promise<Set<string>> {
 
 let flushEmCurso: Promise<ResultadoFlush> | null = null
 
+/**
+ * Opciones de un flush que alguien pidió MIENTRAS otro estaba corriendo.
+ *
+ * No es un detalle de concurrencia: `executarFlush` lee la cola UNA vez, al
+ * principio. Una mutación encolada después de esa lectura no entra en la
+ * pasada, y devolverle al que la encoló el promise del flush que ya estaba
+ * corriendo lo dejaba creyendo que su escritura salió. Quedaba esperando el
+ * siguiente disparador —la vuelta de la red, otro registro— que puede no
+ * llegar nunca en esa sesión.
+ *
+ * Se ve todo el tiempo en el producto: `aceitarProposta` encola el recorte del
+ * payload y enseguida el commit; el segundo caía justo dentro de la pasada del
+ * primero y se quedaba en la cola.
+ */
+let repetirCom: OpcoesFlush | null = null
+
 export interface OpcoesFlush {
   /** Ignorar el backoff: lo usa retry() y el botón 'Tentar agora'. */
   forcar?: boolean
@@ -283,11 +299,38 @@ export interface OpcoesFlush {
  * los intentos y desordenarían la cola).
  */
 export async function flush(opcoes: OpcoesFlush = {}): Promise<ResultadoFlush> {
-  if (flushEmCurso) return flushEmCurso
-  flushEmCurso = executarFlush(opcoes).finally(() => {
+  if (flushEmCurso) {
+    // Ya hay uno corriendo: no se arranca otro en paralelo (desordenaría la
+    // cola y duplicaría intentos), pero SÍ se anota que hace falta otra vuelta
+    // cuando éste termine. Ver `repetirCom`.
+    repetirCom = mesclarOpcoes(repetirCom, opcoes)
+    return flushEmCurso
+  }
+  return iniciarFlush(opcoes)
+}
+
+function iniciarFlush(opcoes: OpcoesFlush): Promise<ResultadoFlush> {
+  const promessa = executarFlush(opcoes).finally(() => {
     flushEmCurso = null
+    const pendente = repetirCom
+    repetirCom = null
+    // La vuelta extra no se le devuelve a nadie: quien la pidió ya recibió el
+    // promise del flush anterior. Lo que importa es que la cola quede vacía.
+    if (pendente) void iniciarFlush(pendente).catch(() => undefined)
   })
-  return flushEmCurso
+  flushEmCurso = promessa
+  return promessa
+}
+
+/** La vuelta extra hereda lo más permisivo de todo lo que se pidió. */
+function mesclarOpcoes(anterior: OpcoesFlush | null, nova: OpcoesFlush): OpcoesFlush {
+  if (anterior === null) return { ...nova }
+  const limite = Math.max(anterior.limite ?? 0, nova.limite ?? 0)
+  return {
+    forcar: anterior.forcar === true || nova.forcar === true,
+    ignorarEspera: anterior.ignorarEspera === true || nova.ignorarEspera === true,
+    ...(limite > 0 ? { limite } : {}),
+  }
 }
 
 async function executarFlush(opcoes: OpcoesFlush): Promise<ResultadoFlush> {

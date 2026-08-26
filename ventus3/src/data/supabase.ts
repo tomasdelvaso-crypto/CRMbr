@@ -10,14 +10,11 @@
 
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js'
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+import { configPublica } from './config-publica'
 
-if (!url || !anonKey) {
-  throw new Error(
-    'Faltam VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY. Copie .env.example para .env.',
-  )
-}
+// Si faltara la configuración, main.tsx muestra la pantalla de diagnóstico y
+// nunca llega a importar este módulo. Ver src/data/config-publica.ts.
+const { url, anonKey } = configPublica()
 
 /** Clave de storage de la sesión. Fija: si cambia, el equipo se desloguea. */
 export const AUTH_STORAGE_KEY = 'ventus.auth'

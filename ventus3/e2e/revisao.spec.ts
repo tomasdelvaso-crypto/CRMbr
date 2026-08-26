@@ -63,21 +63,18 @@ test.describe('Revisão · aceitar por campo', () => {
     // El objetivo de diseño de la pantalla es llegar a cero: la tarjeta se va.
     await expect(cartao).toHaveCount(0, { timeout: 15_000 })
 
-    // Se espera por el COMMIT, que es la última de las dos escrituras: el
-    // outbox las manda en orden y una por vez, así que cuando llegó el commit
-    // el recorte ya llegó. 30 s porque con los tres perfiles corriendo a la vez
-    // el dev server sirve el chunk de Revisão con calma.
+    // Se espera a que la COLA se vacíe, y no a que aparezca tal pedido: es la
+    // condición honesta —«no queda nada por mandar»— y no depende de cuánto
+    // tarde el dev server con los tres perfiles corriendo a la vez.
     await expect
-      .poll(
-        () =>
-          escritasDaProposta(ventus.pedidos).filter((p) =>
-            p.url.includes('/rpc/ventus_commit_action'),
-          ).length,
-        { timeout: 30_000, message: 'a decisão nunca saiu para o servidor' },
-      )
-      .toBe(1)
+      .poll(() => ventus.pendentesNoOutbox(), {
+        timeout: 30_000,
+        message: 'a fila do outbox nunca esvaziou',
+      })
+      .toBe(0)
 
     const escritas = escritasDaProposta(ventus.pedidos)
+    expect(escritas.length).toBeGreaterThanOrEqual(2)
 
     // 1) El recorte: un PATCH que reescribe el payload SIN el campo rechazado.
     const recorte = escritas.find((p) => p.metodo === 'PATCH')
@@ -95,9 +92,6 @@ test.describe('Revisão · aceitar por campo', () => {
     // El orden importa: commitear antes de recortar ejecutaría el campo
     // rechazado.
     expect(escritas.indexOf(recorte!)).toBeLessThan(escritas.indexOf(commit!))
-
-    // Nada quedó trabado en la cola.
-    await expect.poll(() => ventus.pendentesNoOutbox(), { timeout: 30_000 }).toBe(0)
   })
 
   test('aceitar os três campos vai direto ao commit, sem recortar nada', async ({
@@ -113,14 +107,17 @@ test.describe('Revisão · aceitar por campo', () => {
     await expect(cartao).toHaveCount(0, { timeout: 15_000 })
 
     await expect
-      .poll(
-        () =>
-          escritasDaProposta(ventus.pedidos).filter((p) =>
-            p.url.includes('/rpc/ventus_commit_action'),
-          ).length,
-        { timeout: 30_000 },
-      )
-      .toBe(1)
+      .poll(() => ventus.pendentesNoOutbox(), {
+        timeout: 30_000,
+        message: 'a fila do outbox nunca esvaziou',
+      })
+      .toBe(0)
+
+    expect(
+      escritasDaProposta(ventus.pedidos).filter((p) =>
+        p.url.includes('/rpc/ventus_commit_action'),
+      ),
+    ).toHaveLength(1)
 
     // Sin recorte no hay PATCH: escribir el mismo payload de vuelta sería una
     // escritura sin sentido y una carrera contra el propio commit.
