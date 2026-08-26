@@ -120,21 +120,29 @@ function acoesDaNotificacao(acoes: AcaoDoAviso[] | undefined): AcaoNativa[] {
   return uteis
 }
 
-/** Cuántas notificaciones quedan sin atender, para el badge. */
-async function atualizarDistintivo(): Promise<void> {
-  const badge = self.navigator as WorkerNavigator & {
-    setAppBadge?: (n?: number) => Promise<void>
-    clearAppBadge?: () => Promise<void>
-  }
-  if (typeof badge.setAppBadge !== 'function') return
-  try {
-    const abertas = await self.registration.getNotifications()
-    if (abertas.length === 0) await badge.clearAppBadge?.()
-    else await badge.setAppBadge(Math.min(abertas.length, 99))
-  } catch {
-    /* el badge es decoración útil, nunca una garantía */
-  }
-}
+/* ══════════════════════════════════════════════════════════════════════════
+   EL BADGE NO SE ESCRIBE DESDE ACÁ — A PROPÓSITO
+   ══════════════════════════════════════════════════════════════════════════
+   Este archivo tenía un `atualizarDistintivo()` que pintaba el badge con
+   `self.registration.getNotifications().length`, o sea con la cantidad de
+   avisos abiertos. Eso contradice el contrato escrito en el encabezado de
+   `src/push/badge.ts`: el badge cuenta LO QUE ESPERA UNA DECISIÓN —tarjetas
+   del día sin resolver más propuestas del Ventus sin revisar—, nunca avisos
+   recibidos. Un badge de avisos es el mismo ruido que ya mató las
+   notificaciones del v2 (4.521 mensajes, 0,0% de lectura) y encima uno que no
+   se puede silenciar.
+
+   Peor todavía: el badge del sistema es UNO solo. Con el service worker
+   escribiendo también, cada push y cada toque pisaba el número que el Shell
+   acababa de calcular, y el ícono terminaba mostrando la mitad del cuento —el
+   último escritor ganaba.
+
+   Escritor único: `definirBadge()` de `@/push`, llamado desde
+   `src/app/Shell.tsx`. El service worker no puede calcular ese número (no
+   tiene sesión ni cartera) y por eso no lo intenta: deja el badge como está y
+   la app lo corrige apenas se abre, que es también cuando el vendedor lo va a
+   mirar.
+   ══════════════════════════════════════════════════════════════════════════ */
 
 async function mostrar(payload: PayloadDeAviso): Promise<void> {
   const titulo = (payload.titulo ?? '').trim() || TITULO_PADRAO
@@ -159,8 +167,6 @@ async function mostrar(payload: PayloadDeAviso): Promise<void> {
     },
     ...(acoes.length > 0 ? { actions: acoes } : {}),
   } as NotificationOptions)
-
-  await atualizarDistintivo()
 }
 
 self.addEventListener('push', (evento: PushEvent) => {
@@ -243,18 +249,7 @@ self.addEventListener('notificationclick', (evento: NotificationEvent) => {
   const dados = (evento.notification.data ?? {}) as DadosDaNotificacao
   const acao = evento.action ?? ''
   evento.notification.close()
-  evento.waitUntil(
-    (async () => {
-      await abrir(destinoDe(dados, acao), dados, acao)
-      await atualizarDistintivo()
-    })(),
-  )
-})
-
-self.addEventListener('notificationclose', (evento: NotificationEvent) => {
-  // Cerrar sin tocar también baja el badge: lo pendiente es lo que espera una
-  // decisión, y descartar el aviso ya fue una.
-  evento.waitUntil(atualizarDistintivo())
+  evento.waitUntil(abrir(destinoDe(dados, acao), dados, acao))
 })
 
 /* ══════════════════════════════════════════════════════════════════════════
