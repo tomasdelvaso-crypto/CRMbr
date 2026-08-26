@@ -69,7 +69,7 @@ ellos el outbox, el pull y la guardia de sesión. Nadie debería tocar eso sin
 antes tener una prueba de arranque en frío **sin red**, que hoy no existe
 porque el service worker está apagado en desarrollo.
 
-### Cuatro avisos que no vencen
+### Cinco avisos que no vencen
 
 - **`TELEGRAM_WEBHOOK_SECRET` es obligatoria.** Sin ella el webhook responde
   500 a todo y no procesa nada, a propósito.
@@ -83,6 +83,15 @@ porque el service worker está apagado en desarrollo.
 - **`vercel.json` está en 12 funciones, el techo del plan Hobby.** No queda una
   sola ranura libre: la función 13 no despliega. Agregar un endpoint hoy
   significa fusionarlo con uno existente o subir de plan. §6.
+- **En el campo del valor de una variable en Vercel va SÓLO el valor.** Pegar
+  la línea entera (`VITE_SUPABASE_ANON_KEY=eyJ…`) ya costó horas: Supabase
+  contesta «Invalid API key · Not a JWT», el cliente lo lee como 401 y la app
+  dice «e-mail ou senha incorretos», que manda a buscar la contraseña
+  equivocada. Desde el arreglo, la pantalla de diagnóstico lo nombra —
+  «existe, mas o valor não serve»— en vez de dejar pasar el build. Y si se
+  vuelve a endurecer esa validación, hay que mover **también** los stubs de
+  `playwright.config.ts` y `scripts/medir-arranque.mjs`: `stub-de-teste.test.ts`
+  lo avisa. §3.6.
 
 ### Lo que se cerró en las últimas vueltas
 
@@ -135,12 +144,16 @@ $ npm run type-check
 EXIT=0   (los 3 proyectos: app, node/api, service worker)
 
 $ npx vitest run
- Test Files  46 passed (46)
-      Tests  876 passed (876)
-   Duration  12.17s
+ Test Files  48 passed (48)
+      Tests  890 passed (890)
+   Duration  20.66s
 EXIT=0        ← 636 en la ola 2 · 777 al cerrar la ola 3 · 781 al abrir esta
-                vuelta · 869 con las cuatro entregas · 876 con los 7 del
-                integrador (`api/dispatch/__tests__/telegram-troceo.test.ts`)
+                vuelta · 869 con las cuatro entregas · 890 al cerrar, con los
+                7 del troceo, los 5 del stub de prueba y los del arreglo de
+                configuración que entró en paralelo
+
+$ npx tsc --noEmit -p tsconfig.e2e.json
+EXIT=0
 
 $ npx eslint . --max-warnings 0
 (sin salida: 0 errores, 0 warnings)
@@ -185,9 +198,31 @@ $ node scripts/medir-arranque.mjs                   # contra el BUILD, no el dev
 Camino crítico: 266,8 kB · gzip 77,1 kB (16 recursos)
 Arranque: melhor 98 ms · mediana 103 ms · pior 157 ms
 
+$ npx playwright test                              # 117 pruebas × 3 perfiles
+  6 skipped   (las capturas, que sólo corren con CAPTURAS=1)
+  111 passed
+              ← la corrida completa terminó 102/9: las 9 fallas son todas
+                `net::ERR_CONNECTION_REFUSED at 127.0.0.1:5288`, o sea el dev
+                server que se cayó a los 9 minutos, no una prueba roja. Las 9
+                (offline · registrar · revisão, perfil desktop) vuelven a pasar
+                en 48 s corriendo sus tres archivos: 9 passed, EXIT=0.
+
 $ git status --porcelain -- src api     # el CRM v2 en producción, desde la raíz
 (sin salida: NO se tocó)
 ```
+
+> **Dos cosas que hacen fallar Playwright y no son el código.** (1) **Editar
+> cualquier archivo del repo mientras la suite corre**: el watcher de Vite
+> recarga la página y las pruebas mueren con «Execution context was
+> destroyed». Pasó en la primera corrida de esta vuelta —4 fallas, ninguna
+> real— porque el integrador estaba escribiendo este mismo documento.
+> (2) **El dev server se muere en corridas largas** con dos workers peleando
+> por él; el síntoma es `ERR_CONNECTION_REFUSED` en bloque, siempre al final.
+> La prueba más frágil por mérito propio sigue siendo
+> `golden.spec.ts:111` («o fechamento se destrava sozinho aos 60 segundos»),
+> que espera **60 segundos de reloj real** con 70 de presupuesto: conviene
+> subirla a 90 s o marcarla serial antes de que alguien la etiquete de flaky y
+> deje de mirarla.
 
 > ⚠️ **La mediana del arranque quedó en 103 ms, arriba del objetivo de 100 ms.**
 > No es una regresión de código: es la misma medición que dio 93 ms y 97 ms
@@ -763,6 +798,28 @@ un script de medición roto**:
   el código no lea** (verificado con un barrido sobre `api/`, `src/`,
   `scripts/`, `vite.config.ts` y `playwright.config.ts`).
 
+- **La validación nueva de la anon key dejó ROJA toda la suite de punta a
+  punta**, y encontrarlo fue medio accidente. Mientras el integrador cerraba,
+  otra sesión commiteó `fix: detecta a chave pública mal formada, não só a
+  ausente` — un arreglo correcto y caro de conseguir: en Vercel se había pegado
+  la **línea entera** dentro del campo del valor, así que la clave viajaba como
+  `VITE_SUPABASE_ANON_KEY=eyJ…`, Supabase contestaba «Invalid API key · Not a
+  JWT», el cliente lo leía como 401 y la app decía «e-mail ou senha
+  incorretos». Horas buscando una contraseña que estaba bien. La verificación
+  pasó a exigir **forma de JWT**… y el arrancador de Playwright venía usando la
+  cadena `chave-anon-de-teste`, que no tiene forma de nada. Desde ese commit la
+  app mostraba la pantalla de diagnóstico en vez de montar y las 117 pruebas
+  fallaban con el mismo mensaje despistante —«A app nunca resolveu o vendedor
+  da sessão»—, que apunta a la sesión y no a la configuración. Los dos
+  arrancadores (`playwright.config.ts` y `scripts/medir-arranque.mjs`) usan
+  ahora el **mismo** token falso pero bien formado, con el porqué escrito al
+  lado. Y para que no vuelva a pasar en silencio, `pareceJwt()` se exporta y
+  `src/data/__tests__/stub-de-teste.test.ts` mide los stubs con la función de
+  producción: si alguien endurece la validación otra vez, se pone rojo en
+  `vitest` —diez segundos— en vez de en Playwright —nueve minutos—, y dice
+  exactamente por qué. El test comprueba además que los dos arrancadores no
+  se separen y que ninguno pueda alcanzar el proyecto real.
+
 **Coherencia, lo que se revisó y estaba bien:** los cuatro barriles
 (`src/ui/index.ts`, `src/data/index.ts`, `src/host/index.ts`, `src/push/index.ts`)
 exportan todo lo nuevo de esta ola —`SegmentedControl`, `useTelaCurta` /
@@ -857,7 +914,7 @@ es que **un andamio siempre se anuncia en pantalla**, en PT-BR y sin fingir.
 
 ---
 
-## 5 · TODOs consolidados (las tres olas + el integrador)
+## 5 · TODOs consolidados (las cuatro olas + el integrador)
 
 Orden aproximado de dependencia. Lo que bloquea a otra cosa va primero.
 **La lista corta y priorizada de hoy está en §0**; esto es el inventario
