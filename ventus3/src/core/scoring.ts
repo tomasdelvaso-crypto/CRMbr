@@ -24,9 +24,9 @@ import type {
   Touchpoint,
   TouchpointResult,
   TrophyKey,
-} from './types'
-import { addDays, daysBetween, ehDiaUtil, todayBr } from './dates'
-import { ACTIVITY_TYPE_CONFIG, RESULT_CONFIG } from './methodology'
+} from './types.js'
+import { addDays, daysBetween, ehDiaUtil, todayBr } from './dates.js'
+import { ACTIVITY_TYPE_CONFIG, RESULT_CONFIG } from './methodology.js'
 
 /* ══════════════════════════════════════════════════════════════════════════
    1 · REGRAS_PADRAO — a tabela de PA

@@ -23,8 +23,8 @@ import type {
   StageGate,
   StageId,
   StageName,
-} from './types'
-import { daysBetween, todayBr } from './dates'
+} from './types.js'
+import { daysBetween, todayBr } from './dates.js'
 
 /* ── Catálogos (portados del v2, no tocar sin cambiar también el bot) ────── */
 

@@ -10,7 +10,7 @@ import type {
   ScaleKey,
   StageId,
   TouchpointResult,
-} from './types'
+} from './types.js'
 import {
   SCALE_LABELS,
   gateFaltante,
@@ -18,7 +18,7 @@ import {
   getStageName,
   lowestBlockingScale,
   proximoNivel,
-} from './ppvvcc'
+} from './ppvvcc.js'
 
 /* ── Tipos de actividad (CHECK de public.activities) ─────────────────────── */
 

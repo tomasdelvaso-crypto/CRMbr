@@ -73,8 +73,8 @@ import type {
   TipoAcao,
   Urgencia,
   Vendor,
-} from './types'
-import { daysBetween, formatarBRL, formatarDataCurta, todayBr } from './dates'
+} from './types.js'
+import { daysBetween, formatarBRL, formatarDataCurta, todayBr } from './dates.js'
 import {
   SCALE_LABELS,
   calculateHealthScore,
@@ -84,15 +84,15 @@ import {
   gateFaltante,
   lowestBlockingScale,
   proximoNivel,
-} from './ppvvcc'
+} from './ppvvcc.js'
 import {
   atrasoEmDias,
   canalExecutavel,
   isCadenceExhausted,
   proximoTouchpoint,
-} from './cadence'
-import { isSingleThreaded, stakeholders } from './risk'
-import { textosParaAvancar } from './spin'
+} from './cadence.js'
+import { isSingleThreaded, stakeholders } from './risk.js'
+import { textosParaAvancar } from './spin.js'
 
 /** Todo lo que rankDay necesita. Se arma desde Dexie, sin ir a la red. */
 export interface PlannerInput {
@@ -104,7 +104,7 @@ export interface PlannerInput {
   activities: readonly Activity[]
   tasks: readonly Task[]
   commitments: readonly Commitment[]
-  touchpoints?: readonly import('./types').Touchpoint[]
+  touchpoints?: readonly import('./types.js').Touchpoint[]
   /** Ficha del vendedor. Solo se usa para el saludo y las metas. */
   vendorInfo?: Vendor | null
 }
@@ -115,7 +115,7 @@ export interface EntradaDoPlano {
   leads: readonly Lead[]
   tasks: readonly Task[]
   activities: readonly Activity[]
-  touchpoints?: readonly import('./types').Touchpoint[]
+  touchpoints?: readonly import('./types.js').Touchpoint[]
   commitments: readonly Commitment[]
   vendor: string
   hoje: IsoDate

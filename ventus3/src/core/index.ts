@@ -20,12 +20,12 @@
 // Verificado: los 272 símbolos exportados no colisionan entre módulos, así que
 // `export *` es seguro y `import { X } from '@/core'` siempre resuelve.
 
-export * from './types'
-export * from './ppvvcc'
-export * from './cadence'
-export * from './methodology'
-export * from './dates'
-export * from './planner'
-export * from './risk'
-export * from './scoring'
-export * from './spin'
+export * from './types.js'
+export * from './ppvvcc.js'
+export * from './cadence.js'
+export * from './methodology.js'
+export * from './dates.js'
+export * from './planner.js'
+export * from './risk.js'
+export * from './scoring.js'
+export * from './spin.js'

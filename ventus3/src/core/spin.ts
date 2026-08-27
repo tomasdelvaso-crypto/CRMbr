@@ -12,7 +12,7 @@
 // Regla de oro que las atraviesa a todas: los NÚMEROS los dice el cliente.
 // Ninguna pregunta afirma un porcentaje, un ahorro ni un benchmark nuestro.
 
-import type { ScaleKey, SpinCategory, SpinQuestion } from './types'
+import type { ScaleKey, SpinCategory, SpinQuestion } from './types.js'
 
 export const SPIN_CATEGORY_LABELS: Readonly<Record<SpinCategory, string>> = {
   situacao: 'Situação',

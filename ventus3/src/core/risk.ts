@@ -14,8 +14,8 @@ import type {
   ScalesRecord,
   Severity,
   StageId,
-} from './types'
-import { daysBetween, formatarBRL, todayBr } from './dates'
+} from './types.js'
+import { daysBetween, formatarBRL, todayBr } from './dates.js'
 import {
   SCALE_KEYS,
   SCALE_LABELS,
@@ -25,7 +25,7 @@ import {
   getScaleValue,
   getStageName,
   maxStageAllowed,
-} from './ppvvcc'
+} from './ppvvcc.js'
 
 /** Umbrales de las reglas. Expuestos para test y calibración. */
 export interface RiskThresholds {

@@ -14,7 +14,7 @@
 //   3) Para pasar de instante real (Date) a fecha civil usamos Intl, que es la
 //      única fuente correcta de la conversión.
 
-import type { IsoDate, IsoDateTime } from './types'
+import type { IsoDate, IsoDateTime } from './types.js'
 
 export const BR_TIMEZONE = 'America/Sao_Paulo'
 

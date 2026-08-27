@@ -16,8 +16,8 @@ import type {
   Touchpoint,
   TouchpointResult,
   TouchpointSeq,
-} from './types'
-import { addDays, daysBetween, todayBr, toBrDate } from './dates'
+} from './types.js'
+import { addDays, daysBetween, todayBr, toBrDate } from './dates.js'
 
 /** Los 7 toques, con su día del ciclo y su canal. No reordenar. */
 export const CADENCE_SCHEDULE: readonly CadenceStep[] = [
