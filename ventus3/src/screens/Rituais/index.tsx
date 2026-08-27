@@ -43,7 +43,7 @@ export default function RituaisScreen() {
   const sessao = useContext(SessionContext)
 
   if (!queryClient || !sessao) return <EsqueletoDosRituais />
-  return <Rituais vendorName={sessao.vendorName} />
+  return <Rituais vendorName={sessao.vendorName} vendorId={sessao.vendor?.id ?? null} />
 }
 
 const ICONE: Readonly<Record<TipoRitual, ComponentType<{ size?: number; className?: string }>>> = {
@@ -53,7 +53,13 @@ const ICONE: Readonly<Record<TipoRitual, ComponentType<{ size?: number; classNam
   sexta: CalendarCheck,
 }
 
-function Rituais({ vendorName }: { vendorName: string | null }) {
+function Rituais({
+  vendorName,
+  vendorId,
+}: {
+  vendorName: string | null
+  vendorId: number | null
+}) {
   const hoje = useDiaVigente()
   const rituais = useRituais(vendorName, hoje)
   const marcar = useMarcarRitual()
@@ -127,6 +133,7 @@ function Rituais({ vendorName }: { vendorName: string | null }) {
             open={aberto === 'segunda'}
             onClose={() => setAberto(null)}
             vendorName={vendorName}
+            vendorId={vendorId}
             dia={hoje}
             onPronto={() => concluir('segunda')}
           />

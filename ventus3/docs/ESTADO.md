@@ -28,7 +28,15 @@ https://ventus3.vercel.app          ← producción, deploy automático desde
                                       (root directory: ventus3)
 /api/health                         → ok:true, con Supabase, Anthropic, Groq
                                       y auth configurados
+/api/dispatch/run                   → 200 {"ok":true,…}, cada minuto, disparado
+                                      por pg_cron desde el propio banco
 ```
+
+**Desde las 12:26 UTC del 27/08 los avisos ya pueden salir.** El camino entero
+—`pg_cron` → `pg_net` → `ventus_cron.chamar()` → Vercel → dispatcher— responde
+200 en producción, con el Bearer del Vault aceptado del otro lado. La evidencia
+está en el recuadro de abajo y en §1; no es una lectura de logs de la app sino
+de `net._http_response`, que es lo que el banco vio contestar al servidor.
 
 El dominio propio `ventus.ventapel.com.br` **no existe todavía**: no es un DNS
 esperando propagar, es un nombre que nadie registró. La URL real de hoy es la
@@ -48,19 +56,42 @@ obliga a recompilar y reinstalar en los seis teléfonos.
 > trámite de Google con su fecha del 30/09. Nada se borró: `ANDROID.md`
 > queda entero por si algún día hace falta. Para instalar hoy: `INSTALAR.md`.
 
-Nada de esto bloquea el build ni el deploy: los cinco comandos están en verde
-(§1). Es trabajo de **puesta en operación**, y el orden es de dependencia real
-— cada fila necesita la de arriba.
+Nada de esto bloquea el build ni el deploy: los seis comandos están en verde
+(§1), Playwright incluido. Es trabajo de **puesta en operación**, y el orden es
+de dependencia real — cada fila necesita la de arriba.
 
 | # | qué | por qué ahora | dónde |
 |---|---|---|---|
-| 1 | **Renumerar `0012_cron.sql` a `0013_cron.sql` y aplicarla** (con los dos secretos en el Vault) | sin los jobs **no sale ni un aviso**, y la cola de re-drive del bot no se barre. Va primero porque no depende de nada. ⚠️ El `0012` **de la base** es `ventus3_0012_revoke_trigger_fn_authenticated`: el número ya está tomado y aplicarla como `0012` choca | `DEPLOY.md` §5, §2.1 |
-| 2 | **Bajar de la base el SQL de `0011` y del `0012` aplicado** | no tienen archivo en `supabase/migrations/`: hoy **el repo no puede recrear la base desde cero**. Es una hora de trabajo que se paga sola el día de un incidente | §2.1 |
-| 3 | **Webhook del bot de Telegram** | ⚠️ **un token tiene UN webhook**: apuntar el de producción al v3 **apaga el bot v1 que el equipo usa hoy**. La primera vuelta va con un bot de prueba y el token en el scope *Preview*. Guardar `getWebhookInfo` en un archivo ANTES de tocar nada: después esa URL no está en ningún lado | `DEPLOY.md` §6.1–6.2, rollback en §6.5 |
-| 4 | **Emparejar a Victor Hugo, Andre y Paulo**, cada uno desde su teléfono, y registrar el Mini App en @BotFather (`/newapp`) | depende del 3. Es trabajo operativo, no de código: Ajustes → Telegram → Gerar código, y `/vincular` en el bot | `DEPLOY.md` §6.4, §7 |
-| 5 | **El job que barre `pendentesDeReprocesso()`** | la cola de re-drive existe y `processarUpdate()` quedó exportada para eso, pero **nadie la llama**. Sin el job, un update que quedó en `erro:` sólo se recupera si Telegram lo reintenta | §5.1 punto 4 |
-| 6 | **Probar en hardware real** (un iPhone y un Android) | safe areas, `apple-touch-icon`, umbrales de gesto: es lo único que no se puede simular | §5.1-bis |
-| 7 | El resto de la lista larga | — | §5 |
+| 1 | **Pushear el árbol** — 4 archivos nuevos y 31 modificados, todavía sin commitear | es lo único que separa a `ventus-reprocesso` de andar. El job corre cada 10 min y producción le contesta **400 `job_invalido`**, porque el nombre `reprocesso` sólo existe en el `api/dispatch/jobs.ts` del árbol local. Los otros **diez** jobs ya responden **200**. El deploy sale solo al pushear la rama | §1, corrida del 27/08 |
+| 2 | **Webhook del bot de Telegram** | ⚠️ **un token tiene UN webhook**: apuntar el de producción al v3 **apaga el bot v1 que el equipo usa hoy**. La primera vuelta va con un bot de prueba y el token en el scope *Preview*. Guardar `getWebhookInfo` en un archivo ANTES de tocar nada: después esa URL no está en ningún lado | `DEPLOY.md` §6.1–6.2, rollback en §6.5 |
+| 3 | **Emparejar a Victor Hugo, Andre y Paulo**, cada uno desde su teléfono, y registrar el Mini App en @BotFather (`/newapp`) | depende del 2. Es trabajo operativo, no de código: Ajustes → Telegram → Gerar código, y `/vincular` en el bot | `DEPLOY.md` §6.4, §7 |
+| 4 | **Probar en hardware real** (un iPhone y un Android) | safe areas, `apple-touch-icon`, umbrales de gesto: es lo único que no se puede simular | §5.1-bis |
+| 5 | **Decidir qué hacer con `check-inactivity-daily`** (jobid 1, el del v2) | sigue **activo y sin deduplicar**: 4.579 filas, 0,0 % de lectura. Quedó fuera de `0014` a propósito, y ahora que el dispatcher del v3 responde 200 y prueba que lo reemplaza, apagarlo es una decisión operativa con su propia ventana | `0014_cron.sql`, nota final |
+| 6 | El resto de la lista larga | — | §5 |
+
+> **Cerrado el 27/08, primera vuelta:** renumerar y aplicar el cron, bajar de la
+> base el SQL de `0011` y `0012`, y el job que barre `pendentesDeReprocesso()`.
+> Los once jobs de `pg_cron` están **agendados y activos**, y
+> `supabase/migrations/` mapea **1 a 1** contra `schema_migrations`.
+>
+> **Cerrado el 27/08, segunda vuelta —** y son los **dos ítems que encabezaban
+> esta tabla**, los dos verificados contra la base, no contra una promesa. Lo
+> que dice `net._http_response` (pg_net guarda la respuesta real del servidor):
+>
+> | ventana (UTC) | qué contestaba producción | n |
+> |---|---|---|
+> | 11:26 → 11:52 | 500 `FUNCTION_INVOCATION_FAILED` | 40 |
+> | 11:53 → 12:25 | 500 `nao_configurado` | 51 |
+> | 12:26 → 12:35 | **200 `{"ok":true,…}`** | 14 |
+>
+> Las dos fronteras son los dos arreglos. La de las **11:52** es el commit
+> `2e1bf82`, que le puso `.js` a los 29 imports de `src/core/*.ts`: era el
+> `ERR_MODULE_NOT_FOUND` del runtime ESM. La de las **12:25** es el dueño
+> cargando `CRON_SECRET` en Vercel — y que a partir de ahí conteste 200 y no
+> 401 prueba, sin leer ningún valor, que **el secreto de Vercel y el
+> `ventus_cron_secret` del Vault son el mismo**.
+>
+> Queda un solo 400, el del ítem 1 de arriba.
 
 **Lo que NO está en esta tabla, a propósito:** la vía del APK (parada, ver el
 recuadro de arriba) y diferir `supabase-js` del camino crítico (§5.3) — es una
@@ -764,37 +795,172 @@ dispositivos (iPhone 14, Pixel 7, desktop), que ejercita los gestos como gestos
 el micrófono con `--use-fake-device-for-media-stream`, o sea recorriendo
 `getUserMedia` y `MediaRecorder` de producción.
 
+### La corrida del verificador final del cron (27/08, la de cierre)
+
+Sobre el árbol con las dos entregas de esta vuelta ya juntas —la del cron y la
+del barrido de §5.5—. **Los seis comandos en verde:**
+
+```
+$ npm run type-check
+> tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.worker.json
+(sin salida)
+EXIT=0
+
+$ npx tsc --noEmit -p tsconfig.e2e.json
+(sin salida)
+EXIT=0
+
+$ npx eslint . --max-warnings 0
+(sin salida: 0 errores, 0 warnings)
+EXIT=0
+
+$ npx vitest run
+ Test Files  54 passed (54)
+      Tests  943 passed (943)
+     Errors  1 error          ← el unhandled rejection de §5.5 #44, ver abajo
+   Duration  14.16s
+EXIT=0        ← 929 al cerrar la vuelta anterior · +14 con los dos archivos
+                nuevos (`golden-sessions.test.ts`, `transport.test.ts`)
+
+$ npm run build
+✓ built in 2.10s · PWA · precache 65 entries (1.598,80 KiB)
+dist/assets/supabase-*.js  318,14 kB │ gzip: 89,56 kB
+dist/assets/ui-*.js        265,11 kB │ gzip: 85,86 kB
+dist/assets/index-*.js     205,37 kB │ gzip: 65,74 kB   ← entrada
+dist/sw.mjs                 23,86 kB │ gzip:  8,60 kB
+EXIT=0
+
+$ npx playwright test
+  23 skipped
+  143 passed (9.4m)
+EXIT=0
+```
+
+**Hicieron falta tres corridas completas, y las dos primeras no fueron verdes.**
+Se cuentan enteras porque el número que importa es cuántas veces hay que tirar
+la suite para creerle:
+
+| corrida | resultado | qué falló |
+|---|---|---|
+| 1ª | 142 passed · **1 failed** | `golden.spec.ts:53` (desktop) |
+| 2ª | 142 passed · **1 failed** | `registrar.spec.ts:110` (mobile) |
+| 3ª | **143 passed · 0 failed** | — (con el arreglo de `falar()`) |
+
+**La de `registrar` era un defecto de la prueba, y está arreglado.**
+`falar()` apretaba el micrófono, esperaba 1,6 s de **reloj de pared** y soltaba.
+Pero `gravacao.ts` mide la duración desde `rec.start()`, que corre **después**
+de que `getUserMedia` resuelva: en un contenedor cargado el permiso se comía
+más de 600 ms y quedaba menos de 1 s de audio (`MIN_SEGUNDOS`), la pantalla lo
+rechazaba por `'curto'` y el test moría esperando «Confirmar» **en la pantalla
+de grabar** — el snapshot de la falla lo muestra con el micrófono todavía ahí.
+Ahora `falar()` espera a que el **contador en pantalla** marque `0:02`, que lee
+`Date.now() - inicioRef`, o sea el mismísimo reloj que después decide si el
+audio es corto. Cero suposiciones sobre cuánto tardó el permiso.
+Verificado: `registrar.spec.ts --repeat-each=2` sobre los tres perfiles,
+**24/24**, y la suite entera en verde.
+
+> **La de `golden.spec.ts:53` NO se reprodujo y queda anotada, no barrida.**
+> «os quatro botões avançam o carrossel» no encontró el encabezado «Fila
+> terminada» después del cuarto botón. Cuatro intentos posteriores en verde:
+> 3/3 con `--project=desktop --repeat-each=3`, y 2/2 en las corridas completas
+> 2ª y 3ª sobre el mismo HEAD. Es la prueba más cargada del archivo —cuatro
+> clics encadenados, cada uno con confetti, toast y un remonte de
+> `AcoesDoToque` por `key={atual.lead.id}`—. **No se le tocó nada**: sin
+> reproducción, cambiarla es adivinar, y adivinar acá significa tapar. Queda
+> como §5.5 #45 con el sospechoso escrito.
+
+Y los de apoyo:
+
+```
+$ npm run verificar:pwa
+53 ok · 0 avisos · 0 errores · Instalable. ✓
+EXIT=0
+
+$ node scripts/url-publica.mjs --check
+✓ android/twa-manifest.json em dia com https://ventus3.vercel.app
+EXIT=0
+
+$ git status --porcelain -- src api      # el CRM v2, desde la raíz del repo
+(sin salida: NO se tocó)
+```
+
+> **La falla de la primera corrida fue un flake, y se dice cuál.**
+> `golden.spec.ts:53` («os quatro botões avançam o carrossel», perfil desktop)
+> no encontró el encabezado «Fila terminada» después del cuarto botón. **No se
+> reprodujo**: 3/3 en verde corriendo `golden.spec.ts --project=desktop
+> --repeat-each=3`, y 1/1 en verde en la segunda corrida completa de la suite
+> entera sobre el mismo HEAD. Es la prueba más cargada del archivo —cuatro
+> clics encadenados, cada uno con confetti, toast y un remonte de
+> `AcoesDoToque` por `key={atual.lead.id}`— y cae bajo carga de dos workers.
+> Queda **anotado, no barrido**: si vuelve a aparecer, el sospechoso es el
+> refetch de `useGoldenQueue`/`useLeadsPorIds` recalculando `itens` mientras el
+> índice avanza, no el cambio de esta vuelta (`vendorId` en la sesión Golden,
+> que no toca ni el índice ni la fila).
+
+**La base de producción no se tocó, y ninguna prueba escribió en ella.**
+Verificado por MCP al terminar, SOLO LECTURA:
+
+```
+public.tasks            36 filas · las 36 del backfill de 0013 (26/08 11:58 UTC)
+                        creadas hoy: 0
+public.golden_sessions   0 filas          public.ventus_actions   0 filas
+public.touchpoints     174 · public.leads 79 · public.opportunities 65 · vendors 6
+                        ninguna fila creada en las últimas 24 h en ninguna tabla
+```
+
+Las suites nuevas (`golden-sessions.test.ts`, `transport.test.ts`) y las de
+Playwright que escriben tareas corren contra `fake-indexeddb` y contra el
+fixture de red que simula Supabase: **no salió una sola escritura del proceso**.
+
+**El cron, contra la base real:** los **doce** jobs de `cron.job` están
+`active = true` —los once `ventus-*` de `0014` más `check-inactivity-daily`
+(jobid 1, del v2, ítem 5 de §0)— con los horarios exactos que declara
+`0014_cron.sql`. `cron.job_run_details` de las últimas 6 h no tiene un solo
+`failed`. Los dos secretos del Vault existen y tienen valor
+(`ventus_app_url`, 26 caracteres; `ventus_cron_secret`, 64) — **conferido por
+`length` y hash SHA-256, sin imprimir ningún valor**.
+
+**El repo de migraciones mapea 1 a 1 contra `schema_migrations`:** 15 archivos
+en `supabase/migrations/`, 15 versiones del v3 en la base, sin sobrantes de
+ninguno de los dos lados. La tabla completa está en §2.1.
+
 ## 2 · Qué está construido y funciona
 
-### 2.1 · Base de datos — **las 12 migraciones del v3 están aplicadas**
+### 2.1 · Base de datos — **las 14 migraciones del v3 están aplicadas, y el repo mapea 1 a 1**
 
-Verificado con `list_migrations` el 2026-08-26:
+Verificado con `schema_migrations` el 2026-08-27:
 
-| version | nombre |
-|---|---|
-| 20260825120838 | `ventus3_0001_tasks` |
-| 20260825120916 | `ventus3_0002_evidencia` |
-| 20260825120950 | `ventus3_0003_ventus_actions` |
-| 20260825121057 | `ventus3_0004_gamificacao` |
-| 20260825121132 | `ventus3_0005_notificacoes` |
-| 20260825121151 | `ventus3_0006_telegram` |
-| 20260825121217 | `ventus3_0007_indices` |
-| 20260825121314 | `ventus3_0008_vistas` |
-| 20260825121510 | `ventus3_0009_rpcs` |
-| 20260825121553 | `ventus3_0010_contrato_app` |
-| 20260825121903 | `ventus3_0011_revoke_trigger_fn_anon` |
-| 20260825190039 | `0100_seguranca_rls_grants_views` |
-| 20260825225714 | `ventus3_0012_revoke_trigger_fn_authenticated` |
+| version | nombre | archivo del repo |
+|---|---|---|
+| 20260825120838 | `ventus3_0001_tasks` | `0001_tasks.sql` |
+| 20260825120916 | `ventus3_0002_evidencia` | `0002_evidencia.sql` |
+| 20260825120950 | `ventus3_0003_ventus_actions` | `0003_ventus_actions.sql` |
+| 20260825121057 | `ventus3_0004_gamificacao` | `0004_gamificacao.sql` |
+| 20260825121132 | `ventus3_0005_notificacoes` | `0005_notificacoes.sql` |
+| 20260825121151 | `ventus3_0006_telegram` | `0006_telegram.sql` |
+| 20260825121217 | `ventus3_0007_indices` | `0007_indices.sql` |
+| 20260825121314 | `ventus3_0008_vistas` | `0008_vistas.sql` |
+| 20260825121510 | `ventus3_0009_rpcs` | `0009_rpcs.sql` |
+| 20260825121553 | `ventus3_0010_contrato_app` | `0010_contrato_app.sql` |
+| 20260825121903 | `ventus3_0011_revoke_trigger_fn_anon` | `0011_revoke_trigger_fn_anon.sql` ← **reconstruido 27/08** |
+| 20260825190039 | `0100_seguranca_rls_grants_views` | `0100_seguranca_rls_grants_views.sql` ← **renombrado 27/08** |
+| 20260825225714 | `ventus3_0012_revoke_trigger_fn_authenticated` | `0012_revoke_trigger_fn_authenticated.sql` ← **reconstruido 27/08** |
+| 20260826115832 | `ventus3_0013_backfill_tasks` | `0013_backfill_tasks.sql` |
+| 20260827112510 | `ventus3_0014_cron` | `0014_cron.sql` ← **renumerado y aplicado 27/08** |
 
-> **Ojo con la numeración: hay un `0012` en la base y otro en el disco, y no
-> son el mismo.** Lo aplicado como `ventus3_0012` es
-> `revoke_trigger_fn_authenticated`; el archivo `supabase/migrations/0012_cron.sql`
-> es el de los diez jobs de `pg_cron` y sigue **sin aplicar** (`cron.job` tiene
-> 0 jobs `ventus-%`). Y en `supabase/migrations/` **no existen los archivos de
-> `0011` ni del `0012` aplicado**: se corrieron directo contra la base. Eso
-> significa que **el repositorio no puede recrear esta base desde cero**.
-> Antes de aplicar `0012_cron.sql` conviene renumerarlo a `0013_cron.sql` y
-> bajar de la base el SQL de las dos que faltan.
+> **Lo que se cerró el 27/08.** Antes de esa vuelta había tres agujeros a la vez:
+> el archivo de los jobs se llamaba `0012_cron.sql` y ese número **ya estaba
+> tomado** en la base por `revoke_trigger_fn_authenticated`; los archivos de
+> `0011` y del `0012` aplicado **no existían** (se habían corrido directo contra
+> la base, así que el repo no podía recrearla desde cero); y el `0100` seguía
+> diciendo `PENDENTE_APROVACAO` en el nombre estando aplicado desde el 25/08.
+>
+> Los dos archivos que faltaban se reconstruyeron leyendo
+> `supabase_migrations.schema_migrations.statements`: el SQL es **literal**, no
+> una reescritura, y cada uno lleva cabecera «APLICADA EM PRODUÇÃO» con su fecha.
+> Se contrastó además contra `aclexplode(pg_proc.proacl)`:
+> `ventus_tasks_after_change()` hoy tiene EXECUTE sólo para `postgres` y
+> `service_role`, que es exactamente lo que esos dos REVOKE dejan.
 
 `0011` cierra un hueco que abría `0001`: `ventus_tasks_after_change()` es
 SECURITY DEFINER y quedaba con EXECUTE para `anon`, expuesta en
@@ -845,10 +1011,47 @@ nueva nace llamable por PostgREST**. Cerrarlo del todo quedó fuera de aquella
 ventana a propósito; conviene revisar los grants de `anon` después de crear
 cualquier función o tabla desde el panel.
 
-`supabase/migrations/0012_cron.sql` está **escrita y sin aplicar**: son los diez
-jobs de `pg_cron` + `pg_net` del v3 (el archivo que `api/dispatch/jobs.ts` y
-`run.ts` venían citando y que no existía). Se aplica después del deploy — ver
-`DEPLOY.md` §5.
+`supabase/migrations/0014_cron.sql` está **aplicada** (27/08): son los **once**
+jobs de `pg_cron` + `pg_net` del v3, el schema privado `ventus_cron` y la función
+`chamar()` fail-closed que lee los dos secretos del Vault. Salida real de
+`select jobname, schedule, active from cron.job`, minutos después de aplicar:
+
+| jobname | schedule | active |
+|---|---|---|
+| `ventus-run` | `* * * * *` | true |
+| `ventus-golden-t15` | `*/5 * * * *` | true |
+| `ventus-preparo-reuniao` | `*/5 * * * *` | true |
+| `ventus-reprocesso` | `*/10 * * * *` | true |
+| `ventus-agenda-manha` | `0 10 * * 1-5` | true |
+| `ventus-risco` | `0 12 * * 1-5` | true |
+| `ventus-veredicto` | `0 19 * * 5` | true |
+| `ventus-trofeus` | `0 20 * * 5` | true |
+| `ventus-encerramento` | `0 21 * * 1-5` | true |
+| `ventus-fila-golden` | `5 21 * * 1-5` | true |
+| `ventus-auditoria` | `0 2 * * *` | true |
+
+(Más `check-inactivity-daily`, el job del v2, `0 10 * * 1-5`, que sigue activo a
+propósito: apagarlo es decisión operativa y merece su propia ventana.)
+
+El **onceavo** —`ventus-reprocesso`— no estaba en el archivo original y se
+agregó en esta vuelta: es el ítem 5 de la lista de §0 que quedaba abierto. Hace
+`POST /api/dispatch/jobs?job=reprocesso` cada 10 minutos, y ese job nuevo de
+`api/dispatch/jobs.ts` barre `pendentesDeReprocesso()` del `bot_log` y devuelve
+cada update a `processarUpdate()`. Entró como un nombre más del router, **no**
+como ruta nueva: `vercel.json` está en 12 funciones, el techo del plan Hobby.
+La idempotencia no se toca ahí — la da `reivindicarUpdate()`, el mismo candado
+que protege del reintento de Telegram.
+
+> **⚠️ Los jobs corren, pero hoy corren en vacío.** Encenderlos destapó un
+> defecto que no tiene nada que ver con el cron: `POST /api/dispatch/run`
+> responde **500 `FUNCTION_INVOCATION_FAILED`**, no el 401 que se esperaba por
+> el `CRON_SECRET` que falta en Vercel. El log de la Vercel:
+> `ERR_MODULE_NOT_FOUND: Cannot find module '/var/task/ventus3/src/core/types'
+> imported from /var/task/ventus3/src/core/index.js`. `src/core/index.ts`
+> reexporta **sin extensión** (`export * from './types'`): Vite lo resuelve, el
+> runtime Node ESM de Vercel no. Rompe toda función de `api/` que importe
+> `src/core/index.js`. Está en §0 como el ítem 1 y en `DEPLOY.md` §5.4 con las
+> salidas completas.
 
 **Ojo, hay más de una mano escribiendo en esta base.** Durante la ventana de
 aplicación, `tripoll@ventapel.com` corrió dos migraciones propias
@@ -1227,7 +1430,10 @@ Los cinco agentes entregaron en verde. Estos son los huecos del empalme:
   lo citaban como la fuente única de los horarios, y `0011` era en realidad la
   migración de revocación de la ola anterior. Se escribió como
   `0012_cron.sql` —diez jobs, secretos en el Vault, schema privado fuera del
-  alcance del PostgREST— y las tres referencias apuntan ahí.
+  alcance del PostgREST— y las tres referencias apuntan ahí. *(El baile de
+  números siguió: el 27/08 el archivo pasó a llamarse `0014_cron.sql`, porque
+  `0012` y `0013` también estaban tomados, y ganó un onceavo job. Lo vigente
+  está en §2.1.)*
 - **`vercel.json` declaraba las funciones con un glob** y un `maxDuration` de
   60 s para todas. Ahora las declara **una por una** (11 de las 12 que permite
   el plan Hobby), con el techo que corresponde a cada una: 10 s para el health,
@@ -1458,17 +1664,19 @@ completo, para no perder nada.
 3. ~~Edge Function `pairing-code`~~ — **hecha** como `api/pairing-code.ts`
    (§0). Lo que queda es operativo: emparejar de verdad a Victor Hugo, Andre y
    Paulo, cada uno desde su teléfono (`DEPLOY.md` §6.4).
-4. ~~El handler de `/api/telegram`~~ — **hecho** (§0). Lo que queda abierto de
-   este punto: nadie llama a `pendentesDeReprocesso()` todavía. La cola de
-   re-drive existe y `processarUpdate()` está exportada justo para eso, pero
-   falta el job de `0012_cron.sql` que la barra cada pocos minutos. Sin él, un
-   update que quedó en `erro:` sólo se recupera si Telegram lo reintenta.
-5. **Aplicar `0012_cron.sql`** — el deploy ya está de pie, así que esto se puede
-   hacer ahora, con los dos secretos en el Vault. Verificado el 26/08:
-   `cron.job` tiene **0** jobs `ventus-%`. Renumerarlo antes a `0013_cron.sql`
-   (§2.1: el `0012` de la base es otra migración). Ver `DEPLOY.md` §5. Y decidir aparte qué se hace con el job del v2
-   `check-inactivity-daily` (jobid 1), que sigue insertando una notificación por
-   oportunidad por día sin deduplicar: 4.579 filas, 0,0 % de lectura.
+4. ~~El handler de `/api/telegram`~~ — **hecho** (§0). Y ~~nadie llama a
+   `pendentesDeReprocesso()`~~ — **hecho** el 27/08: el job `reprocesso` de
+   `api/dispatch/jobs.ts` la barre y devuelve cada update a `processarUpdate()`,
+   y `ventus-reprocesso` lo dispara cada 10 minutos, 24×7 (§2.1).
+5. ~~Aplicar `0012_cron.sql`~~ — **hecho** el 27/08 como `ventus3_0014_cron`
+   (renumerada; el `0012` y el `0013` de la base son otras migraciones). Los
+   once jobs están activos, con la lista completa en §2.1. **Lo que quedó
+   abierto de este punto es el 500 de `/api/dispatch/run`** — el defecto de los
+   imports sin extensión de `src/core`, §0 ítem 1 y `DEPLOY.md` §5.4 — y cargar
+   `CRON_SECRET` en Vercel. Sigue pendiente, aparte, decidir qué se hace con el
+   job del v2 `check-inactivity-daily` (jobid 1), que sigue insertando una
+   notificación por oportunidad por día sin deduplicar: 4.579 filas, 0,0 % de
+   lectura.
 6. **Ampliar `ventus_commit_action`**: hoy despacha 5 tipos y los otros 4
    (`registrar_atividade`, `converter_lead`, `arquivar_lead`,
    `marcar_commitment`) caen en el `else` con «Tipo de ação desconhecido»
@@ -1662,11 +1870,41 @@ del repositorio es cero; lo que queda es de cuenta, de secretos y de manos.
     (`window is not defined`) originado en `src/app/__tests__/boot.test.tsx`: es
     una carrera de teardown de `PersistQueryClientProvider` entre archivos. No
     hace fallar nada y ese test corrido solo pasa limpio, pero conviene cerrarlo.
+    **Confirmado el 27/08 que sigue vivo, y que es intermitente**: de dos
+    corridas de `npx vitest run` sobre el mismo árbol, una salió con
+    `Errors 1 error` y la otra sin ninguno. Los 943 tests pasan en las dos y el
+    exit code es 0 en las dos, así que no rompe el gate — pero esa
+    intermitencia es justamente lo que hace que no se pueda diagnosticar
+    corriendo el archivo solo.
+45. **`golden.spec.ts:53` («os quatro botões avançam o carrossel») falló una
+    vez y no se pudo reproducir.** Perfil desktop, en la corrida completa: no
+    apareció el encabezado «Fila terminada» después del cuarto botón, o sea el
+    carrusel se quedó en «Contato 4 de 4». Cuatro intentos posteriores en
+    verde (3 aislados con `--repeat-each=3` + 2 suites completas sobre el mismo
+    HEAD). El sospechoso, para quien lo tome: `itens` se recalcula con
+    `montarFila(leads, ordem, entradas)` mientras `indice` avanza, y sus
+    insumos vienen de dos queries de TanStack (`useGoldenQueue`,
+    `useLeadsPorIds`) que pueden refetchear en medio de los cuatro clics. **No
+    es** el cambio de esta vuelta —`vendorId` en la sesión Golden— que no toca
+    ni el índice ni la fila. Reproducirlo pide correr la suite con carga
+    encima; sin eso, cualquier arreglo es adivinanza.
 
 ---
 
 ## 6 · Cosas que es fácil romper sin darse cuenta
 
+- **`npx playwright test` te ensucia el árbol: reescribe 21 PNG de
+  `docs/capturas/`.** Son los mismos screenshots re-renderizados —el contenido
+  no cambió, los bytes sí—, y salen mezclados con tus cambios de verdad en el
+  `git status`. Si no los tocaste a propósito, `git checkout -- docs/capturas/`
+  antes de commitear: si no, el push se lleva 21 PNG de ruido y el diff deja de
+  ser legible. Pasó el 27/08 y por eso queda escrito.
+- **No pongas un `waitForTimeout` de reloj de pared donde el producto mide su
+  propio tiempo.** Es lo que rompía `registrar.spec.ts` una corrida de cada dos
+  (§1): la prueba contaba 1,6 s desde el dedo, pero `gravacao.ts` cuenta desde
+  `rec.start()`, que es después del permiso del micrófono. En una máquina
+  cargada las dos cuentas no dan lo mismo y la prueba falla sola. Si hay un
+  contador en pantalla que lee el mismo reloj que la lógica, esperá a ese.
 - **No mandes un argumento de más a una RPC.** PostgREST resuelve por conjunto
   exacto de nombres. `contrato-rpc.test.ts` te avisa.
 - **No escribas en Dexie la fila del servidor sin normalizarla.** `tasks` es la

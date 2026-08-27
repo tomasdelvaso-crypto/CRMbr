@@ -908,7 +908,7 @@ const STATUS_PROMOVIVEIS = ['asignada', 'pool', 'en_barrido'] as const
  *
  * OJO — `market_sweep` tiene RLS habilitado y CERO policies, así que con el
  * JWT de un vendedor esta consulta devuelve 0 filas hasta que se apruebe la
- * policy `ms_select` de `0100_seguranca_PENDENTE_APROVACAO.sql`. Por eso el
+ * policy `ms_select` de `0100_seguranca_rls_grants_views.sql`. Por eso el
  * resultado trae `motivo`: la pantalla distingue «no tenés empresas pendientes»
  * de «el mapa todavía no está liberado», que son mensajes muy distintos.
  */

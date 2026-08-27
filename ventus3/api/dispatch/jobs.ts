@@ -9,7 +9,7 @@
 // y compartir el bundle evita nueve arranques en frío distintos.
 //
 // pg_cron agenda y pg_net hace el POST con `?job=<nome>` y el `CRON_SECRET`.
-// Los horarios están declarados UNA vez, en 0012_cron.sql, en BRT. El v2 tenía
+// Los horarios están declarados UNA vez, en 0014_cron.sql, en BRT. El v2 tenía
 // tres horarios distintos para el mismo digest (vercel.json decía 12:00 UTC, el
 // README prometía 7:30 y el comentario decía 10:30): nadie sabía cuál corría.
 //
@@ -40,6 +40,8 @@ import { carregarCarteira } from '../_lib/carteira.js'
 import type { ApiHandler } from '../_lib/http.js'
 import { exigirMetodo, pedidoInvalido, rota } from '../_lib/http.js'
 import { exigirCron } from './_cron.js'
+import { processarUpdate } from '../telegram.js'
+import { pendentesDeReprocesso } from '../telegram/_lib/log.js'
 import type { NovoAviso } from './_tipos.js'
 import { db, enfileirarVarios, vendedoresAtivos } from './_repo.js'
 
@@ -798,6 +800,54 @@ async function jobAuditoria(agora: Date, cli: SupabaseClient): Promise<NovoAviso
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   10 · Re-drive de la cola del bot de Telegram
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Barre `pendentesDeReprocesso()` y vuelve a meter cada update por
+ * `processarUpdate()`.
+ *
+ * POR QUÉ EXISTE. Cuando Groq o Anthropic explotan a mitad de un audio,
+ * `fecharComErro()` deja la fila de `bot_log` en `erro:` con el update CRUDO
+ * guardado en `parsed.update`. Telegram deja de reintentar rápido, así que sin
+ * este barrido el audio que el vendedor mandó a las 18:04 se pierde en
+ * silencio — y él no se entera hasta que busca el registro y no está.
+ *
+ * POR QUÉ ACÁ Y NO EN UNA RUTA PROPIA. `vercel.json` está en 12 funciones, el
+ * techo del plan Hobby: la 13 no despliega. Este job entra como un nombre más
+ * del router de `/api/dispatch/jobs`, que ya tiene `exigirCron` y el mismo
+ * bundle.
+ *
+ * IDEMPOTENCIA. No se toca acá: `processarUpdate()` llama a
+ * `reivindicarUpdate()` antes de trabajar y sale por `duplicado` si otra
+ * invocación ya reclamó la fila. Ese candado es el mismo que protege del
+ * reintento de Telegram, y es el único que hay.
+ *
+ * NO DEVUELVE AVISOS: lo que sale de acá lo manda el propio flujo del bot al
+ * chat del vendedor, no la cola de `_politica.ts`.
+ */
+async function jobReprocesso(_agora: Date, _cli: SupabaseClient): Promise<NovoAviso[]> {
+  const pendentes = await pendentesDeReprocesso(20)
+  if (pendentes.length === 0) return []
+
+  let refeitos = 0
+  for (const update of pendentes) {
+    try {
+      // Secuencial a propósito: en paralelo, dos updates del mismo vendedor
+      // trabajarían sobre la cartera de antes de la escritura del otro.
+      await processarUpdate(update)
+      refeitos += 1
+    } catch (erro) {
+      // Un update que vuelve a explotar queda en `erro:` y lo intenta la
+      // pasada siguiente, hasta que caduca a las 24 h.
+      console.error(`[dispatch/jobs] reprocesso do update ${String(update.update_id)} falhou:`, erro)
+    }
+  }
+  console.info(`[dispatch/jobs] reprocesso: ${refeitos}/${pendentes.length} updates refeitos`)
+  return []
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    Router
    ══════════════════════════════════════════════════════════════════════════ */
 
@@ -813,6 +863,7 @@ export const JOBS: Readonly<Record<string, Job>> = {
   trofeus: jobTrofeus,
   encerramento: jobEncerramento,
   auditoria: jobAuditoria,
+  reprocesso: jobReprocesso,
 }
 
 export const NOMES_DE_JOB: readonly string[] = Object.keys(JOBS)

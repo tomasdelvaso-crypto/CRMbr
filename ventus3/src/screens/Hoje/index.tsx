@@ -95,10 +95,10 @@ export default function HojeScreen() {
   if (sessao.vendorName === null) {
     return <SessaoSemVendedor onTentar={sessao.revalidarVendor} />
   }
-  return <Hoje vendorName={sessao.vendorName} />
+  return <Hoje vendorName={sessao.vendorName} vendorId={sessao.vendor?.id ?? null} />
 }
 
-function Hoje({ vendorName }: { vendorName: string | null }) {
+function Hoje({ vendorName, vendorId }: { vendorName: string | null; vendorId: number | null }) {
   const navigate = useNavigate()
   const hoje = useDiaVigente()
 
@@ -231,7 +231,7 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
 
   const marcarFeito = (acao: PlannedAction) => {
     if (!vendorName) return
-    const entrada: EntradaResolucao = { vendor: vendorName, dia: hoje, acao }
+    const entrada: EntradaResolucao = { vendor: vendorName, vendorId, dia: hoje, acao }
 
     setOtimistas((atual) => ({
       ...atual,
@@ -266,7 +266,7 @@ function Hoje({ vendorName }: { vendorName: string | null }) {
       [acao.id]: { acaoId: acao.id, motivo: 'adiado', em: new Date().toISOString(), ate },
     }))
     adiar.mutate(
-      { vendor: vendorName, dia: hoje, acao, ate },
+      { vendor: vendorName, vendorId, dia: hoje, acao, ate },
       {
         onError: () => {
           limparOtimista(acao.id)

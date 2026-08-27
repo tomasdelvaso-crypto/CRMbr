@@ -17,12 +17,14 @@ import { SessionContext } from './session-context'
 
 export interface VendorDaSessao {
   vendorName: string | null
+  /** FK a `vendors.id`. `null` mientras no hay vendedor resuelto, igual que `vendorName`. */
+  vendorId: number | null
   /** La sesión todavía se está resolviendo: toca esqueleto, no vacío. */
   carregando: boolean
 }
 
 export function useVendorDaSessao(): VendorDaSessao {
   const ctx = useContext(SessionContext)
-  if (!ctx) return { vendorName: null, carregando: false }
-  return { vendorName: ctx.vendorName, carregando: ctx.loading }
+  if (!ctx) return { vendorName: null, vendorId: null, carregando: false }
+  return { vendorName: ctx.vendorName, vendorId: ctx.vendor?.id ?? null, carregando: ctx.loading }
 }

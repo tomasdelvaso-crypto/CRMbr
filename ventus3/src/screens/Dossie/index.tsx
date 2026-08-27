@@ -50,6 +50,18 @@ import { montarLinhaDoTempo } from './timeline'
 import { PainelCoaching } from '@/screens/Ventus/PainelCoaching'
 import { useVendorDaSessao } from '@/app/useVendorDaSessao'
 
+/**
+ * Debajo de esto, «Histórico» no tiene con qué llenar una columna propia: es
+ * un lead recién nacido o una oportunidad que todavía no generó actividad.
+ * Partirla en dos columnas ahí deja la derecha (histórico + compromissos +
+ * ficha) terminando a un tercio de la izquierda, con el resto de la fila en
+ * blanco kilométrico — el defecto que reportó el dueño del producto en
+ * §0-ter de ESTADO.md. `lg:items-start` ya evita que esa caja se ESTIRE hasta
+ * igualar la izquierda; lo que falta es no partir en dos cuando no hay nada
+ * que justifique la partición.
+ */
+const HISTORICO_CURTO_MAX = 2
+
 export default function DossieScreen() {
   const params = useParams()
   const navigate = useNavigate()
@@ -57,7 +69,7 @@ export default function DossieScreen() {
   const bruto = Number(params['opportunityId'])
   const opportunityId = Number.isInteger(bruto) && bruto > 0 ? bruto : null
 
-  const { vendorName, carregando: sessaoCarregando } = useVendorDaSessao()
+  const { vendorName, vendorId, carregando: sessaoCarregando } = useVendorDaSessao()
   const consulta = useDossieCompleto(opportunityId)
   const alternarSpin = useAlternarPerguntaSpin()
   const avancarEtapa = useAvancarEtapa()
@@ -126,6 +138,10 @@ export default function DossieScreen() {
     movimentos: dossie.historicoEscalas,
   })
   const riscos = dossie.risks.filter((r) => r.severity !== 'info')
+  // Sin historial NI compromisso, la columna VERIFICAR no tiene con qué
+  // sostenerse al lado de la izquierda: cae en una sola columna, en el mismo
+  // orden DECIDIR → VERIFICAR que ya usa el teléfono.
+  const historicoCurto = itens.length <= HISTORICO_CURTO_MAX && dossie.commitments.length === 0
 
   const alternarPergunta = (escala: ScaleKey, texto: string): void => {
     if (opportunityId === null) return
@@ -191,6 +207,7 @@ export default function DossieScreen() {
           opportunity={oportunidade}
           tasks={dossie.tasks}
           vendorName={vendorName}
+          vendorId={vendorId}
           hoje={dossie.hoje}
         />
 
@@ -237,8 +254,19 @@ export default function DossieScreen() {
           justamente lo que un teléfono no puede dar.
 
           Nada de esto existe por debajo de 1024 px: las dos envolturas son
-          divs transparentes y el árbol es idéntico al de siempre. */}
-      <div className="mt-4 border-t border-border lg:mt-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:border-t-0 lg:px-4">
+          divs transparentes y el árbol es idéntico al de siempre.
+
+          EXCEPCIÓN — historial curto: con `itens.length` en 2 o menos y sin
+          compromisso, la columna direita não tem o que mostrar ao lado da
+          esquerda. Nesse caso as duas envolturas seguem empilhadas —mesma
+          ordem DECIDIR → VERIFICAR do telefone, só que também em lg+— em vez
+          de abrir uma segunda coluna que só serviria para terminar cedo. */}
+      <div
+        className={cx(
+          'mt-4 border-t border-border lg:mt-6 lg:border-t-0 lg:px-4',
+          historicoCurto ? 'lg:space-y-6' : 'lg:grid lg:grid-cols-2 lg:items-start lg:gap-6',
+        )}
+      >
         <div className="border-b border-border lg:overflow-hidden lg:rounded-card lg:border lg:bg-surface">
         <Secao
           id="ppvvcc"

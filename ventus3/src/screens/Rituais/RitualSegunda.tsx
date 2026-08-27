@@ -31,11 +31,19 @@ export interface RitualSegundaProps {
   open: boolean
   onClose: () => void
   vendorName: string
+  vendorId: number | null
   dia: IsoDate
   onPronto: () => void
 }
 
-export function RitualSegunda({ open, onClose, vendorName, dia, onPronto }: RitualSegundaProps) {
+export function RitualSegunda({
+  open,
+  onClose,
+  vendorName,
+  vendorId,
+  dia,
+  onPronto,
+}: RitualSegundaProps) {
   const dados = useRitualDaSegunda(open ? vendorName : null, dia)
   const declarar = useDeclararCompromissos()
 
@@ -74,6 +82,7 @@ export function RitualSegunda({ open, onClose, vendorName, dia, onPronto }: Ritu
     const escolhas: CandidatoDeCompromisso[] = candidatos.filter((c) => escolhidos.includes(c.id))
     await declarar.mutateAsync({
       vendor: vendorName,
+      vendorId,
       hoje: dia,
       escolhas,
       metas: { proposta: dados.data.proposta, escolhida: metas },

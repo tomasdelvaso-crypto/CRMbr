@@ -79,7 +79,11 @@ export interface UseSessaoGolden {
   acoes: AcoesGolden
 }
 
-export function useSessaoGolden(vendor: string | null, day: IsoDate): UseSessaoGolden {
+export function useSessaoGolden(
+  vendor: string | null,
+  day: IsoDate,
+  vendorId: number | null = null,
+): UseSessaoGolden {
   const [sessao, setSessao] = useState<SessaoLocal | null>(null)
   const [carregando, setCarregando] = useState(true)
   const toque = useRegistrarTouchpoint()
@@ -116,11 +120,11 @@ export function useSessaoGolden(vendor: string | null, day: IsoDate): UseSessaoG
     (duracaoMin: number, metaToques: number, fila: readonly number[]): void => {
       if (vendor === null) return
       const meta = metaToques > 0 ? metaToques : metaSugerida(fila.length)
-      const viva = iniciarSessao(sessaoNova(vendor, day, meta, fila), duracaoMin)
+      const viva = iniciarSessao(sessaoNova(vendor, day, meta, fila, vendorId), duracaoMin)
       setSessao(viva)
       void gravarSessao(viva).catch(() => undefined)
     },
-    [vendor, day],
+    [vendor, day, vendorId],
   )
 
   const registrar = useCallback(
@@ -233,6 +237,7 @@ export function useSessaoGolden(vendor: string | null, day: IsoDate): UseSessaoG
       // Entra al outbox como todo lo demás: sin red, sube al volver la señal.
       await registrarSessaoGolden({
         vendor: atual.vendor,
+        vendorId: atual.vendorId ?? null,
         day: atual.day,
         iniciadaEm: atual.iniciadaEm,
         terminadaEm: fim,

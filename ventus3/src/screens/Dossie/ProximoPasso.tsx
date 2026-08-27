@@ -25,6 +25,7 @@ export interface ProximoPassoProps {
   opportunity: Opportunity
   tasks: readonly Task[]
   vendorName: string | null
+  vendorId: number | null
   hoje: IsoDate
 }
 
@@ -36,7 +37,7 @@ function tarefaAtiva(tasks: readonly Task[]): Task | null {
   return vivas[0] ?? null
 }
 
-export function ProximoPasso({ opportunity, tasks, vendorName, hoje }: ProximoPassoProps) {
+export function ProximoPasso({ opportunity, tasks, vendorName, vendorId, hoje }: ProximoPassoProps) {
   const [reagendando, setReagendando] = useState(false)
   const [definindo, setDefinindo] = useState(false)
   const [titulo, setTitulo] = useState('')
@@ -87,6 +88,7 @@ export function ProximoPasso({ opportunity, tasks, vendorName, hoje }: ProximoPa
     setDefinindo(false)
     await criar.mutateAsync({
       vendor: vendorName,
+      vendorId,
       kind: 'next_action',
       target: { kind: 'opportunity', id: opportunity.id },
       title: texto,

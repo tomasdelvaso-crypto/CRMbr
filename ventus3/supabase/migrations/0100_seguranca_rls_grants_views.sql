@@ -7,9 +7,13 @@
 -- ##   condicionada a verificação prévia — a verificação está na SEÇÃO A e  ##
 -- ##   as saídas reais estão registradas neste arquivo).                    ##
 -- ##                                                                        ##
--- ##   O nome do arquivo é mantido por rastreabilidade do histórico; o      ##
--- ##   aviso "PENDENTE_APROVACAO" NÃO vale mais. Reaplicar é idempotente    ##
--- ##   (todo drop tem `if exists`, todo create é precedido do drop).        ##
+-- ##   Aplicada como `0100_seguranca_rls_grants_views`, version             ##
+-- ##   20260825190039 (19:00 UTC = 16:00 BRT). O arquivo chamava-se         ##
+-- ##   `0100_seguranca_PENDENTE_APROVACAO.sql` e foi renomeado em           ##
+-- ##   2026-08-27 para o nome com que está aplicada: o aviso                ##
+-- ##   "PENDENTE_APROVACAO" já não valia e enganava quem lia o diretório.   ##
+-- ##   Reaplicar é idempotente (todo drop tem `if exists`, todo create é    ##
+-- ##   precedido do drop).                                                  ##
 -- ##                                                                        ##
 -- ##   ESTA MIGRAÇÃO NÃO É ADITIVA: ela altera policies de RLS e grants do  ##
 -- ##   banco de produção que o CRM v2 usa todos os dias. O ROLLBACK EXATO   ##
@@ -183,7 +187,7 @@
 --
 --   `supabase db push` e o apply_migration do MCP já envolvem este arquivo em
 --   UMA transação. Se você rodar à mão no psql, envolva você mesmo:
---       begin;  \i 0100_seguranca_PENDENTE_APROVACAO.sql   -- valide a SEÇÃO C
+--       begin;  \i 0100_seguranca_rls_grants_views.sql   -- valide a SEÇÃO C
 --       commit; -- ou rollback; se algo não bater
 --
 

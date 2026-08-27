@@ -351,28 +351,6 @@ export function detectRisks(
   }))
 }
 
-/** Escalas que bajaron respecto del snapshot anterior, una por escala. */
-export function detectScaleRegression(
-  previous: ScalesRecord | null | undefined,
-  current: ScalesRecord | null | undefined,
-): DealRisk[] {
-  if (!previous) return []
-  const antes = getScaleScores(previous)
-  const agora = getScaleScores(current)
-  const out: DealRisk[] = []
-  for (const k of SCALE_KEYS) {
-    if (agora[k] >= antes[k]) continue
-    const queda = antes[k] - agora[k]
-    out.push({
-      code: 'scale_regression',
-      severity: queda >= 3 ? 'warning' : 'info',
-      message: `${SCALE_LABELS[k].toUpperCase()} caiu de ${antes[k]} para ${agora[k]}. Registre o motivo.`,
-      opportunityId: 0,
-    })
-  }
-  return out
-}
-
 /**
  * Riesgo agregado 0..100 de la cartera de un vendedor.
  * Ponderado por el valor del negocio: 4 riesgos en un deal de R$ 5.000 no

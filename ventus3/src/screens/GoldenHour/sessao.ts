@@ -50,6 +50,12 @@ export interface SessaoLocal {
   /** Versión del formato: si cambia, la sesión vieja se descarta sin romper. */
   v: 1
   vendor: string
+  /**
+   * FK a `vendors.id`. Opcional para que una sesión ya guardada en Dexie
+   * antes de este campo —de un dispositivo que no actualizó todavía— siga
+   * siendo válida: `lerSessao()` sólo descarta por versión y por vendor/day.
+   */
+  vendorId?: number | null
   day: IsoDate
   fase: FaseGolden
   duracaoMin: number
@@ -99,10 +105,12 @@ export function sessaoNova(
   day: IsoDate,
   metaToques: number,
   fila: readonly number[],
+  vendorId: number | null = null,
 ): SessaoLocal {
   return {
     v: 1,
     vendor,
+    vendorId,
     day,
     fase: 'abertura',
     duracaoMin: DURACAO_PADRAO,

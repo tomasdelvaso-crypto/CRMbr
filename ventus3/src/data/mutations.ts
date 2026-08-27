@@ -89,6 +89,11 @@ async function encolarEDisparar(
 
 export interface EntradaAtividade {
   vendor: string
+  // NO lleva vendorId: `public.activities` no tiene columna `vendor_id`
+  // (verificado por MCP) — a diferencia de `tasks` y `golden_sessions`. Mandarla
+  // sería el mismo 400 PGRST204 que ya rompió `criarTask` una vez (ver
+  // conflicts.ts). Si el día de mañana la tabla gana la columna, threadear acá
+  // Y agregar 'activities' a TABLAS_COM_CLIENT_UUID en transport.ts si aplica.
   opportunityId: number
   tipo: ActivityType
   descricao: string
@@ -174,6 +179,16 @@ export async function registrarAtividade(entrada: EntradaAtividade): Promise<str
 
 export interface EntradaTask {
   vendor: string
+  /**
+   * FK a `vendors.id`. Opcional a propósito: `trg_tasks_before_write` (0001)
+   * resuelve `vendor_id` a partir de `vendor` (nombre) del lado del servidor
+   * cuando llega null, así que una llamada vieja sin este campo sigue
+   * funcionando. Mandarlo desde acá evita depender SOLO del match por nombre
+   * y deja la copia optimista de Dexie con el id correcto antes del próximo
+   * pull — que es lo que necesita cualquier agregación por vendor_id (ej. un
+   * futuro Painel do Gestor) para no ver null en las tareas recién creadas.
+   */
+  vendorId?: number | null
   kind: TaskKind
   /**
    * Sobre qué se actúa. `public.tasks` exige opportunity_id O lead_id
@@ -228,6 +243,7 @@ export async function criarTask(entrada: EntradaTask): Promise<string> {
   // undefined nunca llega al payload (lo corta desnormalizarLocal) y así el
   // default de Postgres sigue mandando.
   const extras = {
+    ...(entrada.vendorId !== undefined ? { vendor_id: entrada.vendorId } : {}),
     ...(entrada.canal !== undefined ? { canal: entrada.canal } : {}),
     ...(entrada.escalaAlvo !== undefined ? { target_scale: entrada.escalaAlvo } : {}),
     ...(entrada.rascunho !== undefined ? { draft_content: entrada.rascunho } : {}),
@@ -635,6 +651,12 @@ export async function promoverDoSweep(entrada: EntradaPromocao): Promise<void> {
 
 export interface EntradaSessaoGolden {
   vendor: string
+  /**
+   * FK a `vendors.id`. A diferencia de `tasks`, `public.golden_sessions` NO
+   * tiene trigger que la complete a partir del nombre: sin este campo la
+   * columna queda null para siempre en todo lo que escribe la app.
+   */
+  vendorId?: number | null
   day: IsoDate
   iniciadaEm: string
   terminadaEm: string
@@ -650,30 +672,45 @@ export interface EntradaSessaoGolden {
   superficie?: 'app' | 'telegram' | 'tma'
 }
 
-/** Cierra la sesión de Golden Hour. Append-only: una fila por vendedor y día. */
+/**
+ * Cierra la sesión de Golden Hour.
+ *
+ * NO es un insert append-only como `activities`: la tabla real se llama
+ * `golden_sessions` (nunca `golden_hour_sessions`, que no existe en
+ * Postgres) y tiene `unique (vendor, dia)` — `api/dispatch/jobs.ts` YA
+ * escribió la fila del día la víspera a las 18h, con la `fila` aprobada y
+ * cero resultados. Si esto insertara una fila nueva, chocaría contra ese
+ * UNIQUE (23505), el outbox lo clasifica como 'duplicado' —éxito
+ * disfrazado— y el resultado real de la hora (toques, debrief, hora_cheia)
+ * nunca llegaría al servidor. Por eso viaja como upsert por la clave natural
+ * (vendor, dia) y no por id: ver `transport.ts` (UPSERT_POR_TABELA). Los
+ * nombres de columna son los reales de `public.golden_sessions`, verificados
+ * por MCP — ninguno coincide por casualidad con el inglés de `EntradaSessaoGolden`.
+ */
 export async function registrarSessaoGolden(entrada: EntradaSessaoGolden): Promise<string> {
   const uuid = novoClientUuid()
 
   await encolarEDisparar({
     id: uuid,
-    tabla: 'golden_hour_sessions',
+    tabla: 'golden_sessions',
     op: 'insert',
     row_id: null,
     campos_tocados: [],
     payload: {
       vendor: entrada.vendor,
-      day: entrada.day,
-      started_at: entrada.iniciadaEm,
-      ended_at: entrada.terminadaEm,
-      duration_seconds: entrada.duracaoSegundos,
-      touches: entrada.toques,
+      vendor_id: entrada.vendorId ?? null,
+      dia: entrada.day,
+      inicio: entrada.iniciadaEm,
+      fim: entrada.terminadaEm,
+      duracao_segundos: entrada.duracaoSegundos,
+      toques: entrada.toques,
       conversas: entrada.conversas,
-      meetings: entrada.reunioes,
-      skipped: entrada.puladas,
-      goal_touches: entrada.metaToques,
+      agendamentos: entrada.reunioes,
+      pulados: entrada.puladas,
+      meta_toques: entrada.metaToques,
       hora_cheia: entrada.horaCheia,
       debrief: entrada.debrief ?? null,
-      surface: entrada.superficie ?? 'app',
+      superficie: entrada.superficie ?? 'app',
     },
   })
   return uuid

@@ -1,12 +1,22 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- 0012_cron.sql — os agendamentos do v3 (pg_cron + pg_net)
+-- 0014_cron.sql — os agendamentos do v3 (pg_cron + pg_net)
 -- ═══════════════════════════════════════════════════════════════════════════
 --
--- ESTADO: **NÃO APLICADA**. Aplicar SÓ DEPOIS de:
---   1. o deploy estar de pé e responder em {APP_URL}/api/health;
---   2. CRON_SECRET configurado nas env vars da Vercel;
---   3. os dois segredos gravados no Vault (bloco 1 abaixo).
--- Aplicar antes disso agenda chamadas que devolvem 404 a cada minuto.
+-- APLICADA EM PRODUÇÃO em 2026-08-27, como `ventus3_0014_cron`.
+--
+-- ── POR QUE 0014 E NÃO 0012 ────────────────────────────────────────────────
+-- Este arquivo chamou-se `0012_cron.sql` até 2026-08-27. Os números 0012 e
+-- 0013 já estavam **tomados no banco** por migrações que se rodaram direto:
+-- `ventus3_0012_revoke_trigger_fn_authenticated` e
+-- `ventus3_0013_backfill_tasks`. Aplicá-la como 0012 colidia. Renumerada para
+-- 0014, que é o primeiro número livre.
+--
+-- ── O QUE FICA PENDENTE DEPOIS DE APLICAR ──────────────────────────────────
+-- Os jobs ficam ativos na hora, mas as chamadas HTTP respondem **401** até que
+-- `CRON_SECRET` esteja carregado nas env vars da Vercel com o MESMO valor que
+-- `ventus_cron_secret` do Vault. Isso é esperado e não quebra nada: pg_net
+-- guarda a resposta em `net._http_response` e o job seguinte tenta de novo.
+-- Enquanto o 401 durar, nenhum aviso sai — nem se duplica nem se perde.
 --
 -- ── POR QUE pg_cron E NÃO VERCEL CRON ──────────────────────────────────────
 -- O plano Hobby da Vercel dá UMA execução por dia com precisão de hora.
@@ -45,7 +55,13 @@ create extension if not exists pg_net;
 -- RODAR ISTO À MÃO ANTES, uma vez, trocando os valores. Não vai versionado
 -- com valor nenhum de propósito.
 --
---   select vault.create_secret('https://ventus.ventapel.com.br', 'ventus_app_url',
+-- JÁ ESTÃO CRIADOS neste projeto (2026-08-27). `ventus_app_url` guarda
+-- `https://ventus3.vercel.app` — o mesmo valor de `config/url-publica.txt`, que
+-- é a fonte única; o dia que existir o domínio próprio, muda nos dois lugares.
+-- `ventus_cron_secret` nasceu dentro do banco e o seu valor **não se lê nem se
+-- imprime**: para conferir, comparam-se hashes ou usa-se EXISTS.
+--
+--   select vault.create_secret('https://ventus3.vercel.app', 'ventus_app_url',
 --          'Base absoluta do app v3 — a mesma APP_URL das env vars da Vercel');
 --   select vault.create_secret('<o CRON_SECRET da Vercel>', 'ventus_cron_secret',
 --          'Bearer dos endpoints de cron do v3');
@@ -126,8 +142,11 @@ end;
 $$;
 
 -- ── A cola: drena a notification_queue e decide o que sai ───────────────────
--- Todo minuto. É o ÚNICO que envia: os nove jobs abaixo só ENFILEIRAM. Quem
--- conhece o orçamento diário, o dedupe e as quiet hours é _politica.ts.
+-- Todo minuto. É o ÚNICO que envia avisos: os oito jobs de aviso abaixo só
+-- ENFILEIRAM. Quem conhece o orçamento diário, o dedupe e as quiet hours é
+-- _politica.ts. (Os outros dois — `ventus-auditoria` e `ventus-reprocesso` —
+-- não enfileiram nada: um escreve em `ventus_audit` e o outro fala com o
+-- Telegram pelo fluxo do próprio bot.)
 select cron.schedule('ventus-run', '* * * * *',
   $cmd$select ventus_cron.chamar('/api/dispatch/run')$cmd$);
 
@@ -176,6 +195,24 @@ select cron.schedule('ventus-fila-golden', '5 21 * * 1-5',
 select cron.schedule('ventus-auditoria', '0 2 * * *',
   $cmd$select ventus_cron.chamar('/api/dispatch/jobs?job=auditoria')$cmd$);
 
+-- ── Re-drive da fila do bot · a cada 10 min, 24×7 ──────────────────────────
+-- Barre `pendentesDeReprocesso()` de `bot_log` e volta a passar cada update
+-- por `processarUpdate()`. Quando Groq ou Anthropic explodem no meio de um
+-- áudio, a linha fica em `erro:` com o update CRU guardado em `parsed.update`;
+-- o Telegram para de reentregar rápido, então sem este job o áudio que o
+-- vendedor mandou às 18:04 se perde em silêncio.
+--
+-- SEM HORÁRIO BRT: é um intervalo, não um evento do dia. 24×7 de propósito —
+-- um áudio que falhou às 22h não espera até segunda para ser recuperado.
+--
+-- 10 min e não 1: o claim de `reivindicarUpdate()` só considera reprocessável
+-- uma linha mais velha que `CLAIM_STALE_MS`, e um barrido a cada minuto
+-- competiria com a própria invocação que ainda está trabalhando o update.
+-- A idempotência não depende deste intervalo (o claim é o candado), mas
+-- disputar por nada custa invocações da Vercel.
+select cron.schedule('ventus-reprocesso', '*/10 * * * *',
+  $cmd$select ventus_cron.chamar('/api/dispatch/jobs?job=reprocesso')$cmd$);
+
 commit;
 
 
@@ -183,7 +220,7 @@ commit;
 -- VERIFICAÇÃO (rodar depois de aplicar)
 -- ═══════════════════════════════════════════════════════════════════════════
 --
--- 1) Os dez jobs existem e estão ativos:
+-- 1) Os onze jobs existem e estão ativos:
 --    select jobname, schedule, active from cron.job
 --     where jobname like 'ventus-%' order by jobname;
 --

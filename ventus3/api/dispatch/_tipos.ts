@@ -21,7 +21,7 @@ export type UrgenciaPush = 'very-low' | 'low' | 'normal' | 'high'
 
 /**
  * Motivos de supresión. Los cinco primeros son los del CHECK de 0005; los dos
- * últimos los agrega 0012_cron.sql:
+ * últimos los agrega 0014_cron.sql:
  *   expirada  — el aviso perdió sentido antes de poder salir (TTL vencido)
  *   sem_canal — el vendedor no tiene ni Telegram vinculado ni push suscrito
  */

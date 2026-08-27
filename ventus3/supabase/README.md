@@ -8,20 +8,17 @@ todos los días.
 > **Regla que gobierna todo este directorio:** los archivos `0001`–`0009` son
 > **estrictamente aditivos**. No borran tablas, no borran columnas, no renombran
 > nada, no cambian tipos y no tocan una sola policy, función o trigger del v2.
-> Todo lo que sí es peligroso vive en `0100_seguranca_PENDENTE_APROVACAO.sql`,
-> que **no se aplica sin aprobación humana explícita**.
+> Todo lo que sí es peligroso vive en `0100_seguranca_rls_grants_views.sql`,
+> que se aplicó el 2026-08-25 con aprobación humana explícita.
 
 ---
 
-## ESTADO DE APLICACIÓN — actualizado 2026-08-25
+## ESTADO DE APLICACIÓN — actualizado 2026-08-27
 
-**`0001`–`0010` están APLICADAS en producción (`wtrbvgqxgcfjacqcndmb`).**
-Aplicadas el **2026-08-25**, entre las 12:08 y las 12:16 UTC, vía
-`mcp__Supabase__apply_migration`, una llamada por archivo y en orden numérico.
-Ninguna falló ni necesitó reintento.
-
-`0100_seguranca_PENDENTE_APROVACAO.sql` **NO se aplicó** y sigue pendiente de
-aprobación humana.
+**Las 14 migraciones del v3 y la `0100` están APLICADAS en producción**
+(`wtrbvgqxgcfjacqcndmb`). El directorio mapea **1 a 1** contra
+`supabase_migrations.schema_migrations`: no queda ni un archivo sin aplicar ni
+una migración aplicada sin archivo.
 
 | Archivo | Nombre en `supabase_migrations.schema_migrations` | Estado |
 |---|---|---|
@@ -35,8 +32,31 @@ aprobación humana.
 | `0008_vistas.sql` | `20260825121314_ventus3_0008_vistas` | ✅ aplicada |
 | `0009_rpcs.sql` | `20260825121510_ventus3_0009_rpcs` | ✅ aplicada |
 | `0010_contrato_app.sql` | `20260825121553_ventus3_0010_contrato_app` | ✅ aplicada |
-| — (corrección de `0001`) | `ventus3_0011_revoke_trigger_fn_anon` | ✅ aplicada |
-| `0100_seguranca_PENDENTE_APROVACAO.sql` | — | ⛔ **NO aplicada, requiere aprobación** |
+| `0011_revoke_trigger_fn_anon.sql` | `20260825121903_ventus3_0011_revoke_trigger_fn_anon` | ✅ aplicada |
+| `0012_revoke_trigger_fn_authenticated.sql` | `20260825225714_ventus3_0012_revoke_trigger_fn_authenticated` | ✅ aplicada |
+| `0013_backfill_tasks.sql` | `20260826115832_ventus3_0013_backfill_tasks` | ✅ aplicada |
+| `0014_cron.sql` | `20260827112510_ventus3_0014_cron` | ✅ aplicada 2026-08-27 |
+| `0100_seguranca_rls_grants_views.sql` | `20260825190039_0100_seguranca_rls_grants_views` | ✅ aplicada 2026-08-25 |
+
+### Tres nombres de archivo cambiaron el 2026-08-27
+
+Nada de esto tocó la base: son renombres en el repo para que el disco diga lo
+mismo que el banco.
+
+* **`0012_cron.sql` → `0014_cron.sql`.** El `0012` y el `0013` ya estaban
+  tomados por migraciones corridas directo contra la base
+  (`revoke_trigger_fn_authenticated` y `backfill_tasks`). Aplicar el cron como
+  `0012` colisionaba. Todas las referencias del repo apuntan ya a `0014`
+  (`DEPLOY.md` §5, `ESTADO.md`, `api/dispatch/{run,jobs,_tipos}.ts`).
+* **`0100_seguranca_PENDENTE_APROVACAO.sql` →
+  `0100_seguranca_rls_grants_views.sql`.** Está aplicada desde el 2026-08-25 y
+  el nombre viejo hacía creer lo contrario a quien miraba el `ls`.
+* **`0011` y `0012` dejaron de faltar.** Se corrieron directo contra la base y
+  no tenían archivo, así que **el repo no podía recrear la base desde cero**.
+  Se reconstruyeron el 2026-08-27 leyendo
+  `supabase_migrations.schema_migrations.statements`: el SQL de los dos archivos
+  es literal, no una reescritura. Cada uno lleva la cabecera «APLICADA EM
+  PRODUÇÃO» con su fecha.
 
 ### Detalles de la aplicación
 
@@ -83,9 +103,12 @@ aprobación humana.
 > RPC del v3 llegó a ejecutarse. Su migración es aditiva (`add column if not
 > exists origin_snapshot jsonb`) y no colisiona con nada de acá.
 
-### Qué falta (además de `0100`)
+### Qué falta
 
 Lo de la sección «Lo que este directorio **no** hace» sigue vigente, y además:
+
+0. ~~**`CRON_SECRET` en las env vars de la Vercel**~~ — **hecho el 2026-08-27**,
+   ver la nota del final de esta sección. El camino entero responde 200.
 
 1. **Backfill inicial**: `notification_prefs` y `streaks` por vendedor, el
    `cookbook` de la primera semana, y promover con `promote_sweep_to_lead()` las
@@ -97,6 +120,44 @@ Lo de la sección «Lo que este directorio **no** hace» sigue vigente, y ademá
    corren de verdad, no antes.
 3. **`supabase_realtime` sigue con cero tablas**: el realtime del v3 se suscribe
    y no le llega nada (sin romper).
+
+> **El camino entero responde 200 desde las 12:26 UTC del 2026-08-27.** Lo que
+> sigue es la historia de ese mismo día, medida sobre `net._http_response`, que
+> es lo que el banco vio contestar al servidor:
+>
+> | ventana (UTC) | respuesta | n |
+> |---|---|---|
+> | 11:26 → 11:52 | 500 `FUNCTION_INVOCATION_FAILED` | 40 |
+> | 11:53 → 12:25 | 500 `nao_configurado` | 51 |
+> | 12:26 → 12:35 | **200 `{"ok":true,…}`** | 14 |
+>
+> **El primer 500 no tenía nada que ver con el cron.** El log de la Vercel decía:
+>
+> ```
+> Error [ERR_MODULE_NOT_FOUND]: Cannot find module
+>   '/var/task/ventus3/src/core/types'
+>   imported from /var/task/ventus3/src/core/index.js
+> ```
+>
+> `src/core/index.ts` reexportaba con especificadores **sin extensión**
+> (`export * from './types'`). Vite los resuelve; el runtime Node ESM de la
+> Vercel no. Rompía **toda** función de `api/` que importara `src/core/index.js`
+> —`dispatch/run`, `dispatch/jobs`, `telegram`, `act`, `plan`, `ingest`,
+> `ventus`—, o sea casi todo el backend; `/api/health`, que no importa nada de
+> `src/`, respondía bien y por eso el deploy parecía verde. Lo arregló el commit
+> `2e1bf82`, poniéndole `.js` a los 29 imports relativos de los nueve archivos
+> de `src/core/`.
+>
+> **El segundo 500 sí era el secreto**, y se apagó cuando el dueño cargó
+> `CRON_SECRET` en la Vercel. Que a partir de ahí conteste **200 y no 401**
+> prueba —sin leer ningún valor, sólo mirando el status— que el secreto de la
+> Vercel y el `ventus_cron_secret` del Vault **son el mismo**.
+>
+> **Queda un solo 400.** `ventus-reprocesso` llama a
+> `/api/dispatch/jobs?job=reprocesso` y producción responde `job_invalido`,
+> porque ese nombre todavía sólo existe en el `api/dispatch/jobs.ts` del árbol
+> local, sin commitear. Los otros diez jobs ya responden 200. Se arregla
+> pusheando: el deploy sale solo.
 
 ### Cómo revertir cada una
 
@@ -221,7 +282,12 @@ where name like 'ventus3_%';
 | 7 | `0007_indices.sql` | 17 índices sobre tablas **existentes** + `ANALYZE` | — |
 | 8 | `0008_vistas.sql` | `cadence_schedule` + `v_carteira_do_vendedor`, `v_fila_cadencia`, `v_golden_queue` | 0001, 0002 |
 | 9 | `0009_rpcs.sql` | `stage_gates` + `avancar_etapa`, `registrar_touchpoint`, `promote_sweep_to_lead`, `ventus_commit_action` | 0001, 0002, 0003, 0008 |
-| — | `0100_seguranca_PENDENTE_APROVACAO.sql` | **NO SE APLICA.** Saneamiento de RLS y grants | todo lo anterior |
+| 10 | `0010_contrato_app.sql` | el contrato que la app consume | 0001–0009 |
+| 11 | `0011_revoke_trigger_fn_anon.sql` | revoca `EXECUTE` de `anon` sobre la función de trigger de `0001` | 0001 |
+| 12 | `0012_revoke_trigger_fn_authenticated.sql` | lo mismo para `authenticated` | 0011 |
+| 13 | `0013_backfill_tasks.sql` | llena `tasks` desde `opportunities.next_action` | 0001 |
+| 14 | `0014_cron.sql` | schema `ventus_cron`, función `chamar()` y los **once** jobs de `pg_cron` | 0005; **y el deploy de pie** |
+| — | `0100_seguranca_rls_grants_views.sql` | Saneamiento de RLS y grants. **No es aditivo** — aplicado el 2026-08-25 con aprobación explícita | todo lo anterior |
 
 El orden numérico **es** el orden de dependencias. Correrlas salteadas falla con
 `relation does not exist`.
@@ -238,14 +304,21 @@ Todas son **idempotentes**: se pueden correr N veces sin efecto acumulativo
 supabase db push --db-url "$DATABASE_URL"
 
 # Opción B — psql, archivo por archivo, parando al primer error
-for f in 0001 0002 0003 0004 0005 0006 0007 0008 0009; do
+for f in 0001 0002 0003 0004 0005 0006 0007 0008 0009 0010 0011 0012 0013 0014; do
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "supabase/migrations/${f}_"*.sql || break
 done
 ```
 
 `0100_...` **no aparece en ninguno de los dos comandos a propósito.** Está fuera
-de la serie `000x` justamente para que ningún glob ni ningún `db push` lo levante
-por accidente.
+de la serie `00xx` justamente para que ningún glob ni ningún `db push` lo levante
+por accidente: no es aditivo y ya está aplicado. Recrear la base desde cero es
+correr la serie `0001`–`0014` y **después** el `0100` a mano.
+
+`0014_cron.sql` es la única de la serie que **no** se puede correr contra una
+base sola: agenda POSTs contra el deploy y necesita los dos secretos del Vault
+(`ventus_app_url`, `ventus_cron_secret`). Sin ellos la función `chamar()` levanta
+excepción a propósito —fail-closed— y los jobs aparecen fallados en
+`cron.job_run_details`.
 
 ---
 
@@ -286,8 +359,11 @@ El `UPDATE` que hace el trigger no cambia `stage`, así que el trigger
 `trigger_log_stage_change` no inserta nada. No hay recursión ni ruido en el
 timeline.
 
-### Riesgoso — `0100_seguranca_PENDENTE_APROVACAO.sql`
-**No es aditivo y no se aplica.** Contiene el saneamiento de seguridad: quitar la
+### Riesgoso — `0100_seguranca_rls_grants_views.sql`
+**No es aditivo. Aplicado el 2026-08-25** con aprobación explícita del dueño del
+producto (antes de eso el archivo se llamaba `0100_seguranca_PENDENTE_APROVACAO.sql`;
+el nombre cambió el 2026-08-27 para no seguir mintiendo en el `ls`).
+Contiene el saneamiento de seguridad: quitar la
 policy `Enable all for development`, revocar escritura a `anon`, pasar las 5
 vistas del v2 a `SECURITY INVOKER`, una policy permissiva por acción sobre
 `authenticated` con `auth` envuelto en `(select ...)`, y `search_path` fijo en las

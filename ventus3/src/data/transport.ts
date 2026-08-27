@@ -19,6 +19,30 @@ import { ErroOutbox, type OutboxMutation, type TransporteOutbox } from './local-
 const PG_UNIQUE_VIOLATION = '23505'
 
 /**
+ * Tablas cuyo esquema real tiene `client_uuid` (verificado por MCP). Antes
+ * `enviarInsert` se lo agregaba a TODO insert por igual; `golden_sessions` no
+ * tiene esa columna (ni la tuvo nunca: la vuelta anterior creyó que sí,
+ * confundida por el nombre `golden_hour_sessions` que tampoco existe) y
+ * `touchpoints` tampoco —entra por la RPC `registrar_touchpoint`, nunca por
+ * insert directo—, así que agregarla ahí sería el mismo 400 PGRST204 de
+ * columna inventada. Si se suma una tabla nueva por insert directo, hay que
+ * decidir acá si de verdad tiene la columna — no asumirlo.
+ */
+const TABLAS_COM_CLIENT_UUID: ReadonlySet<string> = new Set(['activities', 'tasks'])
+
+/**
+ * Tablas que se escriben por upsert sobre una CLAVE NATURAL, no por un `id`
+ * nuevo. `golden_sessions` tiene `unique (vendor, dia)` y ya puede tener una
+ * fila del día — la escribió `api/dispatch/jobs.ts` la víspera con la fila
+ * aprobada y cero resultados — así que un `insert` liso chocaría contra ese
+ * UNIQUE, el outbox lo leería como 'duplicado' (éxito disfrazado) y el
+ * resultado real de la hora nunca pisaría el servidor.
+ */
+const UPSERT_POR_TABELA: Readonly<Record<string, string>> = {
+  golden_sessions: 'vendor,dia',
+}
+
+/**
  * Traduce un error de PostgREST a la clasificación del outbox.
  * La regla de oro: ante la duda, 'rede'. Reintentar es barato; descartar una
  * nota que el vendedor escribió en el galpón, no.
@@ -74,14 +98,23 @@ function traduzir(m: OutboxMutation): OutboxMutation {
 }
 
 async function enviarInsert(m: OutboxMutation): Promise<void> {
-  // client_uuid viaja SIEMPRE: es el anti-duplicado del servidor (UNIQUE en
-  // public.tasks igual que en las append-only). El `id` que ya trae el payload
-  // es el MISMO uuid, y eso también es a propósito: `aplicarRemoto` indexa la
-  // copia local de tasks por `id`, así que dejar que Postgres generara el suyo
-  // con gen_random_uuid() haría que la fila volviera del pull como una SEGUNDA
-  // tarea, al lado de la optimista que ya está en pantalla.
-  const linha = { ...m.payload, client_uuid: m.id }
-  const { error, status } = await supabase.from(m.tabla).insert(linha)
+  // client_uuid viaja SOLO a las tablas que de verdad tienen la columna: es el
+  // anti-duplicado del servidor (UNIQUE en public.tasks igual que en las
+  // append-only), pero agregarla ciegamente a una tabla sin esa columna es un
+  // 400 PGRST204 — el mismo error de columna inventada que ya rompió
+  // `criarTask` una vez. El `id` que ya trae el payload es el MISMO uuid, y eso
+  // también es a propósito: `aplicarRemoto` indexa la copia local de tasks por
+  // `id`, así que dejar que Postgres generara el suyo con gen_random_uuid()
+  // haría que la fila volviera del pull como una SEGUNDA tarea, al lado de la
+  // optimista que ya está en pantalla.
+  const linha = TABLAS_COM_CLIENT_UUID.has(m.tabla)
+    ? { ...m.payload, client_uuid: m.id }
+    : { ...m.payload }
+
+  const onConflict = UPSERT_POR_TABELA[m.tabla]
+  const { error, status } = onConflict
+    ? await supabase.from(m.tabla).upsert(linha, { onConflict })
+    : await supabase.from(m.tabla).insert(linha)
   const classificado = classificarErroPostgrest(error, status)
   if (classificado) throw classificado
 }

@@ -432,6 +432,8 @@ const TAREFA_POR_TIPO: Readonly<Record<TipoAcao, TaskKind>> = {
 
 export interface EntradaResolucao {
   vendor: string
+  /** FK a `vendors.id`, para que la task que `adiarAcaoDoDia` cria no nazca com vendor_id null. */
+  vendorId?: number | null
   dia: IsoDate
   acao: PlannedAction
 }
@@ -529,7 +531,7 @@ export interface EntradaAdiamento extends EntradaResolucao {
  * llegó a 51 de 54 oportunidades sin próxima acción.
  */
 export async function adiarAcaoDoDia(entrada: EntradaAdiamento): Promise<void> {
-  const { vendor, dia, acao, ate } = entrada
+  const { vendor, vendorId, dia, acao, ate } = entrada
 
   if (acao.tarefaId !== undefined) {
     // La tarjeta nació de una task pendiente: adiar significa correr ESA task
@@ -550,6 +552,7 @@ export async function adiarAcaoDoDia(entrada: EntradaAdiamento): Promise<void> {
 
   await criarTask({
     vendor,
+    vendorId,
     kind: TAREFA_POR_TIPO[acao.tipo],
     target,
     title: acao.acao,

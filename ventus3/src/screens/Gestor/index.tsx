@@ -407,11 +407,7 @@ function PainelOffline({ aoTentar }: { aoTentar: () => void }) {
 function EsqueletoGestor() {
   return (
     <div className="px-4 py-4">
-      <Skeleton variant="lista" count={1} />
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Skeleton variant="card-acao" count={2} />
-        <Skeleton variant="card-acao" count={2} className="hidden lg:block" />
-      </div>
+      <Skeleton variant="gestor" />
     </div>
   )
 }

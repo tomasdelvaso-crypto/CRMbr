@@ -31,7 +31,7 @@ tem nenhum grant sobre tabelas, e há 67 policies sobre `authenticated`.
 | 1 | Carregar os 2 secrets do APK no GitHub e empurrar uma tag `v*` | `docs/ANDROID.md` §2-3 |
 | 2 | Respaldar o keystore e a senha em dois cofres diferentes | `docs/ANDROID.md` §7 |
 | 3 | Trâmite Limited Distribution do Google — **prazo 30/09/2026** | `docs/ANDROID.md` §8 |
-| 4 | Aplicar `0012_cron.sql` (sem ela não sai nenhum aviso) | `docs/DEPLOY.md` §5 |
+| 4 | Aplicar `0014_cron.sql` (sem ela não sai nenhum aviso) | `docs/DEPLOY.md` §5 |
 | 5 | Webhook do bot no Telegram — ⚠️ um token tem **um** webhook | `docs/DEPLOY.md` §6.1 |
 | 6 | Emparelhar os vendedores e registrar o Mini App no @BotFather | `docs/DEPLOY.md` §6.4, §7 |
 | 7 | Testar em telefone de verdade (um iPhone e um Android) | `docs/ESTADO.md` §5.1-bis |

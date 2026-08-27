@@ -28,8 +28,21 @@ const TETRA = 101
  * Más de 1 s (MIN_SEGUNDOS) para que la grabación no salga 'curto', y más de
  * 600 ms (MS_PARA_TRAVAR) para que se lea como hold y no como «tap para
  * trabar» — las dos constantes viven en la pantalla y esto las respeta.
+ *
+ * POR QUÉ SE ESPERA AL CONTADOR Y NO AL RELOJ DE PARED. `gravacao.ts` mide la
+ * duración desde `rec.start()`, que corre **después** de que `getUserMedia`
+ * resuelva; el `pointerdown` del dedo es antes. Contando 1,6 s desde el dedo,
+ * en un contenedor cargado el permiso se comía más de 600 ms y quedaba menos
+ * de 1 s de audio: la pantalla lo rechazaba por 'curto', se quedaba en la
+ * pantalla de grabar y el test moría esperando «Confirmar» —una falla que sólo
+ * aparecía en la corrida completa, nunca corriendo el archivo solo—.
+ *
+ * El contador en pantalla lee `Date.now() - inicioRef`, o sea EXACTAMENTE el
+ * mismo reloj que después decide si el audio es corto. Esperar a que marque
+ * 0:02 prueba que el grabador ya capturó más de MIN_SEGUNDOS, sin suponer
+ * nada sobre cuánto tardó el permiso.
  */
-async function falar(page: Page, segundos = 1.6): Promise<void> {
+async function falar(page: Page, ateSegundos = 2): Promise<void> {
   const microfone = page.getByRole('button', { name: 'Segure para gravar uma nota de voz' })
   await expect(microfone).toBeVisible()
   const caixa = await microfone.boundingBox()
@@ -38,7 +51,12 @@ async function falar(page: Page, segundos = 1.6): Promise<void> {
   const y = caixa.y + caixa.height / 2
   await page.mouse.move(x, y)
   await page.mouse.down()
-  await page.waitForTimeout(segundos * 1000)
+
+  // El contador sólo se monta con el grabador andando, y es el único texto
+  // `m:ss` de la pantalla. Se espera al segundo pedido (0:02 por defecto).
+  const contador = page.getByText(new RegExp(`^0:0[${String(ateSegundos)}-9]$`))
+  await expect(contador).toBeVisible({ timeout: 20_000 })
+
   await page.mouse.up()
 }
 

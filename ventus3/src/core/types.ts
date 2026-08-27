@@ -422,6 +422,12 @@ export interface Task {
   created_by?: string | null
   /** Instante en que se marcó hecha. Obligatorio si status='done' (CHECK). */
   done_at?: IsoDateTime | null
+  /**
+   * FK a `vendors.id`. Opcional porque una fila vieja del pull puede no
+   * traerla, y porque el servidor la completa solo (`trg_tasks_before_write`)
+   * a partir de `vendor` cuando llega null.
+   */
+  vendor_id?: number | null
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

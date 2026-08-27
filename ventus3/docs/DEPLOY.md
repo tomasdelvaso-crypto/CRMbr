@@ -17,7 +17,8 @@ O que **não** é preciso refazer:
 |---|---|
 | §1 · projeto na Vercel | **feito** — no ar em `https://ventus3.vercel.app`, root directory `ventus3`, deploy automático desde `claude/crm-web-app-redesign-f7tu7g` |
 | §2 · variáveis de ambiente | **feito** — `/api/health` responde `ok:true` com Supabase, Anthropic, Groq e auth configurados |
-| banco · migrações `0001`–`0012` | **aplicadas** no projeto `wtrbvgqxgcfjacqcndmb` |
+| banco · migrações `0001`–`0014` e a `0100` | **aplicadas** no projeto `wtrbvgqxgcfjacqcndmb`. Desde 27/08 o diretório `supabase/migrations/` mapeia **1 a 1** contra `schema_migrations` |
+| banco · jobs de `pg_cron` | **agendados e ativos** (11 jobs `ventus-%`) desde 27/08 — mas o endpoint que eles chamam está caído, ver **§5.4** |
 | banco · RLS e grants | **saneados e verificados**: `anon` sem nenhum grant, 67 policies sobre `authenticated` |
 | APK · assetlinks.json | **com o SHA-256 real** do keystore, conferido (`npm run assetlinks:check`) |
 | APK · workflow | **revisado linha a linha**; falta só carregar os dois secrets |
@@ -41,9 +42,14 @@ runbook toca o v2 — **desde que o projeto novo da Vercel tenha o root director
 ### O banco é o MESMO
 
 Um só projeto Supabase (`wtrbvgqxgcfjacqcndmb`) serve os dois CRMs. As
-migrações `0001`–`0011` e a `0100` (RLS, grants, views) **já estão aplicadas**.
-A única que falta é a `0012_cron.sql`, e ela só deve ser aplicada depois do
-deploy estar de pé (passo 5).
+migrações `0001`–`0014` e a `0100` (RLS, grants, views) **já estão aplicadas**,
+`0014_cron.sql` inclusive (27/08). Não falta nenhuma.
+
+> **Numeração:** o arquivo dos jobs chamou-se `0012_cron.sql` até 27/08. Os
+> números 0012 e 0013 já estavam tomados no banco por migrações corridas direto
+> (`ventus3_0012_revoke_trigger_fn_authenticated` e
+> `ventus3_0013_backfill_tasks`), então virou `0014_cron.sql`. Se você achar um
+> `0012_cron.sql` em algum lugar, é um documento velho.
 
 ### O bot v1 está no ar e um token tem UM webhook
 
@@ -206,6 +212,15 @@ disso, e perguntar cedo demais queima a única pergunta que o Safari permite.
 
 ## 5 · Jobs (pg_cron + pg_net)
 
+> **FEITO em 2026-08-27.** Os segredos estão no Vault e `0014_cron.sql` foi
+> aplicada como `ventus3_0014_cron` (version `20260827112510`). Os **onze** jobs
+> `ventus-%` existem e estão `active = true`. Esta seção fica como runbook para
+> reaplicar ou recriar.
+>
+> **`CRON_SECRET` já está nas env vars da Vercel** (carregado em 2026-08-27,
+> por volta das 12:25 UTC) e o defeito do §5.4 já foi corrigido. O caminho
+> inteiro responde **200** desde as 12:26 UTC. Detalhe medido no §5.4.
+
 **Ordem obrigatória: só depois do passo 2 verde.** Agendar antes é agendar
 chamadas que dão 404 a cada minuto.
 
@@ -225,15 +240,16 @@ por qualquer um com acesso ao banco.
 
 ### 5.2 Aplicar a migração
 
-`supabase/migrations/0012_cron.sql`, inteiro, no SQL Editor. Ela cria o schema
+`supabase/migrations/0014_cron.sql`, inteiro, no SQL Editor. Ela cria o schema
 privado `ventus_cron` (fora do alcance do PostgREST), a função `chamar()`
-fail-closed, e agenda os **dez jobs**:
+fail-closed, e agenda os **onze jobs**:
 
 | job | horário (BRT) | cron (UTC) |
 |---|---|---|
 | `ventus-run` — drena a fila e envia | todo minuto | `* * * * *` |
 | `ventus-golden-t15` | a cada 5 min | `*/5 * * * *` |
 | `ventus-preparo-reuniao` (T-90) | a cada 5 min | `*/5 * * * *` |
+| `ventus-reprocesso` — re-drive da fila do bot | a cada 10 min, 24×7 | `*/10 * * * *` |
 | `ventus-agenda-manha` | 07:00 seg-sex | `0 10 * * 1-5` |
 | `ventus-risco` | 09:00 seg-sex | `0 12 * * 1-5` |
 | `ventus-veredicto` | sexta 16:00 | `0 19 * * 5` |
@@ -243,16 +259,25 @@ fail-closed, e agenda os **dez jobs**:
 | `ventus-auditoria` | 23:00 todo dia | `0 2 * * *` |
 
 O servidor está em **UTC** e o Brasil não tem horário de verão desde 2019:
-BRT = UTC-3, fixo.
+BRT = UTC-3, fixo. Os quatro jobs de intervalo (`run`, `golden-t15`,
+`preparo-reuniao`, `reprocesso`) não têm horário BRT porque não são eventos do
+dia.
 
-**Só `ventus-run` envia alguma coisa.** Os outros nove **enfileiram**; quem
-conhece o orçamento diário, o dedupe e as quiet hours é `_politica.ts`. Foi
-assim que o v2 chegou a 17 avisos num dia para a mesma pessoa.
+**Só `ventus-run` envia alguma coisa.** Os oito jobs de aviso **enfileiram**;
+quem conhece o orçamento diário, o dedupe e as quiet hours é `_politica.ts`. Foi
+assim que o v2 chegou a 17 avisos num dia para a mesma pessoa. Os outros dois não
+enfileiram nada: `ventus-auditoria` escreve `flag_calibracao` em `ventus_audit`, e
+`ventus-reprocesso` faz `POST /api/dispatch/jobs?job=reprocesso`, que varre
+`pendentesDeReprocesso()` do `bot_log` e devolve cada update a
+`processarUpdate()` — o áudio que falhou porque o Groq caiu no meio volta a ser
+processado em vez de se perder. Entrou como mais um nome do router de
+`api/dispatch/jobs.ts` e não como rota nova de propósito: o `vercel.json` está
+nas 12 funções, o teto do plano Hobby.
 
 ### 5.3 Verificar
 
 ```sql
--- 1) os dez jobs, ativos
+-- 1) os onze jobs, ativos
 select jobname, schedule, active from cron.job
  where jobname like 'ventus-%' order by jobname;
 
@@ -265,6 +290,11 @@ select id, status_code, left(content, 300)
 --   200 → tudo certo
 --   401 → o CRON_SECRET do Vault não é o da Vercel
 --   404 → a URL do Vault aponta para outro lugar
+--   405 «Use GET nesta rota» → NORMAL no passo 2: `chamar()` faz POST e
+--       /api/health só aceita GET. Já prova o que importa — DNS, TLS, a URL do
+--       Vault e o deploy de pé. Para exercitar o Bearer, chame antes
+--       `/api/dispatch/jobs?job=auditoria`, que é POST e não manda nada a
+--       ninguém (só escreve em ventus_audit).
 
 -- 4) execuções e falhas
 select jobname, status, return_message, start_time
@@ -275,6 +305,56 @@ select jobname, status, return_message, start_time
 
 **Parar tudo** (rollback sem apagar nada):
 `update cron.job set active = false where jobname like 'ventus-%';`
+
+### 5.4 · ⚠️ O que a primeira corrida encontrou (2026-08-27)
+
+Os jobs foram aplicados e a verificação do §5.3 rodou de imediato. **pg_cron e
+pg_net fizeram a parte deles desde o primeiro minuto**; o outro lado levou uma
+hora para ficar verde, em dois consertos. A história inteira, medida sobre
+`net._http_response` — que é o que o banco viu o servidor responder:
+
+| janela (UTC) | resposta | n |
+|---|---|---|
+| 11:26 → 11:52 | 500 `FUNCTION_INVOCATION_FAILED` | 40 |
+| 11:53 → 12:25 | 500 `nao_configurado` | 51 |
+| 12:26 → 12:35 | **200 `{"ok":true,…}`** | 14 |
+
+E o estado de hoje:
+
+| verificação | saída real |
+|---|---|
+| `cron.job` | os 11 jobs `ventus-%`, todos `active = true` |
+| `cron.job_run_details` | zero `failed` nas últimas 6 h |
+| `chamar('/api/health')` | **405** «Use GET nesta rota» (esperado: `chamar()` faz POST) |
+| `POST /api/dispatch/run` | **200** `{"ok":true,…}`, todo minuto |
+| `POST /api/dispatch/jobs?job=golden-t15` | **200** `{"job":"golden-t15",…}` |
+| `POST /api/dispatch/jobs?job=reprocesso` | **400 `job_invalido`** ← única pendência, ver o fim desta seção |
+
+**O primeiro 500 não tinha nada a ver com o cron.** O log de runtime da Vercel:
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module
+  '/var/task/ventus3/src/core/types'
+  imported from /var/task/ventus3/src/core/index.js
+```
+
+`src/core/index.ts` reexportava sem extensão (`export * from './types'`). O Vite
+resolve isso; o runtime **Node ESM** da Vercel não. Derrubava **toda** função de
+`api/` que importasse `src/core/index.js` — `dispatch/run`, `dispatch/jobs`,
+`telegram`, `act`, `plan`, `ingest`, `ventus` —, ou seja quase o backend inteiro.
+`/api/health`, que não importa nada de `src/`, respondia normal, e era por isso
+que o §2 aparecia verde. **Corrigido** pelo commit `2e1bf82`, que pôs `.js` nos
+29 imports relativos dos nove arquivos de `src/core/*.ts`.
+
+**O segundo 500 era o segredo mesmo**, e apagou quando o dono carregou
+`CRON_SECRET` na Vercel. Responder **200 e não 401** a partir dali prova — só
+olhando o status, sem ler valor nenhum — que o segredo da Vercel e o
+`ventus_cron_secret` do Vault **são o mesmo**.
+
+**A única pendência é um 400.** `ventus-reprocesso` chama
+`/api/dispatch/jobs?job=reprocesso`, e esse nome ainda só existe no
+`api/dispatch/jobs.ts` da árvore local, sem commit. Resolve-se com um push: o
+deploy sai sozinho a partir da branch.
 
 ---
 

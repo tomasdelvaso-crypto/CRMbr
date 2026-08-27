@@ -14,7 +14,7 @@
 // columnas— pero en la base.
 //
 // Entonces: pg_cron agenda, pg_net hace el POST, y el dominio corre una sola
-// vez, acá, en el mismo código que ve el vendedor. Ver 0012_cron.sql.
+// vez, acá, en el mismo código que ve el vendedor. Ver 0014_cron.sql.
 
 import type { ApiHandler } from '../_lib/http.js'
 import { exigirMetodo, rota } from '../_lib/http.js'

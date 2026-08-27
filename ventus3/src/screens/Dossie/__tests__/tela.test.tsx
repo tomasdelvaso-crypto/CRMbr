@@ -152,6 +152,52 @@ describe('a tela do dossiê', () => {
     expect(html).toContain('Definir próximo passo')
     expect(html).toContain('Nenhum registro ainda')
     expect(html).not.toContain('sem dados')
+    // Sem histórico nem compromisso, a coluna VERIFICAR não tem com o que
+    // sustentar uma segunda coluna ao lado da esquerda: cai numa só, na mesma
+    // ordem DECIDIR → VERIFICAR que já usa o telefone. Ver §0-ter de ESTADO.md
+    // («coluna direita vazia quilométrica»).
+    expect(html).not.toContain('lg:grid-cols-2')
+    expect(html).toContain('lg:space-y-6')
+  })
+
+  it('com histórico de verdade, o dossiê abre as duas colunas', async () => {
+    await db.opportunities.put(
+      opp({
+        id: 48,
+        vendor: VENDOR,
+        client: 'Ambev',
+        name: 'Expansão da linha 3',
+        stage: 3,
+        scales: escalas({ dor: 5, poder: 4, visao: 5, valor: 4, controle: 3, compras: 2 }),
+      }),
+    )
+    for (let i = 0; i < 3; i += 1) {
+      await db.activities.put({
+        uid: `hist-${String(i)}`,
+        client_uuid: `hist-${String(i)}`,
+        pendente: 0,
+        id: 6000 + i,
+        opportunity_id: 48,
+        vendor: VENDOR,
+        created_at: `2026-08-2${String(i)}T13:00:00.000Z`,
+        activity_date: `2026-08-2${String(i)}`,
+        activity_type: 'call',
+        description: `Toque ${String(i)}`,
+        result: null,
+        stage_at_time: null,
+        methodology_code: null,
+        ai_suggested_action: null,
+        ai_suggested_scales: null,
+        ai_confidence: null,
+        next_action: null,
+        next_action_date: null,
+        next_action_done: null,
+        source: 'manual',
+      })
+    }
+
+    const html = await montar(tela(48))
+    expect(html).toContain('lg:grid-cols-2')
   })
 
   it('uma ficha que não está na carteira offline não quebra a rota', async () => {

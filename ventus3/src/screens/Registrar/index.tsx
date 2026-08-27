@@ -504,6 +504,7 @@ export default function RegistrarScreen() {
       // y mañana la tarjeta ya sabe por dónde se hace.
       await criarTask({
         vendor: vendorName,
+        vendorId: vendor?.id ?? null,
         kind: 'next_action',
         target: { kind: alvo.kind, id: alvo.id },
         title: rascunho.proximaAcao.trim(),
@@ -590,7 +591,7 @@ export default function RegistrarScreen() {
         footnote: 'Sua nota continua aqui. Tente de novo em um instante.',
       })
     }
-  }, [rascunho, vendorName, navigate, recarregarPendentes])
+  }, [rascunho, vendorName, vendor, navigate, recarregarPendentes])
 
   /* ── Corrigir falando ─────────────────────────────────────────────────── */
   const corrigirFalando = useCallback(() => {

@@ -33,6 +33,7 @@ export type SkeletonVariant =
   | 'revisao'
   | 'chat'
   | 'golden'
+  | 'gestor'
 
 export interface SkeletonProps {
   /** Forma exacta del contenido que reemplaza. */
@@ -256,6 +257,42 @@ function Forma({ variant }: { variant: SkeletonVariant }) {
             <SkeletonBlock className="h-11 flex-1 rounded-lg" />
             <SkeletonBlock className="h-11 w-11 rounded-lg" />
             <SkeletonBlock className="h-11 w-11 rounded-lg" />
+          </div>
+        </div>
+      )
+
+    // Painel do Gestor: cabecera (semana + pipeline + a frase da leitura),
+    // as 4 pestañas do SegmentedControl e dois cartões de vendedor (avatar,
+    // nome, pipeline, dias com registro, barra de adoção e duas seções).
+    case 'gestor':
+      return (
+        <div>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <SkeletonBlock className="h-4 w-40" />
+            <SkeletonBlock className="h-4 w-24" />
+          </div>
+          <SkeletonBlock className="mt-3 h-5 w-4/5" />
+          <div className="mt-4 flex gap-2">
+            {[0, 1, 2, 3].map((i) => (
+              <SkeletonBlock key={i} className="h-8 w-20 rounded-pill" />
+            ))}
+          </div>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            {[0, 1].map((i) => (
+              <div key={i} className="rounded-card border border-border bg-surface p-4">
+                <div className="flex items-start gap-3">
+                  <SkeletonBlock className="size-10 shrink-0 rounded-pill" />
+                  <div className="min-w-0 flex-1">
+                    <SkeletonBlock className="h-4 w-2/5" />
+                    <SkeletonBlock className="mt-2 h-3 w-3/5" />
+                  </div>
+                  <SkeletonBlock className="h-8 w-10 shrink-0" />
+                </div>
+                <SkeletonBlock className="mt-4 h-1.5 w-full rounded-pill" />
+                <SkeletonBlock className="mt-4 h-3 w-1/3" />
+                <SkeletonBlock className="mt-2 h-4 w-4/5" />
+              </div>
+            ))}
           </div>
         </div>
       )

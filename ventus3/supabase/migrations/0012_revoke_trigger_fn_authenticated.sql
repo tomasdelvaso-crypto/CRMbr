@@ -1,0 +1,28 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 0012_revoke_trigger_fn_authenticated.sql — el último cabo suelto del
+-- saneamiento de grants sobre funciones de trigger
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- APLICADA EM PRODUÇÃO em 2026-08-25 22:57:14 UTC (19:57:14 BRT), como
+-- `ventus3_0012_revoke_trigger_fn_authenticated`, version `20260825225714`.
+--
+-- Este archivo se reconstruyó el 2026-08-27 a partir de
+-- `supabase_migrations.schema_migrations.statements` de la propia base: la
+-- migración se había corrido directo contra el proyecto y no tenía archivo, así
+-- que el repositorio no podía recrear la base desde cero. El SQL de abajo es
+-- **literal**, tal como quedó registrado en el banco.
+--
+-- OJO CON LA NUMERACIÓN: este `0012` es el que la base tiene aplicado. El
+-- archivo de los jobs de pg_cron —que durante un tiempo se llamó
+-- `0012_cron.sql`— es hoy `0014_cron.sql`, porque el 0012 y el 0013 ya estaban
+-- tomados (`ventus3_0012_revoke_trigger_fn_authenticated` y
+-- `ventus3_0013_backfill_tasks`).
+
+-- Fecha o último cabo solto do saneamento: ventus_tasks_after_change() é uma
+-- função de GATILHO, mas continuava com EXECUTE para `authenticated`, o que a
+-- expõe em /rest/v1/rpc/. Não era explorável (chamá-la fora de um gatilho
+-- levanta 0A000), mas não há motivo para ela estar na superfície da API.
+--
+-- Revogar EXECUTE não afeta o gatilho: o PostgreSQL não verifica permissão de
+-- execução ao disparar funções de gatilho.
+revoke execute on function public.ventus_tasks_after_change() from authenticated;

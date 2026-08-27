@@ -555,6 +555,7 @@ export async function fetchRitualDaSegunda(
 
 export interface EntradaCompromissos {
   vendor: string
+  vendorId?: number | null
   hoje: IsoDate
   escolhas: CandidatoDeCompromisso[]
   /** Metas semanales negociadas. Sin esto, el cookbook queda como estaba. */
@@ -578,6 +579,7 @@ export async function declararCompromissos(entrada: EntradaCompromissos): Promis
   for (const escolha of entrada.escolhas.slice(0, LIMITE_DE_COMPROMISSOS)) {
     const id = await criarTask({
       vendor: entrada.vendor,
+      vendorId: entrada.vendorId,
       kind: 'commitment',
       target: escolha.entidade,
       title: escolha.titulo,

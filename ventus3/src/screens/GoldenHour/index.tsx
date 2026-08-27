@@ -38,11 +38,11 @@ import { useWakeLock } from './useWakeLock'
 
 export default function GoldenHourScreen() {
   const navigate = useNavigate()
-  const { vendorName, carregando: carregandoSessao } = useVendorDaSessao()
+  const { vendorName, vendorId, carregando: carregandoSessao } = useVendorDaSessao()
   const day = todayBr()
 
   const filaQuery = useGoldenQueue(vendorName, day)
-  const { sessao, carregando, acoes } = useSessaoGolden(vendorName, day)
+  const { sessao, carregando, acoes } = useSessaoGolden(vendorName, day, vendorId)
 
   const fase = sessao?.fase ?? 'abertura'
   const emFoco = fase === 'foco'

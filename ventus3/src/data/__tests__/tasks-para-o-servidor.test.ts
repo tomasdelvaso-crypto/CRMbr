@@ -351,6 +351,28 @@ describe('mutações de tarefa', () => {
     expect(local?.title).toBe('Ligar para o Fernando')
   })
 
+  it('criarTask manda vendor_id quando quem chamou já resolveu o vendedor', async () => {
+    // `sessao.vendor.id` threadeado desde o SessionProvider até a mutação: a
+    // cópia otimista de Dexie e o outbox JÁ levam a FK, sem depender apenas do
+    // match por nome que faz `trg_tasks_before_write` do lado do servidor.
+    const espiao = transporteEspiao()
+    const id = await criarTask({
+      vendor: 'Tomás',
+      vendorId: 4,
+      kind: 'next_action',
+      target: { kind: 'opportunity', id: 89 },
+      title: 'Ligar para o Fernando',
+      dueDate: '2026-08-28',
+    })
+    await flush()
+    const { payload } = desnormalizarLocal('tasks', espiao.enviadas[0]?.payload ?? {})
+    expect(payload['vendor_id']).toBe(4)
+    expect(chavesInventadas(payload)).toEqual([])
+
+    const local = await getDb().tasks.get(id)
+    expect(local?.vendor_id).toBe(4)
+  })
+
   it('criarTask não inventa colunas para os campos que ninguém preencheu', async () => {
     const espiao = transporteEspiao()
     await criarTask({
