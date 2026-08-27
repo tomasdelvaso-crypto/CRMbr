@@ -1,8 +1,8 @@
 # Estado do Ventus v3
 
-> Fecha de corte: **2026-08-26** · Rama `claude/crm-web-app-redesign-f7tu7g`
+> Fecha de corte: **2026-08-27** · Rama `claude/crm-web-app-redesign-f7tu7g`
 > **La app está desplegada y respondiendo en https://ventus3.vercel.app.**
-> Documento del integrador. Consolida **cuatro olas** de trabajo paralelo: la
+> Documento del integrador. Consolida **cinco olas** de trabajo paralelo: la
 > de fundación (dominio, design system, SQL, capa offline), la de nueve agentes
 > que construyeron las 15 pantallas y el backend serverless, la tercera —cinco
 > agentes— que agregó el Telegram Mini App, el Web Push, la identidad
@@ -10,7 +10,8 @@
 > de seguridad, y la cuarta —cuatro agentes— que cerró el webhook del bot y el
 > emparejamiento por código, cableó la acción crítica de las pantallas al host,
 > arregló los defectos de layout que encontró el QA y parametrizó la URL
-> pública.
+> pública. Y una **quinta** —tres agentes y un verificador— que cerró los cinco
+> bugs del **primer test en un teléfono real** (§0-quater).
 >
 > El plan completo está en `PLANO.md`; la auditoría que lo originó, en
 > `AUDITORIA.md`; los pasos exactos para producción, en `DEPLOY.md`. Este
@@ -65,7 +66,7 @@ de dependencia real — cada fila necesita la de arriba.
 | 1 | **Pushear el árbol** — 4 archivos nuevos y 31 modificados, todavía sin commitear | es lo único que separa a `ventus-reprocesso` de andar. El job corre cada 10 min y producción le contesta **400 `job_invalido`**, porque el nombre `reprocesso` sólo existe en el `api/dispatch/jobs.ts` del árbol local. Los otros **diez** jobs ya responden **200**. El deploy sale solo al pushear la rama | §1, corrida del 27/08 |
 | 2 | **Webhook del bot de Telegram** | ⚠️ **un token tiene UN webhook**: apuntar el de producción al v3 **apaga el bot v1 que el equipo usa hoy**. La primera vuelta va con un bot de prueba y el token en el scope *Preview*. Guardar `getWebhookInfo` en un archivo ANTES de tocar nada: después esa URL no está en ningún lado | `DEPLOY.md` §6.1–6.2, rollback en §6.5 |
 | 3 | **Emparejar a Victor Hugo, Andre y Paulo**, cada uno desde su teléfono, y registrar el Mini App en @BotFather (`/newapp`) | depende del 2. Es trabajo operativo, no de código: Ajustes → Telegram → Gerar código, y `/vincular` en el bot | `DEPLOY.md` §6.4, §7 |
-| 4 | **Probar en hardware real** (un iPhone y un Android) | safe areas, `apple-touch-icon`, umbrales de gesto: es lo único que no se puede simular | §5.1-bis |
+| 4 | **Probar en hardware real — falta el iPhone** | el **Android ya se probó** el 27/08: cinco bugs reportados, cinco cerrados (§0-quater). Falta un iPhone de verdad: safe areas y `apple-touch-icon` son lo único que no se puede simular, y WebKit no está en esta máquina (la suite emula la forma del iPhone 14 sobre Chromium, y está dicho) | §0-quater, §5.1-bis |
 | 5 | **Decidir qué hacer con `check-inactivity-daily`** (jobid 1, el del v2) | sigue **activo y sin deduplicar**: 4.579 filas, 0,0 % de lectura. Quedó fuera de `0014` a propósito, y ahora que el dispatcher del v3 responde 200 y prueba que lo reemplaza, apagarlo es una decisión operativa con su propia ventana | `0014_cron.sql`, nota final |
 | 6 | El resto de la lista larga | — | §5 |
 
@@ -499,10 +500,121 @@ real, y sigue detectando una capa opaca inyectada a propósito sobre el kanban.
 
 ---
 
+## 0-quater · Hardware real (el primer teléfono de verdad)
+
+> **27/08/2026.** El dueño del producto usó la app por primera vez en **su
+> Android** — ~355-360 px CSS de ancho, PWA instalada, tema oscuro — y reportó
+> **cinco** bugs con capturas. La suite entera estaba en verde y **no veía
+> ninguno**.
+
+Es la tercera vez que pasa lo mismo (§0-bis fue la sesión real, §0-ter la
+densidad de escritorio) y el patrón ya no admite duda: **lo que no se emula, no
+se prueba**. Acá había dos puntos ciegos a la vez.
+
+**El tamaño.** Toda la suite corría a 390x844 (iPhone 14) y 1280x900. Su
+teléfono es más angosto y más bajo. A 390 px el HUD de la Golden Hour entra en
+una fila; a 360 no, y el reloj se le monta encima al contador de toques — que
+es literalmente la captura que mandó.
+
+**El método.** El scroll de las pruebas era rueda (`mouse.wheel`) o JS
+(`scrollIntoView`), y ninguno de los dos ejercita `touch-action`. Un dedo sí.
+
+### Los cinco, y en qué quedaron
+
+| # | lo que reportó | qué era | estado |
+|---|---|---|---|
+| A | «el audio no transcribe» + «Ventus responde sem conexão · resposta local» | el SW servía el bundle de antes del fix de ESM; la primera llamada falló y el latch de `mock-flag.ts` dejó la sesión entera en el camino local, **echándole la culpa a su red** | ✅ el latch se fue, el texto del 500 dice que el problema es del servidor, y el update del SW dejó de depender de que toque un toast |
+| B | «la pantalla no se mueve y el temporizador se encima con los toques» | el HUD a 360 px no entra en una fila; el card no rodaba por dentro | ✅ HUD en dos filas, card con scroll propio, los 4 botones de resultado fuera del contenedor que rola |
+| C | «Placar da Semana no scrollea» | **no era `touch-action`**: no hay ninguno heredado sobre contenido vertical ni librería de gestos en el proyecto | ✅ sin cambio de código; queda la red de `toque-real.spec.ts`. El sospechoso real para su aparato es el bundle viejo del SW (bug A) |
+| D | «se ve una delgada línea verde», ni el texto ni el botón de enviar | dos bugs sumados: `useAlturaDoTeclado()` nunca se conectó en el Ventus, y dentro del sheet el compositor medía contra el snap más alto | ✅ hook conectado y compositor movido al `footer` del Sheet |
+| — | *(no lo reportó: no llegó a poder mandar la pregunta)* | **en `/ventus` el botón «Enviar» no se podía tocar**: la bottom nav y el FAB del micrófono, los dos `fixed z-40`, le caían encima al compositor `sticky` | ✅ ver abajo |
+
+### El defecto que encontró el recorrido completo
+
+Los cuatro frentes anteriores probaron **su** bug en aislamiento. El dueño hizo
+**una sesión sola**. `e2e/jornada-dono.spec.ts` recorre el relato entero a
+360x640 sin recargar el bundle —Golden Hour → cierre → /placar → chat → teclado
+→ 500 y después 200— y encontró lo que ninguna prueba por pantalla podía ver:
+
+```
+[360x640] Enviar = {"x":293,"y":585,"width":44,"height":44}
+          nav    = {"x":0,"y":575,"width":360,"height":65}     ← se pisan
+```
+
+Un `sticky bottom: 0` se pega al borde del **viewport**, que es donde vive la
+bottom nav; el `pb-nav-safe` del `<main>` empuja el contenido en flujo pero al
+sticky no lo mueve. Y el FAB «Registrar por voz» encima, que además **sobra**:
+el compositor ya trae su propio «Ditar». En el teléfono eso es **el vendedor
+escribe la pregunta y no la puede mandar**.
+
+`resiliencia.spec.ts` lo había esquivado a propósito mandando la pregunta con
+**Enter**, dejándolo anotado como pendiente de otro frente. El dueño no tiene
+tecla Enter, tiene un dedo. El detalle de la medición, el arreglo y la prueba de
+que **falla sin él** están en `QA.md` §3-bis.1.
+
+### Lo que se agregó a la suite
+
+Dos proyectos nuevos de Playwright a la medida del aparato —`golden-estreito`
+(360x640 y 355x700) y `jornada-dono` (360x640)— y el gesto táctil de verdad, por
+CDP (`Input.dispatchTouchEvent`), en vez de la rueda. `npx playwright test` pasó
+de 143 pruebas a **192**, todas en verde.
+
+> **Lo que NO se verificó, y hay que decirlo:** nada de esto se probó contra
+> producción. El proxy de esta máquina bloquea `*.vercel.app` y `*.supabase.co`,
+> así que el arreglo de CORS same-origin está probado con requests falsos
+> (`api/__tests__/cors.test.ts`), no contra el runtime de Vercel. Y el bug A se
+> cierra del lado del código: que el teléfono del dueño **agarre** el bundle
+> nuevo depende de que el SW se actualice en su aparato.
+
+---
+
 ## 1 · Verificación (salidas reales, no promesas)
 
-Corrida del **integrador final**, sobre el árbol con las cuatro entregas
-paralelas ya juntas. Los cinco comandos que exige el encargo, en verde:
+### Corrida del 27/08 — el verificador del hardware real
+
+Sobre el árbol con las **tres entregas de la ola del teléfono** ya juntas
+(resiliencia del 500 · Golden Hour angosta · toque y teclado), más el defecto
+del compositor del Ventus que encontró el recorrido completo (§0-quater).
+
+```
+$ npm run type-check
+EXIT=0   (los 3 proyectos: app, node/api, service worker)
+
+$ npx tsc --noEmit -p tsconfig.e2e.json
+EXIT=0   ← el error preexistente de `zzz-diag-teclado.spec.ts` que había
+           quedado anotado ya no existe: el archivo se fue del árbol
+
+$ npx eslint . --max-warnings 0
+(sin salida: 0 errores, 0 warnings)
+EXIT=0
+
+$ npx vitest run
+ Test Files  58 passed (58)
+      Tests  990 passed (990)
+   Duration  14.77s
+EXIT=0        ← 890 al cerrar la vuelta anterior · 990 con los unitarios del
+                latch, del ingest, de la actualización del SW y del CORS
+
+$ npm run build
+✓ built in 1.35s
+PWA v1.3.0 · injectManifest · precache 65 entries (1602.78 KiB)
+EXIT=0
+
+$ npx playwright test
+  47 skipped
+  192 passed (10.6m)
+EXIT=0        ← 143 antes de esta vuelta. Los dos proyectos nuevos son
+                `golden-estreito` (4) y `jornada-dono` (2)
+```
+
+Los 47 salteados son las cuatro suites de capturas, que sólo corren con
+`CAPTURAS=1`. El detalle por proyecto y las dos corridas completas están en
+`QA.md` §7.
+
+### Corrida del 26/08 — el integrador final
+
+Sobre el árbol con las cuatro entregas paralelas ya juntas. Los cinco comandos
+que exige el encargo, en verde:
 
 ```
 $ npm install

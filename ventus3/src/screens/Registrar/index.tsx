@@ -74,7 +74,7 @@ import { CartaoConfirmacao } from './CartaoConfirmacao'
 import { EsqueletoAnalise } from './EsqueletoAnalise'
 import { AtalhosDeEntrada, EntradaAlternativa } from './EntradaAlternativa'
 import { SeletorDeAlvo } from './SeletorDeAlvo'
-import { chamarIngest } from './ingest'
+import { AVISO_SEM_REDE, AVISO_SERVIDOR, causaDaFalha, chamarIngest } from './ingest'
 import {
   CONTRATO_VERSAO,
   ErroIngest,
@@ -300,11 +300,20 @@ export default function RegistrarScreen() {
             e?.message ?? 'falhou',
           )
         }
+        // De quién es el problema. Un 500 del Ventus NO es «sem rede»: el
+        // vendedor del primer test tenía señal de sobra y la app lo mandó a
+        // buscar una que ya tenía.
+        const causa = causaDaFalha(e)
         const motivo =
           e?.recuperavel === false
-            ? (e.message)
-            : 'Sem rede para transcrever agora. O áudio está salvo — complete o essencial.'
-        despachar({ tipo: 'definir', rascunho: rascunhoOffline(ctx, motivo) })
+            ? e.message
+            : causa === 'servidor'
+              ? AVISO_SERVIDOR
+              : AVISO_SEM_REDE
+        despachar({
+          tipo: 'definir',
+          rascunho: rascunhoOffline(ctx, motivo, e?.recuperavel === false ? null : causa),
+        })
         setFase('confirmando')
         haptic('warning')
       } finally {

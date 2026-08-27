@@ -21,6 +21,7 @@ import type {
   DeltaEscalaIngest,
   FonteIngest,
   IngestResponse,
+  CausaDaFalha,
 } from './contrato'
 
 /** Confianza mínima para preseleccionar un cliente sin preguntar. */
@@ -100,6 +101,15 @@ export interface Rascunho {
   pendenteDeTranscricao: boolean
   /** true cuando la respuesta vino del mock y no del pipeline real. */
   simulado: boolean
+  /**
+   * De QUIÉN es el problema cuando la ingesta no pudo completarse.
+   *
+   * `null` = no hubo falla. La distinción existe porque «sem rede» y «o
+   * servidor está com problemas» piden cosas distintas del vendedor: en la
+   * primera camina hasta la puerta a buscar señal; en la segunda no hay nada
+   * que hacer salvo seguir, y el audio sube solo cuando el Ventus se cure.
+   */
+  causa: CausaDaFalha | null
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -210,6 +220,7 @@ export function rascunhoDeResposta(
     duracaoSeg: ctx.duracaoSeg,
     pendenteDeTranscricao: false,
     simulado: ctx.simulado,
+    causa: null,
   }
 }
 
@@ -222,7 +233,11 @@ export function rascunhoDeResposta(
  * en Revisão. Lo inaceptable sería una pantalla que diga «sem conexão» y tire
  * la nota.
  */
-export function rascunhoOffline(ctx: ContextoRascunho, motivo: string): Rascunho {
+export function rascunhoOffline(
+  ctx: ContextoRascunho,
+  motivo: string,
+  causa: CausaDaFalha | null = 'sem_rede',
+): Rascunho {
   return {
     clientUuid: ctx.clientUuid,
     fonte: ctx.fonte,
@@ -243,6 +258,7 @@ export function rascunhoOffline(ctx: ContextoRascunho, motivo: string): Rascunho
     duracaoSeg: ctx.duracaoSeg,
     pendenteDeTranscricao: ctx.fonte === 'audio' || ctx.fonte === 'foto',
     simulado: false,
+    causa,
   }
 }
 

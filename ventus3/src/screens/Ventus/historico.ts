@@ -11,7 +11,7 @@
 // sería silencioso.
 
 import { gravarMeta, lerMeta } from '@/data'
-import type { VentusPreview, VentusTurno } from './contrato'
+import type { OrigemDaResposta, VentusPreview, VentusTurno } from './contrato'
 
 /** Cuántos turnos se guardan por conversación. Más que esto nadie relee. */
 export const LIMITE_TURNOS = 60
@@ -29,9 +29,16 @@ export interface Mensagem {
   em: string
   /** true mientras los deltas siguen llegando: pinta el cursor. */
   streaming?: boolean
-  /** Se resolvió con @/core, sin gastar un token. */
+  /**
+   * De dónde salió la respuesta. Es lo que la burbuja anuncia.
+   *
+   * Reemplaza a `local`/`offline`, que sólo sabían decir dos cosas y por eso
+   * un 500 del servidor se mostraba como «sem conexão».
+   */
+  origem?: OrigemDaResposta
+  /** @deprecated Sólo para los historiales ya guardados. Usar `origem`. */
   local?: boolean
-  /** El motor determinístico respondió porque no había red. */
+  /** @deprecated Sólo para los historiales ya guardados. Usar `origem`. */
   offline?: boolean
   /** Enlaces que la respuesta local ofrece. */
   atalhos?: ReadonlyArray<{ rotulo: string; opportunityId?: number; rota?: string }>
@@ -41,6 +48,20 @@ export interface Mensagem {
   voto?: 'bom' | 'ruim' | null
   /** Código del error, cuando el turno terminó mal. */
   erro?: string | null
+}
+
+/**
+ * De dónde salió esta respuesta, para la marca que pinta la burbuja.
+ *
+ * `local`/`offline` se siguen leyendo para los historiales YA guardados en
+ * Dexie: una conversación de ayer no puede perder su procedencia sólo porque
+ * el modelo de datos mejoró.
+ */
+export function origemDaMensagem(m: Mensagem): OrigemDaResposta | null {
+  if (m.origem) return m.origem
+  if (m.offline === true) return 'sem_rede'
+  if (m.local === true) return 'motor'
+  return null
 }
 
 /** Clave de la conversación. `geral` es el chat sin ficha abierta. */

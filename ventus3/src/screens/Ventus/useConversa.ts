@@ -23,13 +23,15 @@ import { todayBr } from '@/core'
 import {
   ERRO_LABELS,
   mockPorFallbackAtivo,
+  modoMock,
+  origemDoErro,
   type FeedbackMotivo,
   type FeedbackVoto,
   type VentusPreview,
   type VentusRequest,
 } from './contrato'
 import { abrirStreamVentus, enviarFeedback } from './stream'
-import { responderLocalmente, respostaOffline } from './motor'
+import { responderLocalmente, respostaDeSocorro, respostaOffline } from './motor'
 import {
   contextoParaServidor,
   gravarHistorico,
@@ -160,6 +162,7 @@ export function useConversaVentus(
           papel: 'ventus',
           texto: local.texto,
           em: new Date().toISOString(),
+          origem: 'motor',
           local: true,
           atalhos: local.atalhos,
         }
@@ -178,7 +181,7 @@ export function useConversaVentus(
             papel: 'ventus',
             texto: fallback.texto,
             em: new Date().toISOString(),
-            offline: true,
+            origem: 'sem_rede',
             atalhos: fallback.atalhos,
           },
         ])
@@ -248,7 +251,9 @@ export function useConversaVentus(
             pintar(true)
           } else if (evento.tipo === 'erro') {
             // Aunque el servidor falle, el vendedor se va con algo en la mano.
-            const socorro = respostaOffline(c, vendor, todayBr())
+            // Socorro y NO respostaOffline: el encabezado ya dice de quién es
+            // el problema, y un «estou sem conexão» debajo lo contradiría.
+            const socorro = respostaDeSocorro(c, vendor, todayBr())
             const mensagemErro = `${ERRO_LABELS[evento.codigo]}\n\n${socorro.texto}`
             atualizar((atual) =>
               atual.map((m) =>
@@ -257,7 +262,10 @@ export function useConversaVentus(
                       ...m,
                       texto: mensagemErro,
                       streaming: false,
-                      offline: true,
+                      // La procedencia sale del CÓDIGO, no de una suposición:
+                      // un 500 se anuncia como problema del servidor y nunca
+                      // más como «sem conexão».
+                      origem: origemDoErro(evento.codigo) ?? undefined,
                       atalhos: socorro.atalhos,
                       erro: evento.codigo,
                     }
@@ -284,6 +292,10 @@ export function useConversaVentus(
                   texto: textoFinal,
                   previews: previewsFinais,
                   streaming: false,
+                  // Si la respuesta salió del mock, la burbuja lo dice. Un
+                  // ejemplo que se hace pasar por dato real es peor que no
+                  // responder.
+                  origem: modoMock() ? ('simulado' as const) : undefined,
                 }
               : m,
           ),

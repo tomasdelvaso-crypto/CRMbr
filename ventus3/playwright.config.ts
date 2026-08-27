@@ -63,6 +63,24 @@ const BASE_URL_PREVIEW = `http://127.0.0.1:${String(PORTA_PREVIEW)}`
 /** El único archivo que corre contra el build de producción. */
 const SESSAO_REAL = /sessao-real\.spec\.ts$/
 
+/**
+ * El único archivo que corre a 360x640 — el Android real del dueño del
+ * producto. Se excluye de los demás proyectos: cada uno de ellos ya elige su
+ * propio tamaño en su `use.viewport`/`use.devices`, y correrlo ahí también
+ * probaría el HUD y el scroll de la Golden Hour contra un ancho que no es el
+ * que reprodujo el bug, además de duplicar la corrida sin agregar nada.
+ */
+const GOLDEN_ESTREITO = /golden-estreito\.spec\.ts$/
+
+/**
+ * El recorrido completo del reporte del dueño, en un solo hilo y a su tamaño
+ * real. Se excluye de los demás proyectos por la misma razón que
+ * `golden-estreito`: a 390x844 el HUD entra en una fila sola y el compositor
+ * tiene aire de sobra, así que correrlo ahí probaría un teléfono que no es el
+ * que reportó los bugs y duplicaría nueve minutos de suite sin agregar nada.
+ */
+const JORNADA_DONO = /jornada-dono\.spec\.ts$/
+
 /** Chromium preinstalado. Ver el encabezado. */
 const CHROMIUM = process.env['PLAYWRIGHT_CHROMIUM_PATH'] ?? '/opt/pw-browsers/chromium'
 
@@ -114,7 +132,7 @@ export default defineConfig({
   projects: [
     {
       name: 'mobile',
-      testIgnore: SESSAO_REAL,
+      testIgnore: [SESSAO_REAL, GOLDEN_ESTREITO, JORNADA_DONO],
       use: {
         ...devices['iPhone 14'],
         // El descriptor del iPhone pide WebKit y acá sólo hay Chromium: se
@@ -127,7 +145,7 @@ export default defineConfig({
     },
     {
       name: 'mobile-pixel7',
-      testIgnore: SESSAO_REAL,
+      testIgnore: [SESSAO_REAL, GOLDEN_ESTREITO, JORNADA_DONO],
       use: {
         ...devices['Pixel 7'],
         browserName: 'chromium',
@@ -137,11 +155,50 @@ export default defineConfig({
     },
     {
       name: 'desktop',
-      testIgnore: SESSAO_REAL,
+      testIgnore: [SESSAO_REAL, GOLDEN_ESTREITO, JORNADA_DONO],
       use: {
         ...devices['Desktop Chrome'],
         browserName: 'chromium',
         viewport: { width: 1280, height: 900 },
+        launchOptions,
+      },
+    },
+
+    // ── El Android real del dueño del producto ────────────────────────────
+    // 360x640: el ancho CSS que reportó su teléfono en la primera prueba de
+    // hardware, más angosto y más bajo que el iPhone 14 (390x844) que cubre
+    // el proyecto `mobile`. Los otros proyectos no vieron el HUD superpuesto
+    // ni el contenido de la Golden Hour cortado sin scroll porque nunca
+    // corrieron a este tamaño. Sólo `e2e/golden-estreito.spec.ts` corre acá:
+    // el resto de la suite ya está cubierto por `mobile`/`mobile-pixel7` y
+    // duplicarla a este tamaño sólo alargaría la corrida.
+    {
+      name: 'golden-estreito',
+      testMatch: GOLDEN_ESTREITO,
+      use: {
+        ...devices['Pixel 7'],
+        browserName: 'chromium',
+        defaultBrowserType: 'chromium',
+        viewport: { width: 360, height: 640 },
+        launchOptions,
+      },
+    },
+
+    // ── El recorrido completo del reporte, en un solo hilo ────────────────
+    // Mismo aparato que `golden-estreito` (360x640, con touch), pero en vez de
+    // una pantalla recorre las cinco del relato SIN recargar el bundle entre
+    // pasos. Es el único proyecto que prueba que los arreglos conviven: que
+    // salir de la Golden Hour no deja el `--spacing-chrome` de ella escrito,
+    // que el latch del 500 no sobrevive a un cambio de ruta, y que tocar
+    // «Enviar» con el dedo toca «Enviar» y no otra cosa.
+    {
+      name: 'jornada-dono',
+      testMatch: JORNADA_DONO,
+      use: {
+        ...devices['Pixel 7'],
+        browserName: 'chromium',
+        defaultBrowserType: 'chromium',
+        viewport: { width: 360, height: 640 },
         launchOptions,
       },
     },

@@ -16,7 +16,14 @@ import { useEffect } from 'react'
 import { toast } from '@/ui'
 import { ConviteDeInstalacao } from './ConviteDeInstalacao'
 import { useConvite } from './useConvite'
-import { agendarChecagens, aplicarAtualizacao, observarAtualizacao, temAtualizacaoEsperando } from './atualizacao'
+import {
+  agendarChecagens,
+  aplicarAtualizacao,
+  atenderNovaVersao,
+  deveReoferecer,
+  observarAtualizacao,
+  temAtualizacaoEsperando,
+} from './atualizacao'
 
 /** Id fijo: si el aviso se repite, reemplaza al anterior en vez de apilarse. */
 const ID_TOAST_ATUALIZACAO = 'ventus-atualizacao'
@@ -49,11 +56,15 @@ export function CamadaPWA() {
     const pararChecagens = agendarChecagens()
 
     // Si la persona cerró el toast y sigue habiendo versión esperando, se
-    // vuelve a ofrecer cuando regresa a la app — no antes.
+    // vuelve a ofrecer cuando regresa a la app — pero NO cada vez que mira el
+    // teléfono: sólo después de media hora. Un aviso que aparece cinco veces
+    // por hora es un aviso que se aprende a ignorar, y así es como un teléfono
+    // termina corriendo el bundle de la semana pasada.
     const aoVoltar = (): void => {
       if (document.visibilityState !== 'visible') return
+      if (!deveReoferecer()) return
       void temAtualizacaoEsperando().then((tem) => {
-        if (tem) avisar()
+        if (tem) atenderNovaVersao(avisar)
       })
     }
     document.addEventListener('visibilitychange', aoVoltar)

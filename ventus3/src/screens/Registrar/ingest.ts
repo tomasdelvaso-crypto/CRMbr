@@ -15,10 +15,42 @@ import {
   INGEST_PATH,
   mockIngest,
   modoMock,
+  podeTentarApi,
+  registrarFalhaDoServidor,
+  registrarSucesso,
+  type CausaDaFalha,
   type IngestErroBody,
   type IngestMeta,
   type IngestResponse,
 } from './contrato'
+
+/**
+ * Lo que el vendedor lee cuando el servidor está mal, palabra por palabra.
+ *
+ * No es «sem conexão» y no puede volver a serlo: en el primer test de campo el
+ * teléfono tenía señal de sobra y /api/ingest devolvía 500. Echarle la culpa a
+ * la red del vendedor lo manda a caminar hasta la puerta del galpão para nada.
+ */
+export const AVISO_SERVIDOR =
+  'O servidor do Ventus está com problemas — tentando de novo em breve. O áudio está salvo.'
+
+/** Lo que lee cuando de verdad no hay señal. */
+export const AVISO_SEM_REDE =
+  'Sem rede para transcrever agora. O áudio está salvo — complete o essencial.'
+
+/**
+ * Traduce el error a la causa que la tarjeta anuncia.
+ *
+ * Regla: un status >= 500 es SIEMPRE nuestro. Sólo cuando el pedido no llegó
+ * a salir (status 0) y el código lo dice se habla de falta de red.
+ */
+export function causaDaFalha(erro: ErroIngest | null): CausaDaFalha {
+  if (erro === null) return 'sem_rede'
+  if (erro.codigo === 'servidor') return 'servidor'
+  if (erro.codigo === 'sem_rede') return 'sem_rede'
+  if (erro.status >= 500 || erro.status === 408 || erro.status === 429) return 'servidor'
+  return 'sem_rede'
+}
 
 /** Techo del cuerpo. 8 MB son ~40 minutos de opus: nadie dicta tanto. */
 export const LIMITE_BYTES = 8 * 1024 * 1024
@@ -87,9 +119,14 @@ async function lerErro(resposta: Response): Promise<ErroIngest> {
  * Manda a interpretar un audio, una foto o un texto.
  *
  * Camino del mock: si la flag está encendida devuelve `mockIngest()` sin tocar
- * la red. Si el endpoint real contesta 501 `not_implemented` —el estado en el
- * que está hoy `api/ingest.ts`— enciende el mock para el resto de la sesión y
- * responde con él, en vez de dejar la pantalla muerta.
+ * la red. Si el endpoint real contesta 404/501 —o sea, NO EXISTE en este
+ * deploy— enciende el mock para el resto de la sesión y responde con él, en vez
+ * de dejar la pantalla muerta.
+ *
+ * Un 500 NO hace eso. Es una falla pasajera: se anota para el backoff, se
+ * cuenta como problema del servidor —nunca como falta de red— y la próxima
+ * nota de voz vuelve a probar la API. Fue lo que faltó en el primer test de
+ * campo, donde el teléfono se quedó mudo una sesión entera.
  */
 export async function chamarIngest(entrada: EntradaIngest): Promise<IngestResponse> {
   const { meta, arquivo, texto, signal } = entrada
@@ -97,7 +134,14 @@ export async function chamarIngest(entrada: EntradaIngest): Promise<IngestRespon
   if (modoMock()) return mockIngest(meta)
 
   if (!talvezOnline()) {
-    throw new ErroIngest('Sem conexão agora.', 'limite', true, 0)
+    throw new ErroIngest(AVISO_SEM_REDE, 'sem_rede', true, 0)
+  }
+
+  // Backoff, no latch: si el servidor ya falló dos veces seguidas hace menos de
+  // un minuto, no se le hacen esperar 45 s más al vendedor para llegar al mismo
+  // lugar. A los 60 s se vuelve a intentar solo — nadie reinstala nada.
+  if (!podeTentarApi()) {
+    throw new ErroIngest(AVISO_SERVIDOR, 'servidor', true, 0)
   }
   if (arquivo && arquivo.size > LIMITE_BYTES) {
     throw new ErroIngest('Áudio grande demais para enviar.', 'muito_grande', false, 0)
@@ -146,24 +190,36 @@ export async function chamarIngest(entrada: EntradaIngest): Promise<IngestRespon
     if (nome === 'AbortError' && signal?.aborted) {
       throw new ErroIngest('Cancelado.', 'limite', false, 0)
     }
-    throw new ErroIngest(
-      nome === 'TimeoutError' ? 'A transcrição demorou demais.' : 'Sem conexão agora.',
-      'limite',
-      true,
-      0,
-    )
+    // El pedido no salió o no volvió. Si el aparato dice que hay red, el
+    // problema es del otro lado y se anota para el backoff.
+    if (talvezOnline()) {
+      registrarFalhaDoServidor()
+      throw new ErroIngest(AVISO_SERVIDOR, 'servidor', true, 0)
+    }
+    throw new ErroIngest(AVISO_SEM_REDE, 'sem_rede', true, 0)
   } finally {
     limpar()
   }
 
-  if (resposta.status === 501) {
-    // El endpoint todavía es el stub de notImplemented(). Caemos al mock y lo
-    // decimos en voz alta en la UI: nadie tiene que creer que esto ya anda.
+  if (resposta.status === 501 || resposta.status === 404) {
+    // El endpoint NO EXISTE en este deploy (stub de notImplemented(), o la
+    // función que no se publicó). Insistir no lo arregla: caemos al mock y lo
+    // decimos en voz alta en la UI. Es el ÚNICO camino que enciende el mock.
     ativarMockPorFallback()
     return mockIngest(meta)
   }
 
-  if (!resposta.ok) throw await lerErro(resposta)
+  if (!resposta.ok) {
+    // 5xx/408/429: el endpoint existe y está mal. Se anota para el backoff,
+    // pero el próximo audio vuelve a probar la API igual.
+    if (resposta.status >= 500 || resposta.status === 408 || resposta.status === 429) {
+      registrarFalhaDoServidor()
+    }
+    throw await lerErro(resposta)
+  }
+
+  // Contestó bien: se olvida la racha.
+  registrarSucesso()
 
   const dados = (await resposta.json()) as IngestResponse
   if (dados.clientUuid !== meta.clientUuid) {

@@ -53,7 +53,7 @@ import {
 } from '@/data'
 import { definirBadge } from '@/push'
 import { BarraDeComando } from '@/screens/Ventus/BarraDeComando'
-import { barraDeComandoVisivel } from '@/screens/Ventus/rotas'
+import { barraDeComandoVisivel, microfoneFlutuanteVisivel } from '@/screens/Ventus/rotas'
 import { ConfirmHost, Skeleton, ToastHost, confirmar, direcaoEntreRotas, haptic } from '@/ui'
 import { larguraDe } from './largura'
 
@@ -186,6 +186,15 @@ export function Shell() {
   const mostrarMicrofone = !location.pathname.startsWith('/registrar')
   const comBarra = barraDeComandoVisivel(location.pathname, sessao?.vendorName ?? null)
 
+  // El FAB FLOTANTE tiene una regla más estricta que el micrófono del rail o
+  // el de la barra: es `fixed z-40` sobre el contenido, así que en las rutas
+  // que traen su propio compositor pegado abajo le queda ENCIMA del botón de
+  // enviar. Ver `microfoneFlutuanteVisivel` en Ventus/rotas.ts — ahí está la
+  // medición y el porqué. El del DesktopRail no entra en este pleito: vive en
+  // una columna propia y el FAB ya es `lg:hidden`.
+  const mostrarMicrofoneFlutuante =
+    mostrarMicrofone && microfoneFlutuanteVisivel(location.pathname)
+
   const rotuloDoMicrofone =
     pendentesOutbox > 0
       ? `Registrar por voz. ${String(pendentesOutbox)} ${pendentesOutbox === 1 ? 'registro pendente de envio' : 'registros pendentes de envio'}`
@@ -310,7 +319,7 @@ export function Shell() {
           `lg:hidden`: en escritorio esta acción vive en el DesktopRail (ver la
           decisión 2 de ese archivo) — un FAB flotando sobre un monitor de 27"
           es la misma rareza que un bottom sheet ahí abajo. */}
-      {mostrarMicrofone && !comBarra && (
+      {mostrarMicrofoneFlutuante && !comBarra && (
         <button
           type="button"
           aria-label={rotuloDoMicrofone}

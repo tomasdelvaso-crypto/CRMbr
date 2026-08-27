@@ -233,7 +233,20 @@ export type CodigoErroIngest =
   | 'transcricao_falhou'
   | 'extracao_falhou'
   | 'limite'
+  /** El aparato no tiene red: el pedido ni siquiera salió. */
+  | 'sem_rede'
+  /** El endpoint existe y está com problemas (5xx, timeout). Se reintenta. */
+  | 'servidor'
   | 'interno'
+
+/**
+ * De QUIÉN es el problema cuando la ingesta no pudo completarse.
+ *
+ * Dos, y son dos porque piden cosas distintas del vendedor: con `sem_rede`
+ * camina hasta la puerta del galpão a buscar señal; con `servidor` no hay nada
+ * que hacer salvo seguir — el audio sube solo cuando el Ventus se cure.
+ */
+export type CausaDaFalha = 'sem_rede' | 'servidor'
 
 export interface IngestErroBody {
   error: { code: CodigoErroIngest | string; message: string }
@@ -282,9 +295,13 @@ export class ErroIngest extends Error {
  *   1. `VITE_INGEST_MOCK=on` en el build (o `off` para forzar el real).
  *   2. `localStorage['ventus.ingest.mock'] = 'on'` — para probar en el
  *      teléfono sin rebuildear.
- *   3. Automático: si /api/ingest responde 501 `not_implemented`, la pantalla
- *      cae al mock por lo que queda de la sesión y lo DICE en la tarjeta.
- *      Sin esto, la pantalla es inusable hasta que el otro agente termine.
+ *   3. Automático: si /api/ingest responde 404/501 —o sea, el endpoint NO
+ *      EXISTE en este deploy—, la pantalla cae al mock por lo que queda de la
+ *      sesión y lo DICE en la tarjeta. Un 500 NO entra acá: es una falla
+ *      pasajera y el próximo audio vuelve a probar la API (ver mock-flag.ts).
+ *
+ * `localStorage['ventus.ingest.mock'] = 'off'` apaga el mock aunque el build
+ * traiga la env en 'on', para poder probar el endpoint real en el aparato.
  *
  * La mecánica de la bandera (env → fallback → localStorage) es compartida:
  * vive en @/lib/mock-flag y la usa igual el chat del Ventus. El estado del
@@ -296,10 +313,17 @@ const bandeira = criarBandeiraDeMock({
 })
 
 export const CHAVE_MOCK = bandeira.CHAVE
-/** Enciende el mock para lo que queda de la sesión (fallback por 501). */
+/** Enciende el mock para lo que queda de la sesión (SÓLO 404/501). */
 export const ativarMockPorFallback = bandeira.ativarMockPorFallback
 export const mockPorFallbackAtivo = bandeira.mockPorFallbackAtivo
 export const modoMock = bandeira.modoMock
+/** 5xx/timeout/red: falla pasajera. No latchea; sólo arma el backoff. */
+export const registrarFalhaDoServidor = bandeira.registrarFalhaDoServidor
+export const registrarSucesso = bandeira.registrarSucesso
+export const podeTentarApi = bandeira.podeTentarApi
+export const servidorComProblemas = bandeira.servidorComProblemas
+/** Borra latch y racha de fallas. Para los tests y el diagnóstico. */
+export const reiniciarBandeira = bandeira.reiniciar
 
 /** Escenarios del mock: se rotan para ejercitar los caminos difíciles. */
 export type CenarioMock = 'feliz' | 'ambiguo' | 'sem_cliente' | 'pobre'

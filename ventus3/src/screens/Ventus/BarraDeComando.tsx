@@ -8,17 +8,21 @@
 // esperando, la usa.
 //
 // Toca el sheet expandible con drag-to-dismiss de @/ui (dos snaps: media
-// pantalla y casi entera). El teclado de Android empuja la barra por sí solo
-// vía visualViewport; el sheet ya recalcula su alto con ResizeObserver.
+// pantalla y casi entera). El compositor vive en el `footer` del sheet —no
+// como contenido scrolleable— y con `useAlturaDoTeclado()` propio: ninguno
+// de los dos se resuelve solo. Ver `CompositorDoRodape` más abajo y el
+// comentario grande en Conversa.tsx (bug real de campo, primer teste em
+// Android físico).
 
 import { useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Sparkles } from 'lucide-react'
-import { Sheet, cx, haptic } from '@/ui'
+import { Sheet, cx, haptic, useAlturaDoTeclado } from '@/ui'
 import { TOPO_DA_BARRA, larguraDe } from '@/app/largura'
 import { useVendorDaSessao } from '@/app/useVendorDaSessao'
 import { barraDeComandoVisivel } from './rotas'
-import { useConversaVentus } from './useConversa'
+import { useConversaVentus, type EstadoConversa } from './useConversa'
+import { Compositor } from './Compositor'
 import { Conversa } from './Conversa'
 
 export interface BarraDeComandoProps {
@@ -126,16 +130,60 @@ export function BarraDeComando({
         {...(contexto != null ? { description: `Sobre ${contexto}` } : {})}
         snapPoints={[0.6, 0.94]}
         initialSnap={0}
+        footer={<CompositorDoRodape conversa={conversa} contexto={contexto} />}
       >
         <Conversa
           conversa={conversa}
           contexto={contexto}
-          autoFocus
           onNavegar={() => {
             setAberto(false)
           }}
+          semCompositor
         />
       </Sheet>
     </>
+  )
+}
+
+/**
+ * El compositor de este sheet vive en el `footer` de `Sheet` y NO como
+ * children de `Conversa` (ver `semCompositor` en Conversa.tsx): es la única
+ * forma de que se vea en el snap bajo (0,6) con una conversa recién abierta,
+ * y la única que el propio `Sheet` sabe mantener por encima del teclado de
+ * Android — `useAlturaDoTeclado()` corrige lo que la compensación de
+ * `Sheet` no puede saber, porque esa compensación es sólo contra el snap,
+ * nunca contra el teclado (ver el comentario largo en Conversa.tsx sobre el
+ * bug M22).
+ */
+function CompositorDoRodape({
+  conversa,
+  contexto,
+}: {
+  conversa: EstadoConversa
+  contexto: string | null
+}) {
+  const [rascunho, setRascunho] = useState('')
+  const alturaTeclado = useAlturaDoTeclado()
+
+  const enviar = () => {
+    const texto = rascunho
+    setRascunho('')
+    void conversa.enviar(texto)
+  }
+
+  return (
+    <div
+      style={{ transform: alturaTeclado > 0 ? `translateY(-${String(alturaTeclado)}px)` : undefined }}
+    >
+      <Compositor
+        valor={rascunho}
+        onChange={setRascunho}
+        onEnviar={enviar}
+        enviando={conversa.enviando}
+        onParar={conversa.parar}
+        autoFocus
+        {...(contexto != null ? { placeholder: `Pergunte sobre ${contexto}` } : {})}
+      />
+    </div>
   )
 }

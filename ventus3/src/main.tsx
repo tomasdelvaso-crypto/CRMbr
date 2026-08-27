@@ -14,7 +14,7 @@ import { configOk, variaveisFaltando, variaveisMalformadas } from './data/config
 // El nombre del evento sale del módulo que lo escucha, no de un string
 // repetido: si alguien lo renombra allá y acá queda el viejo, el toast de
 // «Nova versão» deja de aparecer y nadie se entera hasta la próxima release.
-import { EVENTO_ATUALIZACAO } from '@/install/atualizacao'
+import { EVENTO_ATUALIZACAO, atenderNovaVersao, marcarInteracao } from '@/install/atualizacao'
 import './index.css'
 
 const container = document.getElementById('root')
@@ -43,12 +43,29 @@ if (configOk) {
   root.render(<Diagnostico faltando={variaveisFaltando} malformadas={variaveisMalformadas} />)
 }
 
-// registerType: 'prompt'. La app NUNCA se recarga sola: el vendedor puede
-// estar en medio de una nota de voz. Se emite un evento y la UI decide cuándo
-// ofrecer la actualización (nada de confirm(): siempre sheets y toasts).
+// El primer toque, la primera tecla: a partir de ahí el arranque deja de estar
+// «en frío» y ninguna actualización se aplica sin permiso. Se registran ANTES
+// del registerSW para que un toque muy temprano gane la carrera contra el
+// `waiting` del service worker — el vendedor podría haber apretado grabar en
+// el primer segundo, y esa nota no se pierde por una recarga nuestra.
+for (const evento of ['pointerdown', 'keydown', 'touchstart'] as const) {
+  window.addEventListener(evento, marcarInteracao, {
+    once: true,
+    capture: true,
+    passive: true,
+  })
+}
+
+// registerType: 'prompt'. La app no se recarga sola MIENTRAS SE USA: el
+// vendedor puede estar en medio de una nota de voz. La única excepción es el
+// arranque en frío —antes del primer toque—, donde quedarse con el bundle
+// viejo es el riesgo real y recargar no le cuesta nada a nadie. Quién decide
+// qué es `atenderNovaVersao`; ver src/install/atualizacao.ts.
 export const updateSW = registerSW({
   onNeedRefresh() {
-    window.dispatchEvent(new CustomEvent(EVENTO_ATUALIZACAO))
+    atenderNovaVersao(() => {
+      window.dispatchEvent(new CustomEvent(EVENTO_ATUALIZACAO))
+    })
   },
   onOfflineReady() {
     window.dispatchEvent(new CustomEvent('ventus:offline-ready'))

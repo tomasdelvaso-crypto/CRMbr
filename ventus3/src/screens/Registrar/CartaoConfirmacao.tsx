@@ -16,7 +16,14 @@
 // 'next_action_incomplete' porque la fecha se pedía en texto libre), y tiene
 // que estar por encima del pliegue, no enterrado bajo un bloque opcional.
 
-import { AlertTriangle, Building2, CloudOff, Pencil, Sparkles } from 'lucide-react'
+import {
+  AlertTriangle,
+  Building2,
+  CloudOff,
+  Pencil,
+  ServerCrash,
+  Sparkles,
+} from 'lucide-react'
 import { ACTIVITY_RESULT_LABELS, ACTIVITY_TYPE_CONFIG, type ActivityResult } from '@/core'
 import type { AlvoRegistro } from '@/data'
 import {
@@ -69,8 +76,27 @@ export function CartaoConfirmacao({
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ── Avisos de contexto ─────────────────────────────────────────── */}
-      {r.pendenteDeTranscricao && (
+      {/* ── Avisos de contexto ───────────────────────────────────────────
+          De QUIÉN es el problema. Tres estados y no uno: decir «sem conexão»
+          cuando el servidor devolvió 500 manda al vendedor a caminar hasta la
+          puerta del galpão a buscar una señal que ya tiene. Pasó, con captura,
+          en el primer test en un teléfono real. */}
+      {r.causa === 'servidor' && (
+        <Card padding="sm" accent="perigo">
+          <p className="flex items-start gap-2 text-sm">
+            <ServerCrash size={18} aria-hidden className="mt-0.5 shrink-0 text-danger" />
+            <span>
+              <strong className="block">O servidor do Ventus está com problemas.</strong>
+              Não é a sua conexão — tentando de novo em breve.{' '}
+              {r.pendenteDeTranscricao
+                ? 'O áudio está salvo no aparelho e sobe sozinho. Confirme o essencial agora.'
+                : 'Preencha o essencial e siga.'}
+            </span>
+          </p>
+        </Card>
+      )}
+
+      {r.pendenteDeTranscricao && r.causa !== 'servidor' && (
         <Card padding="sm" accent="atencao">
           <p className="flex items-start gap-2 text-sm">
             <CloudOff size={18} aria-hidden className="mt-0.5 shrink-0 text-warn" />
@@ -95,7 +121,7 @@ export function CartaoConfirmacao({
         </Card>
       )}
 
-      {r.aviso && !r.simulado && !r.pendenteDeTranscricao && (
+      {r.aviso && !r.simulado && !r.pendenteDeTranscricao && r.causa === null && (
         <p className="text-sm text-warn-soft-fg">{r.aviso}</p>
       )}
 

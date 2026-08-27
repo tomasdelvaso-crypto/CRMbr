@@ -38,7 +38,14 @@ export function Hud({
 
   return (
     <header className="shrink-0 px-4 pt-2">
-      <div className="flex items-center justify-between gap-3">
+      {/* Duas filas, sempre — não só abaixo de algum breakpoint.
+          Relógio+«Encerrar» numa fila, os contadores em outra por baixo:
+          com os quatro elementos disputando UMA fila só (como era antes), a
+          360px de largura o "59:48" pisava o "6 toques" — a captura do dono
+          do produto no Android. Separando em duas filas o problema deixa de
+          depender de largura de tela: nunca há mais de dois elementos
+          dividindo uma fila. */}
+      <div className="flex items-start justify-between gap-3">
         {/* Reloj regresivo: el elemento más grande de la pantalla después del
             nombre de la empresa. aria-live off — un lector que cante cada
             segundo sería insoportable; el tiempo se anuncia por minuto. */}
@@ -64,27 +71,28 @@ export function Hud({
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
-          <Contador icone={<Target size={14} aria-hidden />} valor={`${toques}/${metaToques}`} rotulo="toques" destaque={toques >= metaToques} />
-          <Contador
-            icone={<MessageSquareQuote size={14} aria-hidden />}
-            valor={String(conversas)}
-            rotulo={conversas === 1 ? 'conversa' : 'conversas'}
-            destaque={conversas >= 1}
-          />
-          <button
-            type="button"
-            onClick={onEncerrar}
-            className={cx(
-              'min-h-touch rounded-lg px-3 text-sm font-semibold tap-highlight-none',
-              esgotado
-                ? 'bg-brand text-brand-fg'
-                : 'border border-border bg-surface-2 text-fg-muted active:bg-surface-3',
-            )}
-          >
-            {esgotado ? 'Fechar' : 'Encerrar'}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onEncerrar}
+          className={cx(
+            'min-h-touch shrink-0 rounded-lg px-3 text-sm font-semibold tap-highlight-none',
+            esgotado
+              ? 'bg-brand text-brand-fg'
+              : 'border border-border bg-surface-2 text-fg-muted active:bg-surface-3',
+          )}
+        >
+          {esgotado ? 'Fechar' : 'Encerrar'}
+        </button>
+      </div>
+
+      <div className="mt-2 flex items-center gap-4">
+        <Contador icone={<Target size={14} aria-hidden />} valor={`${toques}/${metaToques}`} rotulo="toques" destaque={toques >= metaToques} />
+        <Contador
+          icone={<MessageSquareQuote size={14} aria-hidden />}
+          valor={String(conversas)}
+          rotulo={conversas === 1 ? 'conversa' : 'conversas'}
+          destaque={conversas >= 1}
+        />
       </div>
 
       {/* Barra de avance del bloque. Solo transform: no reflota el layout. */}
@@ -117,7 +125,7 @@ function Contador({
   destaque: boolean
 }) {
   return (
-    <p className="text-right">
+    <p>
       <span
         className={cx(
           'tnum block text-xl font-bold leading-none',
@@ -126,7 +134,7 @@ function Contador({
       >
         {valor}
       </span>
-      <span className="mt-0.5 flex items-center justify-end gap-1 text-2xs text-fg-subtle">
+      <span className="mt-0.5 flex items-center gap-1 text-2xs text-fg-subtle">
         {icone}
         {rotulo}
       </span>

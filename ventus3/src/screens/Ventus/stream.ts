@@ -17,9 +17,13 @@
 import { sessaoAtual, talvezOnline } from '@/data'
 import {
   ativarMockPorFallback,
+  ERRO_LABELS,
   ErroVentus,
   mockVentus,
   modoMock,
+  podeTentarApi,
+  registrarFalhaDoServidor,
+  registrarSucesso,
   VENTUS_FEEDBACK_PATH,
   VENTUS_PATH,
   type VentusEvento,
@@ -43,6 +47,16 @@ function codigoDeStatus(status: number): ErroVentus['codigo'] {
   if (status === 429) return 'limite_de_uso'
   if (status === 408 || status === 504) return 'timeout'
   return 'interno'
+}
+
+/**
+ * ¿Este status es «el servidor está teniendo un mal momento»?
+ *
+ * Sólo estos arman el backoff. Un 401 no es un problema del servidor y un 404
+ * tampoco: aquél se arregla entrando de nuevo y éste no se arregla insistiendo.
+ */
+function ehFalhaPassageira(status: number): boolean {
+  return status >= 500 || status === 408 || status === 429
 }
 
 /** Un bloque SSE → nuestro evento. Devuelve null para comentarios y basura. */
@@ -92,7 +106,16 @@ export async function* abrirStreamVentus(
   }
 
   if (!talvezOnline()) {
-    yield { tipo: 'erro', codigo: 'timeout', mensagem: 'Sem conexão.' }
+    yield { tipo: 'erro', codigo: 'sem_rede', mensagem: ERRO_LABELS.sem_rede }
+    return
+  }
+
+  // Backoff, y sólo backoff: si el servidor ya falló dos veces seguidas hace
+  // menos de un minuto, no se le hace esperar otros 25 s al vendedor para
+  // llegar al mismo lugar. Pero esto NO es un latch — a los 60 s se vuelve a
+  // intentar solo, sin que nadie tenga que reinstalar nada.
+  if (!podeTentarApi()) {
+    yield { tipo: 'erro', codigo: 'interno', mensagem: ERRO_LABELS.interno }
     return
   }
 
@@ -132,23 +155,39 @@ export async function* abrirStreamVentus(
     })
   } catch {
     if (relogio !== null) clearTimeout(relogio)
-    yield { tipo: 'erro', codigo: 'timeout', mensagem: 'O Ventus não respondeu.' }
+    // El vendedor tocó «Parar» o cerró el sheet: no hay error que contar, y
+    // sobre todo no hay falla que anotarle al servidor.
+    if (opcoes.signal?.aborted === true) return
+    // El fetch no salió. Si el aparato dice que hay red, el problema es del
+    // otro lado: culpar a la conexión del vendedor cuando tiene cuatro barras
+    // es la mentira que hay que dejar de contar.
+    const semRede = !talvezOnline()
+    if (!semRede) registrarFalhaDoServidor()
+    const codigo = semRede ? 'sem_rede' : 'timeout'
+    yield { tipo: 'erro', codigo, mensagem: ERRO_LABELS[codigo] }
     return
   }
 
   if (!resposta.ok) {
     if (relogio !== null) clearTimeout(relogio)
     const codigo = codigoDeStatus(resposta.status)
-    // 404/501 = el backend todavía no existe: se cae al mock por lo que queda
-    // de la sesión, y la pantalla lo dice en la burbuja.
+    // 404/501 = el backend NO EXISTE en este deploy: se cae al mock por lo que
+    // queda de la sesión, y la pantalla lo dice en la burbuja. Es el único
+    // camino que enciende el mock solo.
     if (codigo === 'nao_implementado') {
       ativarMockPorFallback()
       yield* mockVentus(req, opcoes.signal)
       return
     }
-    yield { tipo: 'erro', codigo, mensagem: `HTTP ${String(resposta.status)}` }
+    // 5xx/408/429: el endpoint existe y está mal. Se anota para el backoff y
+    // se cuenta como lo que es. La próxima pregunta vuelve a probar la API.
+    if (ehFalhaPassageira(resposta.status)) registrarFalhaDoServidor()
+    yield { tipo: 'erro', codigo, mensagem: ERRO_LABELS[codigo] }
     return
   }
+
+  // Contestó. Se olvida la racha: el próximo turno arranca de cero.
+  registrarSucesso()
 
   const corpo = resposta.body
   if (corpo === null) {
@@ -181,7 +220,11 @@ export async function* abrirStreamVentus(
     const resto = parsearBloco(buffer)
     if (resto !== null) yield resto
   } catch {
-    yield { tipo: 'erro', codigo: 'timeout', mensagem: 'A conexão caiu no meio.' }
+    // Cortarse a mitad del stream puede ser el túnel o puede ser el servidor.
+    // No se anota falla: si el vendedor tocó «Parar», el abort entra por acá y
+    // castigar al servidor por eso sería inventarle una caída.
+    const codigo = talvezOnline() ? 'timeout' : 'sem_rede'
+    yield { tipo: 'erro', codigo, mensagem: ERRO_LABELS[codigo] }
   } finally {
     if (relogio !== null) clearTimeout(relogio)
     void leitor.cancel().catch(() => undefined)

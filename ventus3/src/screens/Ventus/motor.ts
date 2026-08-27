@@ -445,6 +445,23 @@ export function responderLocalmente(
 }
 
 /**
+ * Lo que el motor sabe decir cuando el camino largo falló, SIN atribuirle la
+ * culpa a nadie.
+ *
+ * Existe separado de `respostaOffline` porque el prefijo importa: cuando el
+ * servidor devuelve 500 y la burbuja ya encabeza con «O servidor do Ventus
+ * está com problemas», seguir con «Estou sem conexão» es contradecirse en dos
+ * renglones — y es exactamente lo que el vendedor leyó en el primer test.
+ */
+export function respostaDeSocorro(
+  carteira: CarteiraLocal,
+  vendor: string,
+  hoje: IsoDate = todayBr(),
+): RespostaLocal {
+  return responderPendencias(carteira, hoje, vendor)
+}
+
+/**
  * La red de seguridad del modo avión: cuando NO hay señal y la pregunta no
  * cae en ninguna intención, se responde igual con lo que el motor sí sabe, y
  * se dice claramente que el Ventus está fuera del ar.
@@ -454,7 +471,7 @@ export function respostaOffline(
   vendor: string,
   hoje: IsoDate = todayBr(),
 ): RespostaLocal {
-  const base = responderPendencias(carteira, hoje, vendor)
+  const base = respostaDeSocorro(carteira, vendor, hoje)
   return {
     ...base,
     texto: `Estou sem conexão, então respondo com o que já está no aparelho — sem inventar nada.\n\n${base.texto}`,

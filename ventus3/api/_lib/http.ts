@@ -78,16 +78,60 @@ export const limiteExcedido = (msg = 'Muitas perguntas em pouco tempo. Tente daq
    ══════════════════════════════════════════════════════════════════════════ */
 
 /**
+ * El host por el que ENTRÓ este pedido.
+ *
+ * En Vercel, `host` ya viene reescrito al dominio público, pero detrás de
+ * cualquier proxy el que manda es `x-forwarded-host`. Se mira primero ése.
+ */
+function hostDoPedido(req: ApiRequest): string | null {
+  const bruto = header(req, 'x-forwarded-host') ?? header(req, 'host')
+  if (!bruto) return null
+  // Un `x-forwarded-host` con varios saltos llega como lista separada por comas.
+  const primeiro = bruto.split(',')[0]?.trim()
+  return primeiro && primeiro !== '' ? primeiro.toLowerCase() : null
+}
+
+/**
+ * ¿El Origin del pedido es el propio host de la app?
+ *
+ * Esto existe porque cada deploy de Vercel tiene su URL larga
+ * (`ventus3-abc123-equipe.vercel.app`) y esa URL NUNCA va a estar en
+ * ALLOWED_ORIGIN. Hoy no rompe —el navegador no exige CORS para un pedido
+ * same-origin— pero es una trampa esperando: basta con que algo empiece a
+ * mandar `Origin` (un `fetch` con `mode: 'cors'`, una preflight por un header
+ * nuevo) para que el mismo dominio que sirve la app se quede sin header y el
+ * teléfono vuelva a quedarse mudo. Un pedido cuyo origen es el host que lo
+ * está atendiendo no es cross-origin por definición.
+ *
+ * El protocolo también se compara: `http://` contra un host que se sirve por
+ * `https://` no es el mismo origen, y aflojar eso sería regalar el candado.
+ */
+export function ehMesmaOrigem(req: ApiRequest, origem: string): boolean {
+  const host = hostDoPedido(req)
+  if (host === null) return false
+  let url: URL
+  try {
+    url = new URL(origem)
+  } catch {
+    return false
+  }
+  if (url.host.toLowerCase() !== host) return false
+  const proto = (header(req, 'x-forwarded-proto') ?? 'https').split(',')[0]?.trim()
+  return url.protocol === `${proto ?? 'https'}:`
+}
+
+/**
  * Resuelve el origen a devolver. Devuelve null si el origen no está en la
- * lista: en ese caso NO se manda el header y el navegador bloquea. Fail-closed
- * también acá.
+ * lista NI es el propio host: en ese caso NO se manda el header y el navegador
+ * bloquea. Fail-closed también acá.
  */
 export function resolverOrigem(req: ApiRequest): string | null {
   const permitidas = origensPermitidas()
   const cabecalho = req.headers['origin']
   const origem = Array.isArray(cabecalho) ? cabecalho[0] : cabecalho
   if (!origem) return permitidas[0] ?? null
-  return permitidas.includes(origem) ? origem : null
+  if (permitidas.includes(origem)) return origem
+  return ehMesmaOrigem(req, origem) ? origem : null
 }
 
 export function aplicarCors(req: ApiRequest, res: ApiResponse): void {

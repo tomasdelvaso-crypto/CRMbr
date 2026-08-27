@@ -174,17 +174,59 @@ export type VentusErroCodigo =
   | 'sem_permissao'
   | 'limite_de_uso'
   | 'nao_implementado'
+  /** El aparato no tiene red: el pedido ni siquiera salió. */
+  | 'sem_rede'
   | 'timeout'
   | 'interno'
 
-/** Mensajes en PT-BR por código. Nunca se le muestra un stack al vendedor. */
+/**
+ * Mensajes en PT-BR por código. Nunca se le muestra un stack al vendedor.
+ *
+ * `sem_rede` e `interno` NO dicen lo mismo y no pueden decirlo: el vendedor
+ * del primer test tenía cuatro barras de señal y la app le echó la culpa a su
+ * conexión. Un 500 es un problema NUESTRO y se anuncia como tal.
+ */
 export const ERRO_LABELS: Readonly<Record<VentusErroCodigo, string>> = {
   sem_sessao: 'Sua sessão expirou. Entre de novo.',
   sem_permissao: 'Isso está fora da sua carteira.',
   limite_de_uso: 'Muitas perguntas em pouco tempo. Tente daqui a um minuto.',
   nao_implementado: 'O Ventus ainda não está ligado neste ambiente.',
-  timeout: 'O Ventus demorou demais. O que dá para responder sem ele está aí embaixo.',
-  interno: 'Algo quebrou do lado do Ventus. Não foi você.',
+  sem_rede: 'Você está sem conexão. Respondo com o que já está no aparelho.',
+  timeout: 'O servidor do Ventus demorou demais — tentando de novo em breve.',
+  interno: 'O servidor do Ventus está com problemas — tentando de novo em breve.',
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   De dónde salió la respuesta — la procedencia que la burbuja anuncia
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Los cuatro orígenes posibles de una respuesta, y son cuatro porque tres de
+ * ellos se veían iguales en pantalla y eso costó una sesión entera de campo:
+ *
+ *  · `motor`     — @/core resolvió sobre Dexie. Instantáneo y exacto.
+ *  · `sem_rede`  — no hay señal. Culpa del túnel, del galpão o del avión.
+ *  · `servidor`  — hay señal de sobra; el que está mal es el Ventus.
+ *  · `simulado`  — el backend no existe en este ambiente y esto es un ejemplo.
+ */
+export type OrigemDaResposta = 'motor' | 'sem_rede' | 'servidor' | 'simulado'
+
+/** Qué anunciar cuando el turno terminó en error. `null` = el texto ya explica. */
+export function origemDoErro(codigo: VentusErroCodigo): OrigemDaResposta | null {
+  switch (codigo) {
+    case 'sem_rede':
+      return 'sem_rede'
+    case 'timeout':
+    case 'interno':
+    case 'limite_de_uso':
+      return 'servidor'
+    case 'nao_implementado':
+      return 'simulado'
+    default:
+      // sem_sessao y sem_permissao no son un problema de infraestructura: el
+      // mensaje dice exactamente qué hacer y un chip encima sería ruido.
+      return null
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -235,9 +277,13 @@ export class ErroVentus extends Error {
  *   1. `VITE_VENTUS_MOCK=on` en el build (o `off` para forzar el real).
  *   2. `localStorage['ventus.chat.mock'] = 'on'` — para probar en el teléfono
  *      sin rebuildear.
- *   3. Automático: si /api/ventus responde 404/501, la pantalla cae al mock
- *      por lo que queda de la sesión y LO DICE. Sin esto, el chat es inusable
- *      hasta que el agente del backend termine.
+ *   3. Automático: si /api/ventus responde 404/501 —o sea, el endpoint NO
+ *      EXISTE en este deploy—, la pantalla cae al mock por lo que queda de la
+ *      sesión y LO DICE. Un 500 NO entra acá: ver mock-flag.ts.
+ *
+ * `localStorage['ventus.chat.mock'] = 'off'` apaga el mock aunque el build
+ * traiga la env en 'on'. Es el interruptor que permite probar el endpoint real
+ * en el teléfono del vendedor sin rebuildear.
  *
  * La mecánica de la bandera (env → fallback → localStorage) es compartida:
  * vive en @/lib/mock-flag y la usa igual la ingesta de Registrar. El estado
@@ -249,10 +295,17 @@ const bandeira = criarBandeiraDeMock({
 })
 
 export const CHAVE_MOCK = bandeira.CHAVE
-/** Enciende el mock para lo que queda de la sesión (fallback por 404/501). */
+/** Enciende el mock para lo que queda de la sesión (SÓLO 404/501). */
 export const ativarMockPorFallback = bandeira.ativarMockPorFallback
 export const mockPorFallbackAtivo = bandeira.mockPorFallbackAtivo
 export const modoMock = bandeira.modoMock
+/** 5xx/timeout/red: falla pasajera. No latchea; sólo arma el backoff. */
+export const registrarFalhaDoServidor = bandeira.registrarFalhaDoServidor
+export const registrarSucesso = bandeira.registrarSucesso
+export const podeTentarApi = bandeira.podeTentarApi
+export const servidorComProblemas = bandeira.servidorComProblemas
+/** Borra latch y racha de fallas. Para los tests y el diagnóstico. */
+export const reiniciarBandeira = bandeira.reiniciar
 
 /** Trocea un texto como lo haría un modelo. Palabras, no caracteres. */
 function pedacos(texto: string): string[] {

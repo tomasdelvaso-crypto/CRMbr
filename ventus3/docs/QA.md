@@ -1,6 +1,6 @@
 # QA de punta a punta — Ventus v3
 
-> Fecha de corte: **2026-08-26** · rama `claude/crm-web-app-redesign-f7tu7g`
+> Fecha de corte: **2026-08-27** · rama `claude/crm-web-app-redesign-f7tu7g`
 >
 > Este documento dice **qué se prueba**, **cómo se corre** y **qué encontró**.
 > Los números son salidas reales pegadas de la corrida, no estimaciones.
@@ -18,6 +18,14 @@
 > el doble de red contestaba `201` a cualquier POST. Ahora **valida cada cuerpo
 > contra el esquema real** y eso destapó **cinco** escrituras que Postgres
 > rechazaba con un 400 que nadie veía: §3.16.
+>
+> **Y la vuelta del 27/08: el hardware real.** El dueño usó la app por primera
+> vez en su Android (~355-360 px CSS) y reportó **cinco** bugs. La suite estaba
+> verde y no veía ninguno: corría a 390x844 y a 1280x900, y movía el scroll con
+> la **rueda**, no con un dedo. Dos proyectos nuevos a 360 px y el gesto táctil
+> de verdad (CDP) cierran ese punto ciego, y el recorrido completo en una sola
+> sesión encontró un defecto que ninguna prueba por pantalla podía ver — el
+> botón «Enviar» del Ventus tapado por la bottom nav y por el FAB: §3-bis.
 
 ---
 
@@ -30,12 +38,16 @@ npm install                       # @playwright/test ya está en devDependencies
 # El binario NO se baja: esta máquina no tiene salida. Ver «El navegador».
 export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 
-npx playwright test               # los 5 proyectos (143 pruebas, ~8 min)
+npx playwright test               # los 7 proyectos (192 pruebas, ~10 min)
 npx playwright test --project=mobile --project=desktop   # sin rebuild de dist/
 npx playwright test hoje.spec.ts -g "Pronto por hoje"
 
 # La sesión real: contra el build de producción, con el doble de red.
 npx playwright test --project=sessao-real-escritorio --project=sessao-real-telefone
+
+# El Android del dueño (360x640). Ver §3-bis.
+npx playwright test --project=golden-estreito     # la Golden Hour a 360 y a 355
+npx playwright test --project=jornada-dono        # el relato completo, en una sesión
 
 CAPTURAS=1 npx playwright test --project=mobile capturas.spec.ts   # docs/capturas/
 node scripts/medir-arranque.mjs                                     # peso + arranque real
@@ -888,6 +900,154 @@ buenas: desactivando las dos líneas del mapeo, `3 failed | 19 passed`.
 
 ---
 
+## 3-bis · Hardware real: el primer test en el Android del dueño
+
+> Fecha: **2026-08-27**. Aparato: Android, **~355-360 px CSS de ancho**, PWA
+> instalada, tema oscuro. El dueño reportó **cinco** bugs con capturas. La
+> suite entera estaba en verde y **no veía ninguno**.
+
+Es el mismo patrón del §3.14/§3.15 y conviene decirlo sin adornos: cada vez que
+alguien usa el producto en un aparato que la suite no emula, aparecen defectos
+que la suite no puede ver. Acá el punto ciego era el **tamaño**: toda la suite
+corría a 390x844 (iPhone 14) y 1280x900, y su teléfono es **más angosto y más
+bajo**. A 390 px el HUD de la Golden Hour entra en una fila; a 360 no.
+
+Y un punto ciego de **método**: el scroll de las pruebas era rueda (`mouse.wheel`)
+o JS (`scrollIntoView`), que no ejercitan `touch-action`. Un dedo sí.
+
+### Lo que se agregó a la suite
+
+| Archivo | Proyecto | Qué cubre |
+|---|---|---|
+| `e2e/golden-estreito.spec.ts` | `golden-estreito` (360x640 y 355x700) | HUD sin superposiciones, scroll interno del card con **toque real**, cierre de 60 s, apertura |
+| `e2e/toque-real.spec.ts` | mobile · mobile-pixel7 · desktop | pan vertical con **gesto táctil de verdad** (CDP `Input.dispatchTouchEvent`) en las 5 rutas diarias |
+| `e2e/teclado-ventus.spec.ts` | mobile · mobile-pixel7 · desktop | el compositor por encima del teclado, con `visualViewport` falso |
+| `e2e/resiliencia.spec.ts` | mobile · mobile-pixel7 · desktop | un 500 no deja el teléfono mudo; el texto del error dice de quién es el problema |
+| `e2e/jornada-dono.spec.ts` | `jornada-dono` (360x640) | **el relato completo, en una sola sesión**, sin recargar el bundle entre pasos |
+
+Los dos proyectos nuevos (`golden-estreito`, `jornada-dono`) corren **sólo** sus
+archivos: el resto de la suite ya está cubierto por `mobile`/`mobile-pixel7` y
+duplicarla a 360 px alargaría la corrida sin agregar nada.
+
+### Por qué existe `jornada-dono.spec.ts` además de los otros cuatro
+
+Porque los otros cuatro prueban **su** bug en aislamiento, arrancando de una app
+recién montada. El dueño no hizo eso: hizo **una sesión sola**, entrando y
+saliendo de las pantallas con el mismo bundle vivo. Un latch que sobrevive a un
+cambio de ruta o un `--spacing-chrome` que quedó escrito de la pantalla anterior
+no se ven probando cada pantalla de cero.
+
+El recorrido, en orden y sin recargar:
+
+```
+Golden Hour (nada encimado · scroll interno con el dedo · 4 botones visibles)
+  → cierre por el ritual completo de 60 s
+  → /placar (swipe TÁCTIL vertical mueve el scroll)
+  → /ventus (nada fijo tapa el compositor)
+  → teclado simulado (se ve el texto Y el botón de enviar)
+  → pregunta 1: el servidor devuelve 500  → texto honesto, NO «sem conexão»
+  → pregunta 2: el servidor devuelve 200  → la respuesta viene de la API
+```
+
+### 3-bis.1 · El defecto que sólo el recorrido completo podía encontrar
+
+**En `/ventus` el botón «Enviar» no se podía tocar.** El compositor es `sticky`
+—sin `z-index`— y **dos** capas fijas `z-40` le caían encima:
+
+- **La bottom nav** (`fixed inset-x-0 bottom-0 z-40`). Un `sticky bottom: 0` se
+  pega al borde del **scrollport**, o sea del viewport, que es exactamente donde
+  vive la nav. El `pb-nav-safe` del `<main>` empuja el contenido **en flujo**,
+  pero a un `sticky` no lo mueve.
+- **El FAB flotante «Registrar por voz»** (`fixed right-4 z-40`), que además
+  **sobra** en esta pantalla: el compositor ya trae su propio botón «Ditar».
+
+Medido, con el campo lleno (con el campo vacío «Enviar» está deshabilitado y el
+click falla por otra razón):
+
+```
+[360x640] Enviar = {"x":293,"y":585,"width":44,"height":44}
+          nav    = {"x":0,"y":575,"width":360,"height":65}     ← se pisan
+[360x780] FAB    = {"x":288,"y":644,"width":56,"height":56}
+          Enviar = {"x":293,"y":608,"width":44,"height":44}     ← se pisan
+```
+
+Y el error literal de Playwright, con los dos culpables alternándose:
+
+```
+- <nav aria-label="Navegação principal" class="fixed inset-x-0 bottom-0 z-40 …">
+    subtree intercepts pointer events
+- <button aria-label="Registrar por voz" class="fixed right-4 z-40 …">
+    subtree intercepts pointer events
+```
+
+En un teléfono de verdad eso es: **el vendedor escribe la pregunta y no la puede
+mandar**, y si apunta bien al botón, abre la grabadora. Se ve en
+`docs/capturas/hardware-real/ventus-compositor-tapado-antes.png` — el texto
+tecleado queda cortado a media palabra detrás de la nav y del botón de enviar no
+hay rastro.
+
+**Por qué ninguna prueba lo veía.** `resiliencia.spec.ts` lo había esquivado a
+propósito mandando la pregunta con **Enter**, con el solapamiento documentado
+como pendiente de otro frente. El dueño no tiene tecla Enter, tiene un dedo.
+
+**Y por qué casi se nos escapa otra vez**: la primera versión de
+`jornada-dono.spec.ts` tocaba con `page.touchscreen.tap(x, y)`, que dispara el
+toque en una **coordenada a ciegas** y «acierta» aunque haya algo encima — pasó
+en verde con el botón tapado. Se cambió a `enviar.tap()`, el **locator**, que sí
+hace el hit-test de Playwright.
+
+**El arreglo**, en tres archivos:
+
+- `src/screens/Ventus/Conversa.tsx` — el `bottom` del sticky deja de ser `0` y
+  pasa a `calc(var(--spacing-nav-visivel) + var(--safe-bottom))` cuando **no**
+  hay teclado. Con teclado sigue siendo `alturaTeclado`: la nav queda ella misma
+  detrás del teclado (en Android el layout viewport no se achica), así que
+  reservar su alto otra vez sería un hueco muerto. Es la misma bifurcación que
+  ya hacía `Registrar/index.tsx` para su barra fija.
+- `src/screens/Ventus/rotas.ts` — `microfoneFlutuanteVisivel()` y
+  `ROTAS_COM_COMPOSITOR_PROPRIO`, junto a `ROTAS_SEM_BARRA`, que es donde ya
+  vivían las reglas de qué ocupa el pie de cada ruta.
+- `src/app/Shell.tsx` — el FAB **flotante** pasa a tener una regla más estricta
+  que el micrófono del `DesktopRail` o el de la barra. El del rail no entra en
+  el pleito: vive en una columna propia y el FAB ya es `lg:hidden`.
+
+**Se comprobó que la prueba falla sin el arreglo**, y cada mitad por separado.
+Con los dos revertidos:
+
+```
+Error: o FAB flutuante não pode existir em /ventus: tapa o «Enviar» do compositor
+  Expected: 0   Received: 1
+```
+
+Restaurando sólo el arreglo del Shell (el FAB ya no está) y dejando el
+compositor viejo, salta la otra mitad con la geometría exacta:
+
+```
+Error: «botão Enviar» ({"x":293,"y":585,"width":44,"height":44})
+       se sobrepõe a «bottom nav» ({"x":0,"y":575,"width":360,"height":65})
+```
+
+Después: `ventus-compositor-tapado-depois.png` — las tres líneas del texto
+legibles, «Ditar» dentro del campo, el botón de enviar visible y todo por encima
+de la nav.
+
+### 3-bis.2 · Lo que NO hizo falta arreglar
+
+El bug C («Placar da Semana no scrollea») **no era de `touch-action`**. La
+auditoría no encontró ningún `touch-action: none` ni `pan-x` heredado sobre
+contenido vertical: los carruseles usan `overflow-x-auto` nativo y no hay
+librería de gestos en el proyecto (`@use-gesture` no está en `package.json`).
+`toque-real.spec.ts` queda igual, como **red**: si algún cambio futuro le pone
+`touch-action: none` a un contenedor por accidente, esas seis pruebas lo agarran.
+
+El sospechoso que queda para el aparato del dueño es el **bundle viejo del
+Service Worker** (bug A): con el JS roto de aquel día, cualquier handler puede
+quedar sin adjuntarse, la pila de touch incluida.
+
+---
+
+---
+
 ## 4 · Los números
 
 ### 4.1 · Leer el día de Dexie — objetivo < 100 ms
@@ -1054,6 +1214,37 @@ Salen de la misma semilla determinística que el resto de la suite, así que dos
 corridas del mismo commit dan la misma imagen y un cambio de diseño se puede
 comparar contra lo que había.
 
+### `docs/capturas/hardware-real/` — el antes y el después del 27/08
+
+Las 18 fotos de los cinco bugs del Android del dueño, a **360 px** de ancho (no
+a los 390 del resto). Cada par es el MISMO estado con el mismo dato sembrado;
+lo único que cambia es el código.
+
+```bash
+# Golden Hour (HUD y card)
+git stash push -- src/screens/GoldenHour/Hud.tsx src/screens/GoldenHour/CartaoContato.tsx
+CAPTURAS=1 npx playwright test --project=golden-estreito -g antes
+git stash pop
+CAPTURAS=1 npx playwright test --project=golden-estreito -g depois
+
+# El compositor del Ventus (§3-bis.1)
+git stash push -- src/screens/Ventus/Conversa.tsx src/screens/Ventus/rotas.ts src/app/Shell.tsx
+CAPTURAS=1 npx playwright test --project=jornada-dono -g antes
+git stash pop
+CAPTURAS=1 npx playwright test --project=jornada-dono -g depois
+```
+
+> ⚠️ Dos trampas al sacar el «antes», las dos pagadas:
+>
+> 1. **El `git stash` tiene que ser consistente.** Stashear `Conversa.tsx` solo
+>    revierte también el `semCompositor` de otro frente y `BarraDeComando.tsx`
+>    deja de compilar; como el segundo `webServer` corre `npm run build`, la
+>    suite ni arranca (`Process from config.webServer was not able to start.
+>    Exit code: 2`). O se stashea el conjunto que se sostiene, o se revierten a
+>    mano **sólo** las líneas del arreglo.
+> 2. **`-g "depois"` corriendo con el código viejo pisa la foto buena.** El
+>    «depois» hay que volver a sacarlo después de restaurar el arreglo.
+
 | | |
 |---|---|
 | `01-hoje` | Los anillos, el botón de la Golden Hour y la primera tarjeta ENTERA (ver 3.8). En teléfono corto la racha bajó debajo de la lista |
@@ -1087,6 +1278,68 @@ estado que la prueba ya verificó, no una pose.
 ---
 
 ## 7 · Salida real de la última corrida
+
+### 27/08 — el verificador del hardware real
+
+Sobre el árbol con las tres entregas de la ola del teléfono ya juntas
+(resiliencia + Golden Hour angosta + toque/teclado), más el defecto del
+compositor del Ventus que encontró el recorrido completo (§3-bis.1).
+
+```
+$ npm run type-check && npx tsc --noEmit -p tsconfig.e2e.json \
+    && npx eslint . --max-warnings 0 && npx vitest run && npm run build
+ Test Files  58 passed (58)
+      Tests  990 passed (990)
+   Duration  14.77s
+✓ built in 1.35s
+PWA v1.3.0 · precache 65 entries (1602.78 KiB)
+EXIT=0
+```
+
+```
+$ npx playwright test
+  47 skipped
+  192 passed (10.6m)
+EXIT=0
+```
+
+Por proyecto: `mobile` 15 · `mobile-pixel7` 15 · `desktop` 9 ·
+`golden-estreito` 4 · **`jornada-dono` 2** · `sessao-real-escritorio` y
+`sessao-real-telefone` el resto. Los 47 salteados son las cuatro suites de
+capturas, que sólo corren con `CAPTURAS=1`.
+
+**192 contra las 190 de la corrida de la mañana**: las dos nuevas son el
+recorrido del dueño. Los 10,6 min contra 9,9 son esas dos más el ritual de
+cierre de 60 s de la Golden Hour, que el recorrido completo hace de verdad en
+vez de saltearlo.
+
+> Sobre el aviso del sandbox que dejó anotado el agente de la Golden Hour («no
+> corrí la suite completa, el sandbox mata el dev server bajo la carga
+> combinada»): **no se reprodujo**. La suite entera corrió **tres** veces de
+> punta a punta en esta máquina (16 GB, 4 núcleos) con los dos `webServer`
+> declarados y 2 workers. Si vuelve a aparecer, `--workers=1`.
+
+#### Y el aviso de §1 se volvió a pagar, por tercera vez
+
+Una de las tres corridas dio `1 failed`:
+
+```
+1) [mobile] › e2e/a11y.spec.ts:70:3 › as ações do swipe existem como botões de teclado
+   Error: page.evaluate: Execution context was destroyed, most likely because of a navigation
+     at fixtures/app.ts:252   ← dentro de `semear()`, no en ninguna aserción
+```
+
+**No era una regresión**: se estaba editando `docs/ESTADO.md` mientras la suite
+corría. El watcher de Vite recarga la página y el `page.evaluate` de la siembra
+se queda sin contexto. La corrida siguiente, sin tocar **nada** —ni un `.md`—,
+dio `192 passed · 0 failed · EXIT=0`.
+
+Vale la pena que quede escrito con el error literal: las dos veces anteriores el
+síntoma se atribuyó a «pruebas frágiles», y las tres veces fue lo mismo. **Un
+`.md` cuenta como tocar el repo**: Vite observa la raíz del proyecto, no sólo lo
+que está importado.
+
+### 26/08 — el verificador del camino de escritura
 
 Corrida del **verificador final** (26/08), sobre el árbol con las dos entregas
 de la ola del camino de escritura ya juntas, más los dos defectos del Ritual da
