@@ -23,9 +23,15 @@ import {
 import { verifyRequest, unauthorizedResponse } from './_lib/auth.js';
 
 const CLAUDE_MODEL = 'claude-sonnet-5';
-// Guarda-chuva abaixo do maxDuration (60s): se a Claude API demorar mais que isso,
-// abortamos e devolvemos o fallback determinístico em vez de um 504 sem corpo.
-const CLAUDE_TIMEOUT_MS = 55_000;
+// Orçamento de tempo por request, abaixo do maxDuration (60s). Toda chamada de
+// rede recebe um AbortSignal derivado dele: se a Claude API (ou a auth, ou a
+// busca web) demorar demais, caímos no fallback determinístico já existente em
+// vez de um 504 sem corpo. O prazo conta desde o início do request, não do fetch.
+const REQUEST_BUDGET_MS = 55_000;
+const AUX_FETCH_TIMEOUT_MS = 8_000; // auth Supabase e busca Serper
+function remainingSignal(deadline, floorMs = 5_000) {
+  return AbortSignal.timeout(Math.max(floorMs, deadline - Date.now()));
+}
 // Preço de lista claude-sonnet-5 (USD por 1M tokens) — só para log de custo
 const PRICE_IN = 3;
 const PRICE_OUT = 15;
@@ -716,7 +722,7 @@ function generateNextBestAction(opportunity, activityHistory) {
 }
 
 // ============= CHAMADA À CLAUDE API =============
-async function callClaudeAPI({ opportunityData, userInput, webSearchResults, completeAnalysis, activityHistory, closedDeals, chatHistory, depth }) {
+async function callClaudeAPI({ opportunityData, userInput, webSearchResults, completeAnalysis, activityHistory, closedDeals, chatHistory, depth, deadline }) {
  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
 
  if (!ANTHROPIC_API_KEY) {
@@ -748,7 +754,7 @@ async function callClaudeAPI({ opportunityData, userInput, webSearchResults, com
  try {
    const response = await fetch("https://api.anthropic.com/v1/messages", {
      method: "POST",
-     signal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
+     signal: remainingSignal(deadline),
      headers: {
        "Content-Type": "application/json",
        "x-api-key": ANTHROPIC_API_KEY,
@@ -915,7 +921,7 @@ const ACTION_PLAN_TOOL = {
   }
 };
 
-async function generateActionPlan(opportunityData, completeAnalysis, vendorName, activityHistory, closedDeals) {
+async function generateActionPlan(opportunityData, completeAnalysis, vendorName, activityHistory, closedDeals, deadline) {
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
 
   const numActions = determineActionCount(opportunityData, completeAnalysis);
@@ -944,6 +950,7 @@ async function generateActionPlan(opportunityData, completeAnalysis, vendorName,
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
+      signal: remainingSignal(deadline),
       headers: {
         "Content-Type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY,
@@ -1059,7 +1066,9 @@ async function handler(req) {
  }
 
  // Auth (fail-open até configurar SUPABASE_URL/SUPABASE_ANON_KEY no Vercel)
- const auth = await verifyRequest(req);
+ // Prazo do request: tudo que sai pela rede recebe um AbortSignal derivado dele
+ const deadline = Date.now() + REQUEST_BUDGET_MS;
+ const auth = await verifyRequest(req, { signal: AbortSignal.timeout(AUX_FETCH_TIMEOUT_MS) });
  if (!auth.ok) {
    return unauthorizedResponse(headers);
  }
@@ -1099,7 +1108,7 @@ async function handler(req) {
 
    // ===== ROTA: ACTION PLAN =====
    if (requestType === 'action_plan') {
-     const actionPlan = await generateActionPlan(opportunityData, completeAnalysis, vendorName, activityHistory, relevantClosedDeals);
+     const actionPlan = await generateActionPlan(opportunityData, completeAnalysis, vendorName, activityHistory, relevantClosedDeals, deadline);
      return new Response(
        JSON.stringify({
          response: null,
@@ -1119,6 +1128,7 @@ async function handler(req) {
      try {
        const resp = await fetch('https://api.anthropic.com/v1/messages', {
          method: 'POST',
+         signal: remainingSignal(deadline),
          headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
          body: JSON.stringify({
            model: 'claude-haiku-4-5-20251001',
@@ -1190,7 +1200,8 @@ async function handler(req) {
      const year = new Date().getFullYear();
      console.log('🔍 Buscando no Google para:', opportunityData.client);
      webSearchResults = await searchGoogleForContext(
-       `${opportunityData.client} Brasil ${opportunityData.industry || ''} notícias ${year - 1} ${year}`
+       `${opportunityData.client} Brasil ${opportunityData.industry || ''} notícias ${year - 1} ${year}`,
+       AbortSignal.timeout(AUX_FETCH_TIMEOUT_MS)
      );
    }
 
@@ -1244,6 +1255,7 @@ async function handler(req) {
 
    // PASSO 3: CLAUDE
    const claudeResponse = await callClaudeAPI({
+     deadline,
      opportunityData,
      userInput: effectiveInput,
      webSearchResults,
@@ -1366,7 +1378,7 @@ function buildCompleteAnalysis(opportunityData, pipelineData, vendorName, activi
 }
 
 // ============= BUSCA NO GOOGLE (se configurada) =============
-async function searchGoogleForContext(query) {
+async function searchGoogleForContext(query, signal) {
  const SERPER_API_KEY = process.env.SERPER_API_KEY;
  if (!SERPER_API_KEY) {
    return null;
@@ -1375,6 +1387,7 @@ async function searchGoogleForContext(query) {
  try {
    const response = await fetch('https://google.serper.dev/search', {
      method: 'POST',
+     signal,
      headers: {
        'X-API-KEY': SERPER_API_KEY,
        'Content-Type': 'application/json'

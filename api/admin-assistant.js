@@ -3,6 +3,11 @@
 
 import { verifyRequest, unauthorizedResponse } from './_lib/auth.js';
 
+// Orçamento de tempo por request, abaixo do maxDuration (60s): a chamada à Claude
+// aborta e devolve erro com corpo em vez de a função morrer num 504.
+const REQUEST_BUDGET_MS = 55_000;
+const AUX_FETCH_TIMEOUT_MS = 8_000; // auth Supabase
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Credentials': 'true',
   'Access-Control-Allow-Origin': '*',
@@ -188,7 +193,8 @@ async function handler(req) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: CORS_HEADERS });
   if (req.method !== 'POST') return json({ error: 'Método não permitido' }, 405);
 
-  const auth = await verifyRequest(req);
+  const deadline = Date.now() + REQUEST_BUDGET_MS;
+  const auth = await verifyRequest(req, { signal: AbortSignal.timeout(AUX_FETCH_TIMEOUT_MS) });
   if (!auth.ok) return unauthorizedResponse(CORS_HEADERS);
 
   try {
@@ -210,6 +216,7 @@ async function handler(req) {
 
     const clRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
+      signal: AbortSignal.timeout(Math.max(5_000, deadline - Date.now())),
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': ANTHROPIC_API_KEY,
