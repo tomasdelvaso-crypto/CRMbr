@@ -184,7 +184,7 @@ function fallbackResponse(vendorStats, stagnationAlerts, userInput) {
 }
 
 // ── Handler principal ────────────────────────────────────────────────────────
-export default async function handler(req) {
+async function handler(req) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: CORS_HEADERS });
   if (req.method !== 'POST') return json({ error: 'Método não permitido' }, 405);
 
@@ -247,3 +247,8 @@ export default async function handler(req) {
     return json({ response: '❌ Erro interno. Tente novamente em instantes.' }, 500);
   }
 }
+
+// Assinatura Web ("fetch") do runtime Node da Vercel: recebe Request, devolve Response.
+// Um `export default function (req)` no runtime Node é tratado como (req, res) —
+// o Response retornado é ignorado e a função fica pendurada até o timeout (60s).
+export default { fetch: handler };
