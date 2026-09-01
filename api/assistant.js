@@ -1,8 +1,12 @@
 // api/assistant.js - Ventus: coach de vendas PPVVCC
 // Motor de análise determinístico + Claude por cima.
 
+// Runtime Node.js (NÃO edge). O runtime edge derruba a função com 504 se ela
+// não devolver a resposta inicial em 25s — limite fixo da plataforma que ignora
+// maxDuration — e a "análise completa" (effort medium, até 5000 tokens) passa
+// disso com frequência. No Node, maxDuration (60s, também em vercel.json) manda.
 export const config = {
- runtime: 'edge',
+ runtime: 'nodejs',
  maxDuration: 60,
 };
 
@@ -19,6 +23,9 @@ import {
 import { verifyRequest, unauthorizedResponse } from './_lib/auth.js';
 
 const CLAUDE_MODEL = 'claude-sonnet-5';
+// Guarda-chuva abaixo do maxDuration (60s): se a Claude API demorar mais que isso,
+// abortamos e devolvemos o fallback determinístico em vez de um 504 sem corpo.
+const CLAUDE_TIMEOUT_MS = 55_000;
 // Preço de lista claude-sonnet-5 (USD por 1M tokens) — só para log de custo
 const PRICE_IN = 3;
 const PRICE_OUT = 15;
@@ -741,6 +748,7 @@ async function callClaudeAPI({ opportunityData, userInput, webSearchResults, com
  try {
    const response = await fetch("https://api.anthropic.com/v1/messages", {
      method: "POST",
+     signal: AbortSignal.timeout(CLAUDE_TIMEOUT_MS),
      headers: {
        "Content-Type": "application/json",
        "x-api-key": ANTHROPIC_API_KEY,
@@ -789,7 +797,7 @@ async function callClaudeAPI({ opportunityData, userInput, webSearchResults, com
    return { type: 'direct_response', content: responseText };
 
  } catch (error) {
-   console.error('❌ Erro chamando Claude:', error.message);
+   console.error(`❌ Erro chamando Claude (${error.name}):`, error.message);
    return { type: 'fallback', content: generateSmartFallback(opportunityData, completeAnalysis) };
  }
 }
@@ -1030,7 +1038,7 @@ function generateFallbackActionPlan(opportunity, analysis, numActions) {
 }
 
 // ============= HANDLER PRINCIPAL =============
-export default async function handler(req) {
+async function handler(req) {
  const headers = {
    'Access-Control-Allow-Credentials': 'true',
    'Access-Control-Allow-Origin': '*',
@@ -1399,3 +1407,8 @@ async function searchGoogleForContext(query) {
    return null;
  }
 }
+
+// Assinatura Web ("fetch") do runtime Node da Vercel: recebe Request, devolve Response.
+// Um `export default function (req)` no runtime Node é tratado como (req, res) —
+// o Response retornado é ignorado e a função fica pendurada até o timeout.
+export default { fetch: handler };
