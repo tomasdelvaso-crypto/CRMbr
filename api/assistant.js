@@ -806,13 +806,20 @@ async function callClaudeAPI({ opportunityData, userInput, webSearchResults, com
    console.error(`❌ Erro chamando Claude (${error.name}):`, error.message);
    // Prazo do request estourou e não há oportunidade selecionada (ex.: análise de
    // pipeline do admin): dizer que foi tempo, não pedir para "selecionar um cliente".
-   if (!opportunityData && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+   const timedOut = error.name === 'TimeoutError' || error.name === 'AbortError';
+   if (timedOut && !opportunityData) {
      return {
        type: 'fallback',
        content: '⏱️ A análise demorou mais que o limite do servidor e foi interrompida. Tente de novo ou peça um recorte menor (um vendedor ou uma oportunidade por vez).'
      };
    }
-   return { type: 'fallback', content: generateSmartFallback(opportunityData, completeAnalysis) };
+   const fallback = generateSmartFallback(opportunityData, completeAnalysis);
+   return {
+     type: 'fallback',
+     content: timedOut
+       ? `⏱️ A análise demorou mais que o limite do servidor e foi interrompida. Segue o resumo automático:\n\n${fallback}`
+       : fallback
+   };
  }
 }
 
