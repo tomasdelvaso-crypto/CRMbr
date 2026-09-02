@@ -42,13 +42,17 @@ jobs:
             local ep="$1"
             local attempt code ms start body
             for attempt in 1 2 3; do
+              : > body.txt
               start=$(date +%s%N)
-              code=$(curl -sS -m 8 -o body.txt -w '%{http_code}' -X GET "$BASE_URL/api/$ep" || echo "000")
+              # em timeout o curl já imprime 000 via -w; não duplicar
+              code=$(curl -sS -m 8 -o body.txt -w '%{http_code}' -X GET "$BASE_URL/api/$ep" || true)
+              code=${code:-000}
               ms=$(( ($(date +%s%N) - start) / 1000000 ))
               body=$(head -c 120 body.txt || true)
-              echo "GET /api/$ep -> HTTP $code em ${ms}ms: $body"
+              echo "GET /api/$ep -> HTTP $code em ${ms}ms: ${body:-<sem corpo>}"
               if [ "$code" = "405" ] && grep -q 'Método não permitido' body.txt && [ "$ms" -lt "$MAX_MS" ]; then
-                code=$(curl -sS -m 8 -o /dev/null -w '%{http_code}' -X OPTIONS "$BASE_URL/api/$ep" || echo "000")
+                code=$(curl -sS -m 8 -o /dev/null -w '%{http_code}' -X OPTIONS "$BASE_URL/api/$ep" || true)
+                code=${code:-000}
                 echo "OPTIONS /api/$ep -> HTTP $code"
                 [ "$code" = "200" ] && return 0
               fi
