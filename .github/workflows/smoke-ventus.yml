@@ -1,0 +1,68 @@
+# Smoke test dos endpoints do Ventus em produção.
+#
+# Um GET em /api/assistant e /api/admin-assistant tem que devolver 405 com corpo
+# JSON em poucos segundos. Se a função estiver "pendurada" (ex.: handler com
+# assinatura errada para o runtime Node, ou volta ao runtime edge), o GET demora
+# até o timeout e o teste falha — foi exatamente o modo de falha que deixou o
+# Ventus Manager fora do ar sem ninguém perceber.
+#
+# Roda após cada deploy de produção (evento deployment_status da integração
+# Vercel↔GitHub), a cada 6 horas como canário, e manualmente (workflow_dispatch).
+name: Smoke test Ventus (CRM v2)
+
+on:
+  deployment_status:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  smoke:
+    # deployment_status: só produção do projeto crm-ventapel-v2 e só quando o
+    # deploy terminou com sucesso. Como este repo alimenta mais de um projeto na
+    # Vercel, o nome do environment vem com o slug do projeto como sufixo
+    # ("Production – crm-ventapel-v2"); sem outro projeto, vem "Production" seco.
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (github.event.deployment_status.state == 'success' &&
+       startsWith(github.event.deployment.environment, 'Production') &&
+       (github.event.deployment.environment == 'Production' ||
+        contains(github.event.deployment.environment, 'crm-ventapel-v2')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_URL: https://crm-ventapel-v2.vercel.app
+      MAX_MS: 5000
+    steps:
+      - name: Endpoints do Ventus respondem rápido
+        shell: bash
+        run: |
+          set -euo pipefail
+          check() {
+            local ep="$1"
+            local attempt code ms start body
+            for attempt in 1 2 3; do
+              : > body.txt
+              start=$(date +%s%N)
+              # em timeout o curl já imprime 000 via -w; não duplicar
+              code=$(curl -sS -m 8 -o body.txt -w '%{http_code}' -X GET "$BASE_URL/api/$ep" || true)
+              code=${code:-000}
+              ms=$(( ($(date +%s%N) - start) / 1000000 ))
+              body=$(head -c 120 body.txt || true)
+              echo "GET /api/$ep -> HTTP $code em ${ms}ms: ${body:-<sem corpo>}"
+              if [ "$code" = "405" ] && grep -q 'Método não permitido' body.txt && [ "$ms" -lt "$MAX_MS" ]; then
+                code=$(curl -sS -m 8 -o /dev/null -w '%{http_code}' -X OPTIONS "$BASE_URL/api/$ep" || true)
+                code=${code:-000}
+                echo "OPTIONS /api/$ep -> HTTP $code"
+                [ "$code" = "200" ] && return 0
+              fi
+              # após um deploy o alias pode levar alguns segundos para apontar — reintenta
+              [ "$attempt" -lt 3 ] && sleep 10
+            done
+            echo "::error::/api/$ep não passou (último status $code em ${ms}ms; esperado 405 + JSON em <${MAX_MS}ms e OPTIONS 200)"
+            return 1
+          }
+          fail=0
+          check assistant || fail=1
+          check admin-assistant || fail=1
+          exit $fail

@@ -5,8 +5,11 @@
 // configuradas como variáveis de ambiente no Vercel (server-side), a validação
 // é pulada e tudo funciona como antes. Ao configurá-las, a proteção ativa
 // automaticamente — sem deploy adicional.
+//
+// `signal` (opcional): AbortSignal para a chamada à API de auth; um timeout cai
+// no mesmo tratamento de erro de rede abaixo (permite o request, loga o aviso).
 
-export async function verifyRequest(req) {
+export async function verifyRequest(req, { signal } = {}) {
   const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
@@ -28,6 +31,7 @@ export async function verifyRequest(req) {
         apikey: SUPABASE_ANON_KEY,
         Authorization: `Bearer ${token}`,
       },
+      signal,
     });
     if (!resp.ok) {
       return { ok: false, enforced: true, reason: 'invalid_token' };
