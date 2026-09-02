@@ -18,13 +18,18 @@ on:
 
 jobs:
   smoke:
-    # deployment_status: só produção e só quando o deploy terminou com sucesso
+    # deployment_status: só produção do projeto crm-ventapel-v2 e só quando o
+    # deploy terminou com sucesso. Como este repo alimenta mais de um projeto na
+    # Vercel, o nome do environment vem com o slug do projeto como sufixo
+    # ("Production – crm-ventapel-v2"); sem outro projeto, vem "Production" seco.
     if: >-
       github.event_name != 'deployment_status' ||
       (github.event.deployment_status.state == 'success' &&
-       github.event.deployment.environment == 'Production')
+       startsWith(github.event.deployment.environment, 'Production') &&
+       (github.event.deployment.environment == 'Production' ||
+        contains(github.event.deployment.environment, 'crm-ventapel-v2')))
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       BASE_URL: https://crm-ventapel-v2.vercel.app
       MAX_MS: 5000
@@ -38,17 +43,17 @@ jobs:
             local attempt code ms start body
             for attempt in 1 2 3; do
               start=$(date +%s%N)
-              code=$(curl -sS -m 15 -o body.txt -w '%{http_code}' -X GET "$BASE_URL/api/$ep" || echo "000")
+              code=$(curl -sS -m 8 -o body.txt -w '%{http_code}' -X GET "$BASE_URL/api/$ep" || echo "000")
               ms=$(( ($(date +%s%N) - start) / 1000000 ))
               body=$(head -c 120 body.txt || true)
               echo "GET /api/$ep -> HTTP $code em ${ms}ms: $body"
               if [ "$code" = "405" ] && grep -q 'Método não permitido' body.txt && [ "$ms" -lt "$MAX_MS" ]; then
-                code=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' -X OPTIONS "$BASE_URL/api/$ep" || echo "000")
+                code=$(curl -sS -m 8 -o /dev/null -w '%{http_code}' -X OPTIONS "$BASE_URL/api/$ep" || echo "000")
                 echo "OPTIONS /api/$ep -> HTTP $code"
                 [ "$code" = "200" ] && return 0
               fi
               # após um deploy o alias pode levar alguns segundos para apontar — reintenta
-              sleep 10
+              [ "$attempt" -lt 3 ] && sleep 10
             done
             echo "::error::/api/$ep não passou (último status $code em ${ms}ms; esperado 405 + JSON em <${MAX_MS}ms e OPTIONS 200)"
             return 1

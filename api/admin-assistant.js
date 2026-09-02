@@ -214,7 +214,11 @@ async function handler(req) {
 
     const prompt = buildAdminPrompt(adminName, vendorStats, stagnationAlerts, userInput, cadenciaStats);
 
-    const clRes = await fetch('https://api.anthropic.com/v1/messages', {
+    // Timeout ou erro de rede na chamada à Claude: mesmo fallback gerencial
+    // determinístico do caminho !clRes.ok, em vez de um 500 genérico.
+    let clRes;
+    try {
+      clRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       signal: AbortSignal.timeout(Math.max(5_000, deadline - Date.now())),
       headers: {
@@ -228,7 +232,11 @@ async function handler(req) {
         output_config: { effort: 'medium' },
         messages: [{ role: 'user', content: prompt }],
       }),
-    });
+      });
+    } catch (netErr) {
+      console.error(`❌ Claude API indisponível (admin-assistant, ${netErr.name}):`, netErr.message);
+      return json({ response: fallbackResponse(vendorStats, stagnationAlerts, userInput) });
+    }
 
     if (!clRes.ok) {
       const errText = await clRes.text().catch(() => '');
