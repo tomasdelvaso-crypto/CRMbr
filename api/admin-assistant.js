@@ -244,7 +244,13 @@ async function handler(req) {
       return json({ response: fallbackResponse(vendorStats, stagnationAlerts, userInput) });
     }
 
-    const data = await clRes.json();
+    let data;
+    try {
+      data = await clRes.json();
+    } catch (readErr) {
+      console.error(`❌ Corpo da Claude API ilegível (admin-assistant, ${readErr.name}):`, readErr.message);
+      return json({ response: fallbackResponse(vendorStats, stagnationAlerts, userInput) });
+    }
     const response = (data.content || [])
       .filter(b => b.type === 'text')
       .map(b => b.text)

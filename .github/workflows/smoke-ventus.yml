@@ -1,30 +1,71 @@
-# Smoke test dos endpoints do Ventus em produção.
+# Guardas do Ventus em produção (CRM v2). Dois jobs:
 #
-# Um GET em /api/assistant e /api/admin-assistant tem que devolver 405 com corpo
-# JSON em poucos segundos. Se a função estiver "pendurada" (ex.: handler com
-# assinatura errada para o runtime Node, ou volta ao runtime edge), o GET demora
-# até o timeout e o teste falha — foi exatamente o modo de falha que deixou o
-# Ventus Manager fora do ar sem ninguém perceber.
+# 1) guarda-runtime (push/PR, sem rede): garante no código que /api/assistant e
+#    /api/admin-assistant continuam no runtime Node, exportados como { fetch },
+#    com maxDuration 60 em vercel.json. Uma volta ao runtime edge (que corta a
+#    função em 25s e causava o 504 da "análise completa") NÃO é detectável por
+#    um GET — o GET responde 405 na hora nos dois runtimes — por isso a guarda é
+#    estática.
 #
-# Roda após cada deploy de produção (evento deployment_status da integração
-# Vercel↔GitHub), a cada 6 horas como canário, e manualmente (workflow_dispatch).
+# 2) smoke (após deploy de produção, cron, manual): GET em /api/assistant e
+#    /api/admin-assistant tem que devolver 405 com JSON em poucos segundos e
+#    OPTIONS 200. Pega função "pendurada" (ex.: handler com assinatura errada
+#    para o runtime Node) — o modo de falha que deixou o Ventus Manager fora do
+#    ar sem ninguém perceber.
+#
+# Avisos:
+# - O cron em repositório público é desativado pelo GitHub após 60 dias sem
+#   atividade no repo. O check que vale é o de deployment_status.
+# - O smoke depende do domínio de produção responder sem login da Vercel. Hoje
+#   é assim (o CRM é usado pelos vendedores nesse domínio); se a Deployment
+#   Protection passar a cobrir produção, o CRM inteiro deixa de abrir para
+#   eles — o smoke falhar nesse caso é o comportamento certo.
 name: Smoke test Ventus (CRM v2)
 
 on:
+  push:
+    branches: [main]
+    paths: ['api/**', 'vercel.json', '.github/workflows/smoke-ventus.yml']
+  pull_request:
+    paths: ['api/**', 'vercel.json', '.github/workflows/smoke-ventus.yml']
   deployment_status:
   workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'
 
 jobs:
+  guarda-runtime:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Endpoints do Ventus no runtime Node com assinatura fetch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=1
+          chk() { if eval "$2"; then echo "OK   $1"; else echo "::error::FALHOU: $1"; ok=0; fi; }
+          chk "api/assistant.js declara runtime 'nodejs'"            "grep -qE \"runtime:[[:space:]]*'nodejs'\" api/assistant.js"
+          chk "nenhum endpoint declara runtime edge"                 "! grep -qE \"runtime:[[:space:]]*'(experimental-)?edge'\" api/assistant.js api/admin-assistant.js"
+          chk "api/assistant.js exporta { fetch: handler }"          "grep -qE '^export default \{ fetch: handler \};' api/assistant.js"
+          chk "api/admin-assistant.js exporta { fetch: handler }"    "grep -qE '^export default \{ fetch: handler \};' api/admin-assistant.js"
+          chk "nenhum endpoint usa default export de função"         "! grep -qE '^export default (async )?function' api/assistant.js api/admin-assistant.js"
+          chk "vercel.json: maxDuration 60 para api/assistant.js"    "jq -e '.functions[\"api/assistant.js\"].maxDuration == 60' vercel.json >/dev/null"
+          chk "vercel.json: maxDuration 60 para api/admin-assistant.js" "jq -e '.functions[\"api/admin-assistant.js\"].maxDuration == 60' vercel.json >/dev/null"
+          chk "orçamento de tempo por request abaixo de 60s"         "grep -qE 'REQUEST_BUDGET_MS = 5[0-9]_000' api/assistant.js api/admin-assistant.js"
+          [ "$ok" = 1 ]
+
   smoke:
     # deployment_status: só produção do projeto crm-ventapel-v2 e só quando o
     # deploy terminou com sucesso. Como este repo alimenta mais de um projeto na
     # Vercel, o nome do environment vem com o slug do projeto como sufixo
     # ("Production – crm-ventapel-v2"); sem outro projeto, vem "Production" seco.
     if: >-
-      github.event_name != 'deployment_status' ||
-      (github.event.deployment_status.state == 'success' &&
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'deployment_status' &&
+       github.event.deployment_status.state == 'success' &&
        startsWith(github.event.deployment.environment, 'Production') &&
        (github.event.deployment.environment == 'Production' ||
         contains(github.event.deployment.environment, 'crm-ventapel-v2')))
