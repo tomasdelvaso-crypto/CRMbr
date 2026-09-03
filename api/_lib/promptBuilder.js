@@ -4,7 +4,47 @@ import {
   SCALE_DEFINITIONS,
   STAGES,
   STAGE_GATES,
+  getScale,
+  getScaleValue,
+  getScaleDescription,
 } from './ppvvcc.js';
+
+// ============= PREPARAÇÃO DE DEMO / TESTE =============
+// Detecta se há demo, teste ou POC no horizonte da oportunidade. Determinístico:
+// atividade planejada do tipo demo/test, texto de próxima ação que fala em demo/teste,
+// ou etapa 3-4 (Apresentação / Validação-Teste).
+const DEMO_REGEX = /\b(demo|demonstra|teste|test|poc|piloto|prova|avalia|trial)/i;
+
+export function detectPlannedDemo(opp, activities) {
+  if (!opp) return null;
+  const list = Array.isArray(activities) ? activities : [];
+
+  const pendingDemo = list.find(a =>
+    a && !a.next_action_done && a.result !== 'expirado' &&
+    (['demo', 'test'].includes(a.activity_type) || DEMO_REGEX.test(a.next_action || '') || DEMO_REGEX.test(a.description || ''))
+  );
+  if (pendingDemo) {
+    return { reason: 'atividade planejada', text: pendingDemo.next_action || pendingDemo.description || '' };
+  }
+  if (DEMO_REGEX.test(opp.next_action || '')) {
+    return { reason: 'próxima ação registrada', text: opp.next_action };
+  }
+  if (opp.stage === 3 || opp.stage === 4) {
+    const stage = STAGES.find(s => s.id === opp.stage);
+    return { reason: `etapa ${opp.stage} (${stage ? stage.name : ''})`, text: '' };
+  }
+  return null;
+}
+
+// Mapa dor → o que medir. Guia para o coach, não gate. KPIs sempre nos números do cliente.
+const DOR_KPI_MAP = `MAPA DOR → O QUE MEDIR (baseline ANTES da demo, medido DURANTE/DEPOIS):
+- Caixas abrem no transporte / violação / roubo / avaria → % de caixas abertas ou violadas por período; reclamações e devoluções por mês; custo por ocorrência.
+- Retrabalho / caixas refeitas / reforço com fita extra → caixas refeitas por dia; tempo por retrabalho; voltas de fita por caixa hoje.
+- Lentidão / gargalo na expedição / hora extra → tempo de fechamento por caixa; caixas por operador por hora; horas extras no pico.
+- Custo de fita / consumo alto → metros de fita por caixa; rolos por mês; preço por rolo e por caixa fechada.
+- Ergonomia / rotatividade / afastamento → operadores por turno; rodízio; queixas registradas.
+- Void fill / relleno / plástico (E-comfill, E-combag) → espaço de armazém ocupado por air pillows/bolha; metros lineares por caixa; tempo de preenchimento; custo de frete por volume; devoluções por dano interno.
+BASELINE SEMPRE (qualquer dor): caixa mais usada (modelo e medidas), caixas por dia na caixa mais usada, tempo de fechamento por caixa, metros de fita por caixa, operadores por turno, sazonalidade (meses de pico).`;
 
 // ============= SYSTEM ESTÁTICO (cacheável — não interpolar nada dinâmico aqui) =============
 export function buildStaticSystem() {
@@ -158,6 +198,35 @@ ${info.join('\n')}`);
 **OBSERVAÇÕES DO VENDEDOR SOBRE CADA ESCALA:**
 ${descriptions.join('\n')}`);
     }
+    return this;
+  }
+
+  // Demo/teste no horizonte: orienta o que medir a partir da DOR registrada.
+  // Se a DOR não está documentada, a instrução é pedir as dores antes de qualquer KPI.
+  addDemoPrep(opp, activities) {
+    const planned = detectPlannedDemo(opp, activities);
+    if (!planned) return this;
+
+    const dorScale = getScale(opp.scales, 'dor');
+    const dorScore = getScaleValue(dorScale);
+    const dorDesc = (getScaleDescription(dorScale) || '').trim();
+    const hasDor = dorDesc.length >= 15 && !/^(gostaram|gostou|interessad|ok|bom|boa)\b/i.test(dorDesc);
+    const ref = planned.text ? ` ("${planned.text.slice(0, 160)}")` : '';
+
+    if (!hasDor) {
+      this.sections.push(`
+━━━ DEMO / TESTE NO HORIZONTE — DOR NÃO DOCUMENTADA ━━━
+Detectado: ${planned.reason}${ref}. A escala DOR está em ${dorScore}/10 e ${dorDesc ? `a descrição é insuficiente ("${dorDesc.slice(0, 120)}")` : 'sem descrição'}.
+PRIORIDADE ABSOLUTA nesta resposta: antes de qualquer sugestão de KPI ou roteiro de demo, peça ao vendedor que registre no CRM, na escala DOR, as dores NAS PALAVRAS DO CLIENTE: o que acontece (caixas abrem, retrabalho, lentidão, custo de fita, ergonomia...), com que frequência, e quanto custa ou quem sofre. Diga com todas as letras que sem a dor registrada você não consegue orientar o que medir na demo — uma demo sem dor documentada só serve para ver se o operador gosta da máquina, e ele sempre gosta. Não sugira KPIs genéricos; peça a dor primeiro. Pode dar 2-3 perguntas SPIN de situação/problema para ele fazer ao cliente e voltar com a resposta.`);
+      return this;
+    }
+
+    this.sections.push(`
+━━━ DEMO / TESTE NO HORIZONTE — PREPARAÇÃO OBRIGATÓRIA ━━━
+Detectado: ${planned.reason}${ref}.
+DOR registrada pelo vendedor (${dorScore}/10): "${dorDesc.slice(0, 400)}"
+Sua orientação DEVE incluir, em linguagem de café, o que o vendedor tem que MEDIR para provar que a demo resolve ESSA dor específica — não uma lista genérica. Cruze a dor com o mapa abaixo, escolha só os KPIs que respondem à dor registrada e diga: (1) que baseline ele precisa levantar com o cliente ANTES de ir, (2) o que anotar DURANTE a demo/teste, (3) que resposta o cliente vai ter que dar no fim (ex.: "caixas fechadas vs. rolos consumidos"). Números do cliente, nunca os nossos. Se a demo já aconteceu e não há números registrados no histórico, diga que o próximo passo é voltar ao cliente para buscar exatamente esses números — sem eles não se apresenta proposta nem se escala ao decisor.
+${DOR_KPI_MAP}`);
     return this;
   }
 
