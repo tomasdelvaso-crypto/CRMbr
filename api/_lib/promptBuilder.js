@@ -62,6 +62,16 @@ REGRAS ABSOLUTAS:
 4. Respeite o histórico de atividades: nunca sugira algo já feito, descartado ou que falhou.`;
 }
 
+// ============= LEMBRETE DE DEMO / TESTE =============
+// Só dispara quando o VENDEDOR menciona demo/teste na própria mensagem — nada de
+// inferir por etapa, atividades ou escalas. Lembra de levantar os dados da
+// operação do cliente; não muda o assunto da resposta.
+const DEMO_MENTION = /\b(demos?|demonstra[çc][ãa]o|demonstra[çc][õo]es|testes?|piloto|poc|trial|pruebas?)\b/i;
+
+export function mentionsDemo(text) {
+  return typeof text === 'string' && DEMO_MENTION.test(text);
+}
+
 // ============= CONTEXTO DINÂMICO POR REQUEST =============
 class PromptBuilder {
   constructor() {
@@ -217,6 +227,21 @@ ${webResults}`);
 
   addUserQuestion(question) {
     this.userQuestion = question;
+    return this;
+  }
+
+  // Vendedor falou em demo/teste: lembrar de levantar os dados da operação.
+  addDemoReminder(userInput) {
+    if (!mentionsDemo(userInput)) return this;
+    this.sections.push(`
+━━━ O VENDEDOR MENCIONOU DEMO / TESTE ━━━
+Responda à pergunta dele normalmente e, no final, em 2 a 4 linhas e tom de colega, lembre-o de levantar os DADOS DA OPERAÇÃO do cliente — sem eles a demo só mostra se o operador gostou da máquina:
+- caixa mais usada (modelo e medidas) e caixas por dia nessa caixa
+- tempo de fechamento por caixa e metros (ou voltas) de fita por caixa hoje
+- operadores por turno e meses de pico
+- o problema que o cliente quer ver resolvido, nas palavras dele, e como ele vai medir
+- se for preenchimento (E-comfill / E-combag): material usado hoje e consumo por caixa
+Se o histórico ou as observações já trazem alguns desses números, não repita: diga só o que falta. Se todos já estão registrados, não insista.`);
     return this;
   }
 

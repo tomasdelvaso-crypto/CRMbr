@@ -722,7 +722,7 @@ function generateNextBestAction(opportunity, activityHistory) {
 }
 
 // ============= CHAMADA À CLAUDE API =============
-async function callClaudeAPI({ opportunityData, userInput, webSearchResults, completeAnalysis, activityHistory, closedDeals, chatHistory, depth, deadline }) {
+async function callClaudeAPI({ opportunityData, userInput, rawUserInput, webSearchResults, completeAnalysis, activityHistory, closedDeals, chatHistory, depth, deadline }) {
  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
 
  if (!ANTHROPIC_API_KEY) {
@@ -741,6 +741,9 @@ async function callClaudeAPI({ opportunityData, userInput, webSearchResults, com
    .addClosedDealsContext(closedDeals)
    .addActivityHistory(activityHistory)
    .addWebSearchResults(webSearchResults)
+   // Lembrete dos dados da operação só quando há oportunidade selecionada e o
+   // vendedor (não o contexto injetado) falou em demo/teste.
+   .addDemoReminder(opportunityData ? (rawUserInput ?? userInput) : '')
    .addUserQuestion(userInput)
    .addFinalInstructions(depth);
 
@@ -1273,6 +1276,7 @@ async function handler(req) {
      deadline,
      opportunityData,
      userInput: effectiveInput,
+     rawUserInput: userInput,
      webSearchResults,
      completeAnalysis,
      activityHistory,
