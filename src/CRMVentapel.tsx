@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } from 'react';
 import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users, Brain, HelpCircle, FileQuestion, LogOut, Lock, Mail, Phone, SlidersHorizontal } from 'lucide-react';
 import { createClient, Session } from '@supabase/supabase-js';
 import AIAssistant from './AIAssistant';
@@ -11,6 +11,7 @@ import {
   calculateHealthScore,
   checkStageRequirements as checkScaleGates,
   SCALE_DEFINITIONS,
+  STAGE_GATES,
 } from '../api/_lib/ppvvcc.js';
 
 // --- CONFIGURAÇÃO DE SUPABASE ---
@@ -687,6 +688,10 @@ const calculateSPINProgress = (opportunity: Opportunity) => {
 };
 
 // --- CONTEXT API ---
+// Resultado de salvar: quando falha, `error` traz a mensagem amigável para
+// mostrar DENTRO do formulário (o banner do topo fica escondido atrás do modal).
+type SaveResult = { ok: boolean; error?: string };
+
 interface OpportunitiesContextType {
   opportunities: Opportunity[];
   loading: boolean;
@@ -697,8 +702,8 @@ interface OpportunitiesContextType {
   setError: (error: string | null) => void;
   loadOpportunities: () => Promise<void>;
   loadVendors: () => Promise<void>;
-  createOpportunity: (data: OpportunityFormData) => Promise<boolean>;
-  updateOpportunity: (id: number, data: OpportunityFormData) => Promise<boolean>;
+  createOpportunity: (data: OpportunityFormData) => Promise<SaveResult>;
+  updateOpportunity: (id: number, data: OpportunityFormData) => Promise<SaveResult>;
   deleteOpportunity: (id: number) => Promise<void>;
   moveStage: (opportunity: Opportunity, newStage: number) => Promise<void>;
   assumeOpportunity: (opportunity: Opportunity) => Promise<void>;
@@ -772,13 +777,12 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
     }
   }, []);
 
-  const createOpportunity = useCallback(async (formData: OpportunityFormData): Promise<boolean> => {
+  const createOpportunity = useCallback(async (formData: OpportunityFormData): Promise<SaveResult> => {
     try {
       setError(null);
 
       if (!formData.name?.trim() || !formData.client?.trim() || !formData.value) {
-        setError('Por favor, preencha os campos obrigatórios: Nome, Cliente e Valor');
-        return false;
+        return { ok: false, error: 'Preencha os campos obrigatórios: Nome, Cliente e Valor.' };
       }
 
       let safeScales = formData.scales;
@@ -810,16 +814,15 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
       };
       const created = await supabaseService.insertOpportunity(newOpportunity as any);
       upsertOpportunity(created);
-      return true;
+      return { ok: true };
 
     } catch (err) {
       console.error('❌ Erro ao criar oportunidade:', err);
-      setError(`Erro ao criar oportunidade: ${(err as Error).message || 'Verifique os dados'}`);
-      return false;
+      return { ok: false, error: friendlySaveError(err) };
     }
   }, [currentUser, upsertOpportunity]);
 
-  const updateOpportunity = useCallback(async (id: number, formData: OpportunityFormData): Promise<boolean> => {
+  const updateOpportunity = useCallback(async (id: number, formData: OpportunityFormData): Promise<SaveResult> => {
     try {
       setError(null);
 
@@ -853,12 +856,11 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
 
       const updated = await supabaseService.updateOpportunity(id, updatedData as any);
       upsertOpportunity(updated);
-      return true;
+      return { ok: true };
 
     } catch (err) {
       console.error('❌ Erro ao atualizar oportunidade:', err);
-      setError(`Erro ao atualizar: ${(err as Error).message || 'Verifique os dados'}`);
-      return false;
+      return { ok: false, error: friendlySaveError(err) };
     }
   }, [currentUser, upsertOpportunity]);
 
@@ -1037,6 +1039,49 @@ const LoadingSpinner: React.FC = () => (
 const checkStageRequirements = (opportunity: Opportunity, stageId: number): boolean => {
   if (!opportunity.scales) return false;
   return checkScaleGates(opportunity.scales, stageId);
+};
+
+// Traduz erros técnicos (Supabase/rede) para uma mensagem que o vendedor entende.
+const friendlySaveError = (err: any): string => {
+  const raw = String(err?.message || err || '');
+  const low = raw.toLowerCase();
+
+  if (low.includes('failed to fetch') || low.includes('networkerror') || low.includes('load failed') || low.includes('network request failed')) {
+    return 'Sem conexão com o servidor. Verifique sua internet e toque em Salvar de novo — o que você digitou continua aqui na tela.';
+  }
+  if (low.includes('jwt') || low.includes('token') || low.includes('expired') || low.includes('not authenticated')) {
+    return 'Sua sessão expirou. Feche e abra o CRM (ou faça login de novo) e salve novamente.';
+  }
+  if (low.includes('row-level security') || low.includes('policy') || low.includes('permission') || low.includes('cannot coerce') || low.includes('multiple (or no) rows')) {
+    return 'Você não tem permissão para salvar esta oportunidade — ela pode estar atribuída a outro vendedor. Fale com o Tomás.';
+  }
+  if (low.includes('invalid input syntax')) {
+    return 'Algum campo está com formato inválido (confira as datas e o valor) e tente de novo.';
+  }
+  if (low.includes('duplicate key')) {
+    return 'Já existe um registro igual a este no sistema (duplicado).';
+  }
+  return `Erro inesperado ao salvar. Tente de novo; se repetir, mande print desta mensagem para o Tomás: "${raw || 'erro desconhecido'}"`;
+};
+
+// Lista, em linguagem de vendedor, o que a metodologia exige para avançar
+// da etapa atual até a etapa escolhida (gates de escala mínima por etapa).
+const stageGateShortfall = (oppScales: Scales, fromStage: number, toStage: number): string[] => {
+  const issues: string[] = [];
+  if (!oppScales) return issues;
+  const scaleLabel = (id: string) => scales.find(sc => sc.id === id)?.name || id.toUpperCase();
+  for (let s = fromStage; s < toStage; s++) {
+    const gates = (STAGE_GATES as Record<number, { scale: string; min: number }[]>)[s];
+    if (!gates) continue;
+    const stageName = stages.find(st => st.id === s)?.name || `etapa ${s}`;
+    gates.forEach(g => {
+      const current = getScaleValue((oppScales as any)[g.scale]);
+      if (current < g.min) {
+        issues.push(`${scaleLabel(g.scale)} em ${g.min} ou mais para avançar de ${stageName} (hoje está em ${current})`);
+      }
+    });
+  }
+  return issues;
 };
 
 const checkInactivity = (lastUpdate: string, days: number): boolean => {
@@ -1613,21 +1658,33 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
   const [activeScale, setActiveScale] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showScaleSelector, setShowScaleSelector] = useState<string | null>(null);
+  // Erro de salvamento mostrado DENTRO do form (o banner do topo da página
+  // fica escondido atrás do modal e o vendedor nunca via o motivo).
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saveErrorRef = useRef<HTMLDivElement | null>(null);
+
+  const showSaveError = (msg: string) => {
+    setSaveError(msg);
+    // Garante que o aviso entre na tela mesmo com o form rolado
+    setTimeout(() => saveErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  };
 
   const handleSubmit = async () => {
+    setSaveError(null);
+
     if (!formData.name?.trim()) {
-      alert('❌ Por favor, insira o nome da oportunidade');
+      showSaveError('Falta o nome da oportunidade (campo "Nome da Oportunidade").');
       return;
     }
 
     if (!formData.client?.trim()) {
-      alert('❌ Por favor, insira o nome do cliente');
+      showSaveError('Falta o nome do cliente (campo "Cliente").');
       return;
     }
 
     const valueNum = parseFloat(formData.value?.toString() || '0');
     if (isNaN(valueNum) || valueNum <= 0) {
-      alert('❌ Por favor, insira um valor válido maior que 0');
+      showSaveError('O valor do negócio precisa ser um número maior que 0 (campo "Valor").');
       return;
     }
 
@@ -1639,12 +1696,14 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
         scales: formData.scales || emptyScales()
       };
 
-      const success = opportunity
+      const result = opportunity
         ? await updateOpportunity(opportunity.id, dataToSend)
         : await createOpportunity(dataToSend);
 
-      if (success) {
+      if (result.ok) {
         onClose();
+      } else {
+        showSaveError(result.error || 'Não foi possível salvar. Tente de novo.');
       }
     } finally {
       setSubmitting(false);
@@ -1768,6 +1827,19 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                           </option>
                         ))}
                       </select>
+                      {/* Aviso imediato ao subir a etapa com escalas abaixo do que a metodologia pede */}
+                      {opportunity && formData.stage > opportunity.stage && (() => {
+                        const faltas = stageGateShortfall(formData.scales, opportunity.stage, formData.stage);
+                        return faltas.length > 0 ? (
+                          <div className="mt-2 p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-sm text-yellow-800">
+                            <p className="font-semibold">⚠️ Para esta etapa, a metodologia pede:</p>
+                            <ul className="mt-1 list-disc list-inside space-y-0.5">
+                              {faltas.map((f, i) => <li key={i}>{f}</li>)}
+                            </ul>
+                            <p className="mt-1.5 text-yellow-700">Atualize as escalas abaixo (com o que o cliente confirmou) antes de avançar — ou salve assim mesmo se já aconteceu na prática.</p>
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-2 text-gray-700">Prioridade</label>
@@ -2088,6 +2160,16 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                 currentUser={currentUser}
                 supabase={supabase}
               />
+            </div>
+          )}
+
+          {saveError && (
+            <div ref={saveErrorRef} className="mt-6 p-4 bg-red-50 border-2 border-red-300 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="font-bold text-red-800">Não foi possível salvar</p>
+                <p className="text-red-700 text-sm mt-1 break-words">{saveError}</p>
+              </div>
             </div>
           )}
 
