@@ -133,12 +133,13 @@ class ActivityService {
   async syncNextAction(oppId) {
     const planned = await this.getPlanned(oppId);
     const next = planned[0] || null;
-    const { error } = await this.supabase.from('opportunities').update({
+    const { data, error } = await this.supabase.from('opportunities').update({
       next_action: next ? next.next_action : null,
       next_action_date: next ? (next.next_action_date || null) : null,
       updated_at: new Date().toISOString()
-    }).eq('id', oppId);
+    }).eq('id', oppId).select().maybeSingle();
     if (error) throw error;
+    return data;
   }
   async markDone(id, result, vendorNote) {
     const now = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -309,7 +310,7 @@ const PlannedCard = ({ activity, onResolve, onDiscard, onReschedule }) => {
   );
 };
 
-export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
+export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunityChange }) => {
   const [activities, setActivities] = useState([]);
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -332,6 +333,13 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
   const [planType, setPlanType] = useState('call');
 
   const svc = useMemo(() => new ActivityService(supabase), [supabase]);
+
+  // Sem realtime em opportunities: devolve a linha sincronizada ao pai,
+  // senão a ficha continua mostrando a próxima ação anterior até recarregar
+  const sync = async () => {
+    const row = await svc.syncNextAction(opportunity.id);
+    if (row && onOpportunityChange) onOpportunityChange(row);
+  };
 
   const loadAll = useCallback(async () => {
     try {
@@ -361,7 +369,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
         const d = await res.json();
         if (d.actionPlan?.actions?.length > 0) await svc.saveSuggestions(opportunity.id, d.actionPlan.actions, currentUser, opportunity.stage);
       }
-      await svc.syncNextAction(opportunity.id);
+      await sync();
       await loadAll();
     } catch (e) { console.error(e); alert('Erro ao gerar ações'); }
     finally { setGenerating(false); }
@@ -371,7 +379,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
     try {
       await svc.resolvePlanned(a, currentUser, opportunity.stage, { result, note });
       if (nextText) await svc.createPlanned(opportunity.id, currentUser, opportunity.stage, { text: nextText, date: nextDate, type: a.activity_type });
-      await svc.syncNextAction(opportunity.id);
+      await sync();
       await loadAll();
     } catch (e) { console.error(e); alert('Erro ao registrar'); }
   };
@@ -379,7 +387,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
   const discardPlanned = async (id, reason) => {
     try {
       await svc.markDiscarded(id, reason);
-      await svc.syncNextAction(opportunity.id);
+      await sync();
       await loadAll();
     } catch (e) { console.error(e); alert('Erro ao descartar'); }
   };
@@ -387,7 +395,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
   const reschedulePlanned = async (id, date) => {
     try {
       await svc.reschedulePlanned(id, date);
-      await svc.syncNextAction(opportunity.id);
+      await sync();
       await loadAll();
     } catch (e) { console.error(e); alert('Erro ao reagendar'); }
   };
@@ -397,7 +405,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
     setSaving(true);
     try {
       await svc.createPlanned(opportunity.id, currentUser, opportunity.stage, { text: planText.trim(), date: planDate || null, type: planType });
-      await svc.syncNextAction(opportunity.id);
+      await sync();
       setPlanText(''); setPlanDate(''); setPlanType('call'); setShowPlan(false);
       await loadAll();
     } catch (e) { console.error(e); alert('Erro ao planejar'); }
@@ -528,7 +536,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase }) => {
                 <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1" /></div>
             </div>
             <div className="flex gap-2">
-              <button onClick={async () => { if (!formDesc.trim()) return; setSaving(true); try { await svc.create({ opportunity_id: opportunity.id, vendor: currentUser||'', activity_type: formType, description: formDesc.trim(), result: formResult, stage_at_time: opportunity.stage, methodology_code: formCode||null, ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null, next_action: formNext.trim()||null, next_action_date: formDate||null, next_action_done: false, source: 'manual', activity_date: formActivityDate||null }); await svc.syncNextAction(opportunity.id); setFormDesc('');setFormResult('pendente');setFormNext('');setFormDate('');setFormCode('');setFormActivityDate(new Date().toISOString().split('T')[0]);setShowForm(false); await loadAll(); } catch(e){alert('Erro');} finally{setSaving(false);} }} disabled={saving||!formDesc.trim()}
+              <button onClick={async () => { if (!formDesc.trim()) return; setSaving(true); try { await svc.create({ opportunity_id: opportunity.id, vendor: currentUser||'', activity_type: formType, description: formDesc.trim(), result: formResult, stage_at_time: opportunity.stage, methodology_code: formCode||null, ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null, next_action: formNext.trim()||null, next_action_date: formDate||null, next_action_done: false, source: 'manual', activity_date: formActivityDate||null }); await sync(); setFormDesc('');setFormResult('pendente');setFormNext('');setFormDate('');setFormCode('');setFormActivityDate(new Date().toISOString().split('T')[0]);setShowForm(false); await loadAll(); } catch(e){alert('Erro');} finally{setSaving(false);} }} disabled={saving||!formDesc.trim()}
                 className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold disabled:bg-gray-300 flex items-center justify-center">
                 {saving ? '⏳' : <><Save className="w-4 h-4 mr-1" /> Registrar</>}</button>
               <button onClick={() => setShowForm(false)} className="px-4 py-2.5 text-gray-500 border rounded-lg text-sm">Cancelar</button>

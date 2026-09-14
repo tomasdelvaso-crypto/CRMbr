@@ -707,6 +707,7 @@ interface OpportunitiesContextType {
   deleteOpportunity: (id: number) => Promise<void>;
   moveStage: (opportunity: Opportunity, newStage: number) => Promise<void>;
   assumeOpportunity: (opportunity: Opportunity) => Promise<void>;
+  upsertOpportunity: (row: any) => void;
   logout: () => Promise<void>;
 }
 
@@ -983,8 +984,9 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
     deleteOpportunity,
     moveStage,
     assumeOpportunity,
+    upsertOpportunity,
     logout
-  }), [opportunities, loading, error, vendors, currentUser, loadOpportunities, loadVendors, createOpportunity, updateOpportunity, deleteOpportunity, moveStage, assumeOpportunity, logout]);
+  }), [opportunities, loading, error, vendors, currentUser, loadOpportunities, loadVendors, createOpportunity, updateOpportunity, deleteOpportunity, moveStage, assumeOpportunity, upsertOpportunity, logout]);
 
   return (
     <OpportunitiesContext.Provider value={value}>
@@ -1361,7 +1363,7 @@ interface OpportunityCardProps {
 }
 
 const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelected, onEdit, onAnalyze, onMoveStage }) => {
-  const { currentUser, deleteOpportunity, assumeOpportunity } = useOpportunitiesContext();
+  const { currentUser, deleteOpportunity, assumeOpportunity, upsertOpportunity } = useOpportunitiesContext();
 
   const stage = stages.find(s => s.id === opportunity.stage);
   const nextStage = stages.find(s => s.id === opportunity.stage + 1);
@@ -1618,6 +1620,7 @@ const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelect
         opportunity={opportunity}
         currentUser={currentUser}
         supabase={supabase}
+        onOpportunityChange={upsertOpportunity}
       />
     </div>
   );
@@ -1630,7 +1633,7 @@ interface OpportunityFormProps {
 }
 
 const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose }) => {
-  const { vendors, currentUser, createOpportunity, updateOpportunity } = useOpportunitiesContext();
+  const { vendors, currentUser, createOpportunity, updateOpportunity, upsertOpportunity } = useOpportunitiesContext();
   const currentVendorInfo = useMemo(() => vendors.find(v => v.name === currentUser) || null, [vendors, currentUser]);
 
   const [formData, setFormData] = useState<OpportunityFormData>({
@@ -2159,6 +2162,10 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                 opportunity={opportunity}
                 currentUser={currentUser}
                 supabase={supabase}
+                onOpportunityChange={(row: any) => {
+                  upsertOpportunity(row);
+                  setFormData(prev => ({ ...prev, next_action: row.next_action || '', next_action_date: row.next_action_date || '' }));
+                }}
               />
             </div>
           )}
@@ -2344,6 +2351,14 @@ const CRMVentapel: React.FC = () => {
     moveStage,
     logout
   } = useOpportunitiesContext();
+
+  // selected/editing são snapshots do clique; o Coach IA precisa da versão
+  // viva da lista (ex.: próxima ação sincronizada pelo painel de atividades)
+  const assistantOpportunity = useMemo(() => {
+    const snap = selectedOpportunity || editingOpportunity;
+    if (!snap) return null;
+    return opportunities.find(o => o.id === snap.id) || snap;
+  }, [selectedOpportunity, editingOpportunity, opportunities]);
 
   const filters = useFilters();
 
@@ -2770,7 +2785,7 @@ const CRMVentapel: React.FC = () => {
       )}
 
       <AIAssistant
-        currentOpportunity={selectedOpportunity || editingOpportunity}
+        currentOpportunity={assistantOpportunity}
         onOpportunityUpdate={async (updated) => {
           if (selectedOpportunity?.id === updated.id) {
             setSelectedOpportunity(updated);
