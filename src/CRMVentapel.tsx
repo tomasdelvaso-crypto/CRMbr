@@ -996,14 +996,20 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
 };
 
 // --- HOOKS UTILITÁRIOS ---
+const isClosedOpportunity = (opp: Opportunity) => opp.stage === 6 || !!opp.outcome;
+
 const useFilters = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStage, setFilterStage] = useState('all');
   const [filterVendor, setFilterVendor] = useState('all');
   const [filterInactivity, setFilterInactivity] = useState('all');
   const [filterProductLine, setFilterProductLine] = useState('all');
+  // Fechadas (etapa 6 ou com resultado) ficam ocultas até pedir para ver
+  const [showClosed, setShowClosed] = useState(false);
 
   return {
+    showClosed,
+    setShowClosed,
     searchTerm,
     setSearchTerm,
     filterStage,
@@ -2390,9 +2396,13 @@ const CRMVentapel: React.FC = () => {
       const matchesProductLine = filters.filterProductLine === 'all' ||
         (opp.product_lines && opp.product_lines.includes(filters.filterProductLine));
 
-      return matchesSearch && matchesStage && matchesVendor && matchesInactivity && matchesProductLine;
+      const matchesClosed = filters.showClosed || !isClosedOpportunity(opp);
+
+      return matchesSearch && matchesStage && matchesVendor && matchesInactivity && matchesProductLine && matchesClosed;
     });
-  }, [userOpportunities, filters.searchTerm, filters.filterStage, filters.filterVendor, filters.filterInactivity, filters.filterProductLine]);
+  }, [userOpportunities, filters.searchTerm, filters.filterStage, filters.filterVendor, filters.filterInactivity, filters.filterProductLine, filters.showClosed]);
+
+  const closedCount = useMemo(() => userOpportunities.filter(isClosedOpportunity).length, [userOpportunities]);
 
   const dashboardOpportunities = useMemo(() => {
     const baseOpps = currentVendorInfo?.is_admin ? opportunities : userOpportunities;
@@ -2470,6 +2480,14 @@ const CRMVentapel: React.FC = () => {
       <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border">
         <div className="flex items-center justify-between mb-3 sm:mb-4">
           <h3 className="text-lg font-semibold text-gray-800">🔍 Filtros e Busca</h3>
+          <div className="flex items-center gap-2">
+          <button
+            onClick={() => filters.setShowClosed(!filters.showClosed)}
+            className={'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ' +
+              (filters.showClosed ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-gray-600 border-gray-300')}
+          >
+            {filters.showClosed ? '🙈 Ocultar fechadas' : `✅ Ver fechadas (${closedCount})`}
+          </button>
           <button
             onClick={() => setShowMobileFilters(!showMobileFilters)}
             className={'md:hidden flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ' +
@@ -2478,6 +2496,7 @@ const CRMVentapel: React.FC = () => {
             <SlidersHorizontal className="w-4 h-4" />
             Filtros
           </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4">
           <div className="lg:col-span-2">
