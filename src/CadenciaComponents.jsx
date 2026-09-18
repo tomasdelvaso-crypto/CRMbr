@@ -114,12 +114,14 @@ class LeadService {
 
   // Tira da fila e começa a cadência: TP1 fica para hoje.
   async activateLead(id) {
-    const { error } = await this.supabase.from('leads').update({
+    const { data, error } = await this.supabase.from('leads').update({
       status: 'active',
       activated_at: new Date().toISOString(),
       next_touchpoint_date: today(),
-    }).eq('id', id).eq('status', 'queued');
+    }).eq('id', id).eq('status', 'queued').select('id');
     if (error) throw error;
+    // UPDATE que não casa nenhuma linha (RLS, ou já ativado em outra aba) não devolve erro: checar
+    if (!data?.length) throw new Error('Lead não pôde ser ativado (já iniciado ou sem permissão). Atualize a página.');
   }
 
   async archiveLead(id) {
@@ -679,10 +681,13 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
                                 if (!confirm('Excluir este touchpoint?')) return;
                                 await supabase.from('touchpoints').delete().eq('id', tp.id);
                                 // Recalc lead touchpoints_count
-                                const remaining = touchpoints.length - 1;
+                                // last_touchpoint_date = toque mais recente que sobrou (null zeraria o
+                                // relógio de atraso para activated_at e o lead parado pareceria em dia)
+                                const rest = touchpoints.filter(t => t.id !== tp.id);
+                                const lastLeft = rest.map(t => t.executed_at).sort().pop();
                                 await supabase.from('leads').update({
-                                  touchpoints_count: remaining,
-                                  last_touchpoint_date: remaining > 0 ? null : null,
+                                  touchpoints_count: rest.length,
+                                  last_touchpoint_date: lastLeft ? lastLeft.split('T')[0] : null,
                                 }).eq('id', lead.id);
                                 await loadTouchpoints();
                                 onUpdate();
