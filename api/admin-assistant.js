@@ -134,6 +134,8 @@ ${alertsSummary}
 ${cadenciaStats && cadenciaStats.length > 0
   ? cadenciaStats.map(c => {
       let line = `• ${c.vendor}: ${c.activeLeads} leads ativos · ${c.overdueLeads} atrasados (5+ dias) · ${c.touchpoints7d} touchpoints últimos 7d · ${c.convertedLeads} convertidos`;
+      // Fila = leads carregados pela gestão que o vendedor ainda não iniciou: não é atraso, é backlog/capacidade
+      if (c.queuedLeads > 0) line += ` · ${c.queuedLeads} na fila sem iniciar (mais antigo há ${c.oldestQueuedDays}d)`;
       if (c.recentLeads?.length > 0) {
         line += '\n  Leads ativos: ' + c.recentLeads.map(l =>
           `${l.company}${l.contact ? ' (' + l.contact + ')' : ''} — etapa ${l.stage.toUpperCase()} — TP ${l.touchpoints}/7 — ${l.daysSinceContact}d sem contato`

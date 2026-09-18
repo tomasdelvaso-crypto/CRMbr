@@ -45,6 +45,11 @@ const STAGE_CONFIG = {
 const daysBetween = (d1, d2) => Math.floor((d2 - d1) / 86400000);
 const today = () => new Date().toISOString().split('T')[0];
 
+// Dias parado: o relógio corre a partir do último toque ou, sem toque ainda, de quando
+// a cadência foi ativada — nunca de quando o lead foi carregado (fila não gera atraso).
+const daysIdle = (lead) =>
+  daysBetween(new Date(lead.last_touchpoint_date || lead.activated_at || lead.created_at), new Date());
+
 function calcNextTouchpointDate(touchpointsCount, fromDate) {
   const next = CADENCE_SCHEDULE[touchpointsCount]; // 0-indexed: count=0 means next is TP1
   if (!next) return null;
@@ -75,7 +80,8 @@ class LeadService {
     } else if (statusFilter === 'converted') {
       q = q.eq('status', 'converted');
     } else {
-      q = q.eq('status', 'active');
+      // A vista de ativos traz também a fila (leads carregados ainda não iniciados)
+      q = q.in('status', ['active', 'queued']);
     }
     // RLS handles vendor filtering, but for admin with vendorFilter we add it
     const { data, error } = await q;
@@ -83,15 +89,17 @@ class LeadService {
     return data || [];
   }
 
-  async createLead(data) {
-    const nextDate = calcNextTouchpointDate(0, today());
+  // queued = lead carregado para outro vendedor: entra na fila e o relógio só corre quando ele ativar
+  async createLead(data, { queued = false } = {}) {
+    const now = new Date().toISOString();
     const record = {
       ...data,
       touchpoints_count: 0,
-      next_touchpoint_date: nextDate,
-      status: 'active',
+      next_touchpoint_date: queued ? null : calcNextTouchpointDate(0, today()),
+      status: queued ? 'queued' : 'active',
+      activated_at: queued ? null : now,
       stage: data.stage || '1a',
-      created_at: new Date().toISOString(),
+      created_at: now,
     };
     const { data: result, error } = await this.supabase.from('leads').insert([record]).select().single();
     if (error) throw error;
@@ -102,6 +110,16 @@ class LeadService {
     const { data: result, error } = await this.supabase.from('leads').update(data).eq('id', id).select().single();
     if (error) throw error;
     return result;
+  }
+
+  // Tira da fila e começa a cadência: TP1 fica para hoje.
+  async activateLead(id) {
+    const { error } = await this.supabase.from('leads').update({
+      status: 'active',
+      activated_at: new Date().toISOString(),
+      next_touchpoint_date: today(),
+    }).eq('id', id).eq('status', 'queued');
+    if (error) throw error;
   }
 
   async archiveLead(id) {
@@ -117,6 +135,7 @@ class LeadService {
     const nextDate = calcNextTouchpointDate(0, today());
     const { error } = await this.supabase.from('leads').update({
       status: 'active',
+      activated_at: new Date().toISOString(),
       archived_at: null,
       recycle_after: null,
       touchpoints_count: 0,
@@ -240,9 +259,7 @@ class TouchpointService {
 // ── LeadCard ─────────────────────────────────────────────────────────────────
 
 const LeadCard = ({ lead, onClick }) => {
-  const daysSinceLast = lead.last_touchpoint_date
-    ? daysBetween(new Date(lead.last_touchpoint_date), new Date())
-    : daysBetween(new Date(lead.created_at), new Date());
+  const daysSinceLast = daysIdle(lead);
 
   // Urgency: 3+ days = yellow, 5+ days = red
   const urgency = lead.status === 'active'
@@ -320,7 +337,7 @@ const LeadCard = ({ lead, onClick }) => {
 
 // ── TouchpointPanel (sidebar) ────────────────────────────────────────────────
 
-const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert }) => {
+const TouchpointPanel = ({ lead, supabase, onClose, onUpdate, onConvert, onActivate }) => {
   const [touchpoints, setTouchpoints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [channel, setChannel] = useState('');
@@ -462,7 +479,8 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
     finally { setSaving(false); }
   };
 
-  const canRegister = lead.status === 'active' && lead.touchpoints_count < 7;
+  // Na fila também dá para registrar: o 1º touchpoint ativa o lead sozinho (trigger no banco).
+  const canRegister = ['active', 'queued'].includes(lead.status) && lead.touchpoints_count < 7;
   const nextTP = CADENCE_SCHEDULE[lead.touchpoints_count];
 
   return (
@@ -481,10 +499,16 @@ Gere: 1) Mensagem pronta para enviar adaptada ao canal. 2) Dica rápida. Máximo
         <div className="mt-2 flex gap-3 text-sm bg-white/15 rounded-lg px-3 py-1.5">
           <span>📊 {lead.touchpoints_count}/7 TP</span>
           <span>📍 {STAGE_CONFIG[lead.stage]?.label.split('·')[0]}</span>
-          <span className={`font-semibold ${lead.status === 'active' ? 'text-green-200' : lead.status === 'converted' ? 'text-yellow-200' : 'text-gray-300'}`}>
-            {lead.status === 'active' ? '● Ativo' : lead.status === 'converted' ? '✓ Convertido' : '⏸ Arquivado'}
+          <span className={`font-semibold ${lead.status === 'active' ? 'text-green-200' : lead.status === 'converted' ? 'text-yellow-200' : lead.status === 'queued' ? 'text-blue-100' : 'text-gray-300'}`}>
+            {lead.status === 'active' ? '● Ativo' : lead.status === 'converted' ? '✓ Convertido' : lead.status === 'queued' ? '📥 Na fila' : '⏸ Arquivado'}
           </span>
         </div>
+        {lead.status === 'queued' && (
+          <button onClick={() => onActivate(lead)}
+            className="mt-2 w-full py-2 bg-white text-blue-700 rounded-lg font-semibold text-sm hover:bg-blue-50 flex items-center justify-center gap-2">
+            <ArrowRight className="w-4 h-4" /> Iniciar cadência (TP1 para hoje)
+          </button>
+        )}
       </div>
 
       {/* Scrollable content */}
@@ -917,7 +941,7 @@ const NewLeadModal = ({ supabase, currentUser, isAdmin, vendors, onClose, onCrea
         contact_linkedin: form.contact_linkedin.trim() || null,
         stage: form.stage,
         notes: form.notes.trim() || null,
-      });
+      }, { queued: toQueue });
       onCreated();
       onClose();
     } catch (e) {
@@ -928,6 +952,9 @@ const NewLeadModal = ({ supabase, currentUser, isAdmin, vendors, onClose, onCrea
   };
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Admin carregando lead para outro vendedor → vai para a fila dele, sem relógio correndo
+  const toQueue = isAdmin && !!form.vendor && form.vendor !== currentUser;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center p-4 z-[60] overflow-y-auto">
@@ -991,6 +1018,9 @@ const NewLeadModal = ({ supabase, currentUser, isAdmin, vendors, onClose, onCrea
                   <option key={v.name} value={v.name}>{v.name}</option>
                 ))}
               </select>
+              {toQueue && (
+                <p className="text-xs text-blue-600 mt-1">📥 Entra na fila de {form.vendor}: o prazo da cadência só começa quando ele ativar.</p>
+              )}
             </div>
           )}
 
@@ -1042,6 +1072,7 @@ export const CadenciaDashboard = ({ supabase, currentUser, isAdmin, vendors }) =
   const [selectedLead, setSelectedLead] = useState(null);
   const [showNewLead, setShowNewLead] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showQueue, setShowQueue] = useState(false);
 
   const leadSvc = useMemo(() => new LeadService(supabase), [supabase]);
 
@@ -1072,12 +1103,11 @@ export const CadenciaDashboard = ({ supabase, currentUser, isAdmin, vendors }) =
 
   // KPIs
   const activeLeads = filtered.filter(l => l.status === 'active');
-  const overdueLeads = activeLeads.filter(l => {
-    const d = l.last_touchpoint_date
-      ? daysBetween(new Date(l.last_touchpoint_date), new Date())
-      : daysBetween(new Date(l.created_at), new Date());
-    return d >= 5;
-  });
+  // Fila: mais antigos primeiro (dados de contato envelhecem)
+  const queuedLeads = filtered.filter(l => l.status === 'queued')
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const oldestQueuedDays = queuedLeads.length ? daysBetween(new Date(queuedLeads[0].created_at), new Date()) : 0;
+  const overdueLeads = activeLeads.filter(l => daysIdle(l) >= 5);
   const dueThisWeek = activeLeads.filter(l => {
     if (!l.next_touchpoint_date) return false;
     const d = new Date(l.next_touchpoint_date);
@@ -1109,6 +1139,16 @@ export const CadenciaDashboard = ({ supabase, currentUser, isAdmin, vendors }) =
     } catch (e) {
       console.error(e);
       alert('Erro ao converter: ' + (e.message || e));
+    }
+  };
+
+  const handleActivate = async (lead) => {
+    try {
+      await leadSvc.activateLead(lead.id);
+      await loadLeads();
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao iniciar cadência: ' + (e.message || e));
     }
   };
 
@@ -1227,8 +1267,48 @@ export const CadenciaDashboard = ({ supabase, currentUser, isAdmin, vendors }) =
         </div>
       </div>
 
+      {/* Fila: leads carregados que ainda não começaram — sem relógio, sem alerta de atraso */}
+      {view === 'active' && queuedLeads.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl overflow-hidden">
+          <button onClick={() => setShowQueue(s => !s)}
+            className="w-full px-4 py-3 flex items-center justify-between text-left">
+            <span className="text-sm font-bold text-blue-800 flex items-center gap-2">
+              <Archive className="w-4 h-4" /> Na fila — {queuedLeads.length} lead{queuedLeads.length > 1 ? 's' : ''} aguardando início
+            </span>
+            <span className="text-xs text-blue-600 flex items-center gap-2">
+              mais antigo há {oldestQueuedDays}d
+              <ChevronRight className={`w-4 h-4 transition-transform ${showQueue ? 'rotate-90' : ''}`} />
+            </span>
+          </button>
+          {showQueue && (
+            <div className="px-3 pb-3 space-y-1.5 max-h-[50vh] overflow-y-auto">
+              <p className="text-xs text-blue-700 px-1 pb-1">
+                O prazo da cadência só começa quando você inicia. Ative o que consegue tocar esta semana.
+              </p>
+              {queuedLeads.map(lead => (
+                <div key={lead.id} onClick={() => setSelectedLead(lead)}
+                  className="bg-white rounded-xl px-3 py-2 border border-blue-100 flex items-center justify-between gap-2 cursor-pointer hover:shadow-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-gray-800 text-sm truncate">{lead.company_name}</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {lead.contact_name || '—'}{lead.contact_title ? ` · ${lead.contact_title}` : ''}
+                      {isAdmin && vendorFilter === 'all' ? ` · ${lead.vendor}` : ''}
+                      {` · na fila há ${daysBetween(new Date(lead.created_at), new Date())}d`}
+                    </p>
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); handleActivate(lead); }}
+                    className="flex-shrink-0 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold flex items-center gap-1">
+                    <ArrowRight className="w-3 h-3" /> Iniciar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Empty state: convite para começar (em vez de um kanban vazio que parece desabilitado) */}
-      {view === 'active' && !loading && activeLeads.length === 0 && (
+      {view === 'active' && !loading && activeLeads.length === 0 && queuedLeads.length === 0 && (
         <div className="bg-white rounded-2xl border border-gray-200 p-6 sm:p-10 text-center max-w-xl mx-auto">
           <div className="inline-flex p-4 bg-blue-50 rounded-2xl mb-4">
             <Phone className="w-8 h-8 text-blue-600" />
@@ -1248,7 +1328,7 @@ export const CadenciaDashboard = ({ supabase, currentUser, isAdmin, vendors }) =
       )}
 
       {/* Kanban (active view) */}
-      {view === 'active' && !(activeLeads.length === 0 && !loading) && (
+      {view === 'active' && !(activeLeads.length === 0 && queuedLeads.length === 0 && !loading) && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {Object.entries(STAGE_CONFIG).map(([stageKey, cfg]) => (
             <div key={stageKey} className="flex flex-col">
@@ -1314,6 +1394,7 @@ export const CadenciaDashboard = ({ supabase, currentUser, isAdmin, vendors }) =
             await loadLeads();
           }}
           onConvert={handleConvert}
+          onActivate={handleActivate}
         />
       )}
 

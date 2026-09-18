@@ -150,18 +150,23 @@ const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts, supabase }) =
           const now = Date.now();
           const sevenDaysAgo = now - 7 * 86400000;
 
+          // Relógio da cadência: último toque → ativação → criação (fila não gera atraso)
+          const daysIdle = (l) => Math.floor((now - new Date(l.last_touchpoint_date || l.activated_at || l.created_at).getTime()) / 86400000);
+
           // Group by vendor
           const byVendor = {};
           leads.forEach(l => {
-            if (!byVendor[l.vendor]) byVendor[l.vendor] = { leads: [], tps7d: 0, active: 0, overdue: 0, converted: 0, archived: 0 };
+            if (!byVendor[l.vendor]) byVendor[l.vendor] = { leads: [], tps7d: 0, active: 0, overdue: 0, converted: 0, archived: 0, queued: 0, oldestQueuedDays: 0 };
             byVendor[l.vendor].leads.push(l);
             if (l.status === 'active') byVendor[l.vendor].active++;
             if (l.status === 'converted') byVendor[l.vendor].converted++;
             if (l.status === 'archived') byVendor[l.vendor].archived++;
-            const daysSince = l.last_touchpoint_date
-              ? Math.floor((now - new Date(l.last_touchpoint_date).getTime()) / 86400000)
-              : Math.floor((now - new Date(l.created_at).getTime()) / 86400000);
-            if (l.status === 'active' && daysSince >= 5) byVendor[l.vendor].overdue++;
+            if (l.status === 'queued') {
+              byVendor[l.vendor].queued++;
+              const age = Math.floor((now - new Date(l.created_at).getTime()) / 86400000);
+              byVendor[l.vendor].oldestQueuedDays = Math.max(byVendor[l.vendor].oldestQueuedDays, age);
+            }
+            if (l.status === 'active' && daysIdle(l) >= 5) byVendor[l.vendor].overdue++;
           });
 
           // Count touchpoints per vendor last 7 days
@@ -178,6 +183,8 @@ const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts, supabase }) =
             overdueLeads: d.overdue,
             convertedLeads: d.converted,
             archivedLeads: d.archived,
+            queuedLeads: d.queued,
+            oldestQueuedDays: d.oldestQueuedDays,
             touchpoints7d: d.tps7d,
             totalLeads: d.leads.length,
             recentLeads: d.leads.filter(l => l.status === 'active').slice(0, 5).map(l => ({
@@ -185,9 +192,7 @@ const VentusAdmin = ({ currentUser, vendorStats, stagnationAlerts, supabase }) =
               contact: l.contact_name,
               stage: l.stage,
               touchpoints: l.touchpoints_count,
-              daysSinceContact: l.last_touchpoint_date
-                ? Math.floor((now - new Date(l.last_touchpoint_date).getTime()) / 86400000)
-                : Math.floor((now - new Date(l.created_at).getTime()) / 86400000),
+              daysSinceContact: daysIdle(l),
             })),
           }));
         } catch (e) { console.error('Error loading cadencia for Ventus:', e); }
