@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, X, Loader2, Wrench, ChevronRight, RefreshCw, Save, Edit3 } from 'lucide-react';
 import { ActivityPanel, ActivityService, PlannedCard } from './ActivityComponents';
 
@@ -139,10 +139,10 @@ class ServicoService {
     const { error } = await this.supabase.from('activities').insert([row]);
     if (error) throw error;
   }
-  // A visita (ou o orçamento) era a ação planejada: fecha como feita
-  async markPlannedDone(id) {
+  // A visita (ou o orçamento) era a ação planejada: fecha como feita, na data dela
+  async markPlannedDone(id, date = todayLocal()) {
     const { error } = await this.supabase.from('activities')
-      .update({ next_action_done: true, result: 'positivo', activity_date: todayLocal() }).eq('id', id);
+      .update({ next_action_done: true, result: 'positivo', activity_date: date }).eq('id', id);
     if (error) throw error;
   }
   // Tudo o que aconteceu nas oportunidades de Serviço desde `sinceIso` (feed do Jordi)
@@ -383,6 +383,11 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
   const [ganchos, setGanchos] = useState(() =>
     Object.fromEntries(GANCHOS.map(g => [g.id, { on: false, texto: '', data: addDaysISO(today, g.dias) }])));
   const [pendentes, setPendentes] = useState([]);
+  // Enquanto as planejadas carregam não dá para salvar: senão a ação anterior
+  // fica aberta e a visita cria outra por cima
+  const [pendLoading, setPendLoading] = useState(false);
+  // Oportunidade criada numa tentativa que falhou depois: o retry a reaproveita
+  const createdRef = useRef(null);
   const [concluir, setConcluir] = useState(true);
   const [encerrar, setEncerrar] = useState(false);
   const [proxTexto, setProxTexto] = useState(PROXIMO_POR_VISITA[tipoInicial].texto);
@@ -398,8 +403,12 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
   useEffect(() => {
     let cancelled = false;
     setPendentes([]);
-    if (!oppKey) return undefined;
-    svc.getPlanned([oppKey]).then(rows => { if (!cancelled) setPendentes(rows); }).catch(e => console.error(e));
+    if (!oppKey) { setPendLoading(false); return undefined; }
+    setPendLoading(true);
+    svc.getPlanned([oppKey])
+      .then(rows => { if (!cancelled) setPendentes(rows); })
+      .catch(e => console.error(e))
+      .finally(() => { if (!cancelled) setPendLoading(false); });
     return () => { cancelled = true; };
   }, [svc, oppKey]);
 
@@ -418,7 +427,7 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
   const ganchosOn = GANCHOS.filter(g => ganchos[g.id].on);
   const owner = opp ? (opp.vendor || currentUser) : vendor;
   const podeEncerrar = tipo === 'execucao' && !!opp;
-  const valid = !!clientName && !!owner && relatorio.trim().length >= 3 && !!data
+  const valid = !!clientName && !!owner && relatorio.trim().length >= 3 && !!data && !pendLoading
     && ((podeEncerrar && encerrar) || (proxTexto.trim() && proxData))
     && ganchosOn.every(g => ganchos[g.id].data);
 
@@ -428,7 +437,7 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
     const changed = [];
     const avisos = [];
     const vt = VISITA_TIPOS[tipo];
-    let target = opp;
+    let target = opp || createdRef.current;
 
     // 1) Oportunidade (nova, se a visita foi num cliente ainda sem ficha) e a visita
     try {
@@ -439,7 +448,9 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
           servico_info: {}, product: 'Serviço — a definir', product_lines: ['servico_manutencao'],
           stage: 1, probability: 0, priority: 'média', last_update: today,
         });
+        createdRef.current = target;
         changed.push(target);
+        setOppId(String(target.id));
       }
       const ganchoLinhas = ganchosOn.map(g => `• ${g.label}${ganchos[g.id].texto.trim() ? ': ' + ganchos[g.id].texto.trim() : ''}`);
       await svc.insertActivity({
@@ -461,13 +472,16 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
 
     // 2) A ação que levou à visita fica concluída
     if (concluir && pendentes[0]) {
-      try { await svc.markPlannedDone(pendentes[0].id); } catch (e) { console.error(e); avisos.push('a ação planejada anterior não foi marcada como feita'); }
+      try { await svc.markPlannedDone(pendentes[0].id, data); } catch (e) { console.error(e); avisos.push('a ação planejada anterior não foi marcada como feita'); }
     }
 
     // 3) Etapa + próximo passo (ou encerramento como ganha)
     try {
       if (podeEncerrar && encerrar) {
-        changed.push(await svc.updateOpp(target.id, { outcome: 'won', loss_reason: null, last_update: today }));
+        changed.push(await svc.updateOpp(target.id, {
+          outcome: 'won', loss_reason: null, last_update: today,
+          servico_info: cleanInfo({ ...(target.servico_info || {}), encerrada_em: data }),
+        }));
         await svc.closePending(target.id);
       } else {
         const atual = target.servico_etapa || 'contato';
@@ -677,7 +691,9 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
   const [contTexto, setContTexto] = useState('');
   const [contData, setContData] = useState('');
   // Passo Orçamento: montado com o Jordi e enviado por e-mail
-  const [orc, setOrc] = useState(null); // { valor, enviadoEm, cobrarEm, concluir, pendente }
+  const [orc, setOrc] = useState(null); // { valor, enviadoEm, cobrarEm, concluir, pendente, carregado }
+  // Recarrega o histórico da ficha depois de escritas feitas fora do painel
+  const [localTick, setLocalTick] = useState(0);
 
   // Sugestão de continuidade calculada ao abrir o encerramento, com o tipo atual
   const startClosing = (outcome) => {
@@ -728,43 +744,50 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
 
   const abrirOrcamento = async () => {
     const hoje = todayLocal();
-    setOrc({ valor: Number(opp.value) > 0 ? String(opp.value) : '', enviadoEm: hoje, cobrarEm: addDaysISO(hoje, 7), concluir: true, pendente: null });
+    setOrc({ valor: Number(opp.value) > 0 ? String(opp.value) : '', enviadoEm: hoje, cobrarEm: addDaysISO(hoje, 7), concluir: true, pendente: null, carregado: false });
+    let pendente = null;
     try {
       const rows = await svc.getPlanned([opp.id]);
-      setOrc(prev => (prev ? { ...prev, pendente: rows[0] || null } : prev));
+      pendente = rows[0] || null;
     } catch (e) { console.error(e); }
+    setOrc(prev => (prev ? { ...prev, pendente, carregado: true } : prev));
   };
 
   const confirmarOrcamento = async () => {
-    if (!orc || !orc.enviadoEm || !orc.cobrarEm || saving) return;
+    if (!orc || !orc.carregado || !orc.enviadoEm || !orc.cobrarEm || saving) return;
     setSaving(true);
+    let row;
     try {
       const valor = parseFloat(orc.valor);
-      const row = await svc.updateOpp(opp.id, {
+      row = await svc.updateOpp(opp.id, {
         servico_etapa: 'orcamento', servico_etapa_desde: new Date().toISOString(),
         ...(valor > 0 ? { value: valor } : {}),
         servico_info: cleanInfo({ ...info, orcamento_enviado_em: orc.enviadoEm }),
         last_update: todayLocal(),
       });
-      onChange(row);
-      const avisos = [];
-      try { await svc.logEtapa(opp, etapa.label, 'Orçamento', owner); } catch (e) { console.error(e); }
-      if (orc.concluir && orc.pendente) {
-        try { await svc.markPlannedDone(orc.pendente.id); } catch (e) { console.error(e); avisos.push('a ação anterior não foi marcada como feita'); }
-      }
-      try {
-        await actSvc.createPlanned(opp.id, owner, opp.stage || 1, { text: 'Cobrar resposta do orçamento', date: orc.cobrarEm, type: 'call' });
-        const synced = await actSvc.syncNextAction(opp.id);
-        if (synced) onChange(synced);
-      } catch (e) { console.error(e); avisos.push('a cobrança não foi agendada — planeje na ficha'); }
-      setOrc(null);
-      if (avisos.length) alert('Orçamento registrado, mas ' + avisos.join('; ') + '.');
     } catch (e) {
       console.error(e);
       alert('Erro ao registrar o orçamento: ' + errMsg(e));
-    } finally {
       setSaving(false);
+      return;
     }
+    // Só publica a linha (e remonta o painel) depois de todas as escritas,
+    // senão o histórico recarrega antes e mostra a ação antiga como pendente
+    const avisos = [];
+    let synced = null;
+    try { await svc.logEtapa(opp, etapa.label, 'Orçamento', owner); } catch (e) { console.error(e); }
+    if (orc.concluir && orc.pendente) {
+      try { await svc.markPlannedDone(orc.pendente.id, orc.enviadoEm); } catch (e) { console.error(e); avisos.push('a ação anterior não foi marcada como feita'); }
+    }
+    try {
+      await actSvc.createPlanned(opp.id, owner, opp.stage || 1, { text: 'Cobrar resposta do orçamento', date: orc.cobrarEm, type: 'call' });
+      synced = await actSvc.syncNextAction(opp.id);
+    } catch (e) { console.error(e); avisos.push('a cobrança não foi agendada — planeje na ficha'); }
+    onChange(synced || row);
+    setLocalTick(t => t + 1);
+    setOrc(null);
+    setSaving(false);
+    if (avisos.length) alert('Orçamento registrado, mas ' + avisos.join('; ') + '.');
   };
 
   const changeEtapa = async (to) => {
@@ -798,6 +821,8 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
       const lossReason = closing === 'won' ? null : (motivo === 'Outro' ? motivoOutro.trim() : motivo);
       row = await svc.updateOpp(opp.id, {
         outcome: closing, loss_reason: lossReason, outcome_notes: notas.trim() || null, last_update: todayLocal(),
+        // updated_at muda com qualquer edição; a data de encerramento fica explícita
+        servico_info: cleanInfo({ ...info, encerrada_em: todayLocal() }),
       });
       onChange(row);
     } catch (e) {
@@ -858,7 +883,8 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
     if (!confirm('Reabrir esta oportunidade?')) return;
     setSaving(true);
     try {
-      const row = await svc.updateOpp(opp.id, { outcome: null, loss_reason: null, last_update: todayLocal() });
+      const { encerrada_em: _encerrada, ...infoAberta } = info;
+      const row = await svc.updateOpp(opp.id, { outcome: null, loss_reason: null, last_update: todayLocal(), servico_info: infoAberta });
       onChange(row);
     } catch (e) {
       alert('Erro ao reabrir: ' + errMsg(e));
@@ -940,9 +966,9 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
                   </label>
                 )}
                 <div className="flex gap-2">
-                  <button onClick={confirmarOrcamento} disabled={saving || !orc.enviadoEm || !orc.cobrarEm}
+                  <button onClick={confirmarOrcamento} disabled={saving || !orc.carregado || !orc.enviadoEm || !orc.cobrarEm}
                     className="flex-1 py-2.5 bg-amber-500 text-white rounded-lg font-bold disabled:bg-gray-300">
-                    {saving ? '⏳' : 'Confirmar'}
+                    {saving || !orc.carregado ? '⏳' : 'Confirmar'}
                   </button>
                   <button onClick={() => setOrc(null)} className="px-4 py-2.5 border rounded-lg text-gray-600">Cancelar</button>
                 </div>
@@ -1014,7 +1040,7 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
 
           {/* Agenda e histórico — mesmo painel de Vendas, sem PPVVCC */}
           <ActivityPanel
-            key={opp.id + ':' + (opp.servico_etapa || '') + ':' + (opp.outcome || '') + ':' + historyTick}
+            key={opp.id + ':' + (opp.servico_etapa || '') + ':' + (opp.outcome || '') + ':' + historyTick + ':' + localTick}
             opportunity={opp}
             currentUser={currentUser}
             supabase={supabase}
@@ -1103,8 +1129,15 @@ const diasUteisDesde = (iso, today) => {
   return n;
 };
 // Planejada = linha criada como plano (texto em next_action); o "Aconteceu"
-// gera outra linha, com next_action nulo
-const isPlanejada = (a) => !!a.next_action && (a.result == null || (a.result === 'positivo' && a.description === a.next_action));
+// gera outra linha, com next_action nulo. Descartada continua sendo plano.
+const isPlanejada = (a) => !!a.next_action
+  && (a.result == null || a.result === 'descartado' || (a.result === 'positivo' && a.description === a.next_action));
+// Registro de verdade: visita, mudança de etapa ou "Aconteceu"/registro manual.
+// Planejar, reagendar ou descartar não conta (mesma regra do digest do bot).
+const isRegistro = (a) => isVisita(a) || a.activity_type === 'stage_change'
+  || (!a.next_action && !!a.result && a.result !== 'expirado');
+// Data do encerramento: explícita em servico_info; last_update para as antigas
+const encerradaEm = (o) => (o.servico_info && o.servico_info.encerrada_em) || o.last_update || null;
 
 const ServicoAcompanhamento = ({ supabase, opportunities, open, planned, plannedByOpp, agendaOk, plannedError, today, onOpen, tick }) => {
   const svc = useMemo(() => new ServicoService(supabase), [supabase]);
@@ -1120,6 +1153,8 @@ const ServicoAcompanhamento = ({ supabase, opportunities, open, planned, planned
 
   useEffect(() => {
     let cancelled = false;
+    // Sem isso, ao trocar 7↔30 dias os números misturam o feed do período anterior
+    setLoading(true);
     (async () => {
       try {
         const rows = await svc.getRecent(idsKey ? idsKey.split(',').map(Number) : [], desdeTs);
@@ -1164,14 +1199,15 @@ const ServicoAcompanhamento = ({ supabase, opportunities, open, planned, planned
         ev.push({ key: 'n' + o.id, oppId: o.id, ts: o.created_at, dia: localDateOf(o.created_at), icon: '🆕',
           titulo: `Nova oportunidade — ${o.client}`, sub: o.name, vendor: o.vendor });
       }
-      if (o.outcome && o.updated_at && o.updated_at >= desdeTs) {
-        ev.push({ key: 'c' + o.id, oppId: o.id, ts: o.updated_at, dia: localDateOf(o.updated_at), icon: '🏁',
+      const fechada = o.outcome ? encerradaEm(o) : null;
+      if (fechada && fechada >= desde) {
+        ev.push({ key: 'c' + o.id, oppId: o.id, ts: new Date(fechada + 'T23:59:00').toISOString(), dia: fechada, icon: '🏁',
           titulo: `${OUTCOME_LABEL[o.outcome] || o.outcome} — ${o.client}`,
           sub: [o.loss_reason && `Motivo: ${o.loss_reason}`, fmtMoney(o.value)].filter(Boolean).join(' · '), vendor: o.vendor });
       }
     });
     return ev.sort((x, y) => String(y.ts).localeCompare(String(x.ts)));
-  }, [feed, opportunities, desdeTs, oppById]);
+  }, [feed, opportunities, desde, desdeTs, oppById]);
 
   const porDia = useMemo(() => {
     const m = new Map();
@@ -1182,7 +1218,7 @@ const ServicoAcompanhamento = ({ supabase, opportunities, open, planned, planned
   // Números do período
   const visitas = eventos.filter(e => e.visita && e.dia >= desde).length;
   const orcs = opportunities.filter(o => o.servico_info && o.servico_info.orcamento_enviado_em && o.servico_info.orcamento_enviado_em >= desde);
-  const ganhas = opportunities.filter(o => o.outcome === 'won' && o.updated_at && o.updated_at >= desdeTs);
+  const ganhas = opportunities.filter(o => o.outcome === 'won' && (encerradaEm(o) || '') >= desde);
   const novas = opportunities.filter(o => o.created_at && o.created_at >= desdeTs);
   const soma = (list) => list.reduce((s, o) => s + (Number(o.value) || 0), 0);
 
@@ -1207,9 +1243,7 @@ const ServicoAcompanhamento = ({ supabase, opportunities, open, planned, planned
   }));
 
   // Último registro real (visita, Aconteceu, mudança de etapa) — planejar não conta
-  const ultimo = feed
-    .filter(a => a.result !== 'expirado' && !isPlanejada(a))
-    .map(a => a.created_at).sort().pop();
+  const ultimo = feed.filter(isRegistro).map(a => a.created_at).sort().pop();
   const semRegistro = loading || err ? null
     : !ultimo ? `Nenhum registro nos últimos ${dias} dias`
     : diasUteisDesde(localDateOf(ultimo), today) >= 2 ? `Sem registro há ${diasUteisDesde(localDateOf(ultimo), today)} dias úteis` : null;
