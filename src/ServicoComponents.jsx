@@ -10,7 +10,7 @@ import { ActivityPanel, ActivityService, PlannedCard } from './ActivityComponent
 export const SERVICO_ETAPAS = [
   { id: 'contato', label: 'Contato', hint: 'Demanda ou pedido — agendar a visita', color: 'bg-gray-100 text-gray-700' },
   { id: 'visita', label: 'Visita técnica', hint: 'Diagnóstico / demonstração no cliente', color: 'bg-blue-100 text-blue-800' },
-  { id: 'orcamento', label: 'Orçamento', hint: 'Orçamento enviado, aguardando resposta', color: 'bg-amber-100 text-amber-800' },
+  { id: 'orcamento', label: 'Orçamento', hint: 'Orçamento enviado com Jordi por e-mail — aguardando resposta', color: 'bg-amber-100 text-amber-800' },
   { id: 'aprovado', label: 'Aprovado / PO', hint: 'Cliente aprovou — agendar a execução', color: 'bg-green-100 text-green-800' },
   { id: 'execucao', label: 'Execução', hint: 'Serviço em execução', color: 'bg-purple-100 text-purple-800' },
 ];
@@ -35,6 +35,35 @@ const LOSS_REASONS = [
   'Equipamento desativado ou trocado',
   'Cliente não respondeu',
   'Outro',
+];
+
+// Visita técnica = activity 'meeting' com methodology_code SV-* e o relatório na
+// descrição. O bot (digest do Jordi) reconhece as visitas por esse código.
+export const VISITA_TIPOS = {
+  diagnostico: { label: 'Diagnóstico / avaliação', icon: '🔍', code: 'SV-DIAGNOSTICO' },
+  execucao: { label: 'Execução do serviço', icon: '🛠️', code: 'SV-EXECUCAO' },
+  preventiva: { label: 'Preventiva', icon: '🗓️', code: 'SV-PREVENTIVA' },
+  chamado: { label: 'Chamado / urgência', icon: '🚨', code: 'SV-CHAMADO' },
+  acompanhamento: { label: 'Acompanhamento', icon: '👀', code: 'SV-ACOMPANHAMENTO' },
+};
+const visitaTipoByCode = (code) => Object.values(VISITA_TIPOS).find(t => t.code === code) || null;
+
+// Próximo passo sugerido depois de cada tipo de visita
+const PROXIMO_POR_VISITA = {
+  diagnostico: { texto: 'Montar orçamento com Jordi e enviar por e-mail', dias: 3 },
+  execucao: { texto: 'Confirmar com o cliente como ficou o equipamento', dias: 7 },
+  preventiva: { texto: 'Agendar a próxima preventiva', dias: 90 },
+  chamado: { texto: 'Retornar ao cliente sobre o chamado', dias: 3 },
+  acompanhamento: { texto: 'Próximo contato com o cliente', dias: 14 },
+};
+
+// «O que mais viu?» — o técnico não vende: marca o que viu e cada gancho vira
+// uma oportunidade com próxima ação e data.
+const GANCHOS = [
+  { id: 'cabecote', label: 'Outro cabeçote / equipamento em risco', tipo: 'reparo', acao: 'Montar orçamento com Jordi e enviar por e-mail', dias: 3, tipoAcao: 'proposal' },
+  { id: 'fita', label: 'Fita: outra marca ou consumo a atender', tipo: 'fita', acao: 'Oferecer fita Ventapel', dias: 7, tipoAcao: 'call' },
+  { id: 'preventiva', label: 'Preventiva / contrato', tipo: 'preventiva', acao: 'Propor preventiva / contrato', dias: 7, tipoAcao: 'proposal' },
+  { id: 'pecas', label: 'Peças', tipo: 'reparo', acao: 'Montar orçamento de peças com Jordi e enviar por e-mail', dias: 3, tipoAcao: 'proposal' },
 ];
 
 // Continuidade sugerida ao ganhar: o reparo abre a venda seguinte
@@ -105,6 +134,25 @@ class ServicoService {
     const { error } = await this.supabase.from('activities').update({ next_action_done: true, result: 'expirado' })
       .eq('opportunity_id', oppId).eq('next_action_done', false).not('next_action', 'is', null);
     if (error) throw error;
+  }
+  async insertActivity(row) {
+    const { error } = await this.supabase.from('activities').insert([row]);
+    if (error) throw error;
+  }
+  // A visita (ou o orçamento) era a ação planejada: fecha como feita
+  async markPlannedDone(id) {
+    const { error } = await this.supabase.from('activities')
+      .update({ next_action_done: true, result: 'positivo', activity_date: todayLocal() }).eq('id', id);
+    if (error) throw error;
+  }
+  // Tudo o que aconteceu nas oportunidades de Serviço desde `sinceIso` (feed do Jordi)
+  async getRecent(ids, sinceIso) {
+    if (!ids.length) return [];
+    const { data, error } = await this.supabase.from('activities').select('*')
+      .in('opportunity_id', ids).gte('created_at', sinceIso)
+      .order('created_at', { ascending: false }).limit(400);
+    if (error) throw error;
+    return data || [];
   }
 }
 
@@ -317,6 +365,287 @@ const ServicoNovaForm = ({ supabase, currentUser, isAdmin, servicoVendors, onClo
   );
 };
 
+// --- Registrar visita (relatório técnico + «O que mais viu?») ---
+// Unidade de registro do técnico: o que fez e o que viu. A visita conclui a
+// ação planejada, move a etapa, agenda o próximo passo e cada gancho marcado
+// vira uma oportunidade nova — assim o Jordi acompanha dia a dia.
+const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, openOpps, initialOpp, onRows, onClose }) => {
+  const svc = useMemo(() => new ServicoService(supabase), [supabase]);
+  const actSvc = useMemo(() => new ActivityService(supabase), [supabase]);
+  const today = todayLocal();
+  const tipoInicial = initialOpp && ['aprovado', 'execucao'].includes(initialOpp.servico_etapa) ? 'execucao' : 'diagnostico';
+  const [oppId, setOppId] = useState(initialOpp ? String(initialOpp.id) : '');
+  const [novoCliente, setNovoCliente] = useState('');
+  const [vendor, setVendor] = useState(isAdmin ? (servicoVendors[0] || '') : (currentUser || ''));
+  const [tipo, setTipo] = useState(tipoInicial);
+  const [data, setData] = useState(today);
+  const [relatorio, setRelatorio] = useState('');
+  const [ganchos, setGanchos] = useState(() =>
+    Object.fromEntries(GANCHOS.map(g => [g.id, { on: false, texto: '', data: addDaysISO(today, g.dias) }])));
+  const [pendentes, setPendentes] = useState([]);
+  const [concluir, setConcluir] = useState(true);
+  const [encerrar, setEncerrar] = useState(false);
+  const [proxTexto, setProxTexto] = useState(PROXIMO_POR_VISITA[tipoInicial].texto);
+  const [proxData, setProxData] = useState(addDaysISO(today, PROXIMO_POR_VISITA[tipoInicial].dias));
+  const [proxEditado, setProxEditado] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const opp = oppId && oppId !== 'novo' ? openOpps.find(o => String(o.id) === oppId) || null : null;
+  const oppKey = opp ? opp.id : null;
+
+  // Planejadas abertas da oportunidade: a visita normalmente conclui a mais próxima
+  useEffect(() => {
+    let cancelled = false;
+    setPendentes([]);
+    if (!oppKey) return undefined;
+    svc.getPlanned([oppKey]).then(rows => { if (!cancelled) setPendentes(rows); }).catch(e => console.error(e));
+    return () => { cancelled = true; };
+  }, [svc, oppKey]);
+
+  // Sugestão de próximo passo acompanha o tipo de visita até o usuário editar
+  const escolherTipo = (t) => {
+    setTipo(t);
+    if (t !== 'execucao') setEncerrar(false);
+    if (!proxEditado) {
+      setProxTexto(PROXIMO_POR_VISITA[t].texto);
+      setProxData(addDaysISO(today, PROXIMO_POR_VISITA[t].dias));
+    }
+  };
+  const setGancho = (id, patch) => setGanchos(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+
+  const clientName = opp ? opp.client : novoCliente.trim();
+  const ganchosOn = GANCHOS.filter(g => ganchos[g.id].on);
+  const owner = opp ? (opp.vendor || currentUser) : vendor;
+  const podeEncerrar = tipo === 'execucao' && !!opp;
+  const valid = !!clientName && !!owner && relatorio.trim().length >= 3 && !!data
+    && ((podeEncerrar && encerrar) || (proxTexto.trim() && proxData))
+    && ganchosOn.every(g => ganchos[g.id].data);
+
+  const save = async () => {
+    if (!valid || saving) return;
+    setSaving(true); setError(null);
+    const changed = [];
+    const avisos = [];
+    const vt = VISITA_TIPOS[tipo];
+    let target = opp;
+
+    // 1) Oportunidade (nova, se a visita foi num cliente ainda sem ficha) e a visita
+    try {
+      if (!target) {
+        target = await svc.insertOpp({
+          name: oppName(clientName, null), client: clientName, vendor: owner, business_unit: 'servico',
+          servico_tipo: null, servico_etapa: 'visita', servico_etapa_desde: new Date().toISOString(),
+          servico_info: {}, product: 'Serviço — a definir', product_lines: ['servico_manutencao'],
+          stage: 1, probability: 0, priority: 'média', last_update: today,
+        });
+        changed.push(target);
+      }
+      const ganchoLinhas = ganchosOn.map(g => `• ${g.label}${ganchos[g.id].texto.trim() ? ': ' + ganchos[g.id].texto.trim() : ''}`);
+      await svc.insertActivity({
+        opportunity_id: target.id, vendor: owner, activity_type: 'meeting',
+        description: `${vt.icon} Visita — ${vt.label}\n${relatorio.trim()}`
+          + (ganchoLinhas.length ? `\n\nO que mais viu:\n${ganchoLinhas.join('\n')}` : ''),
+        result: null, stage_at_time: target.stage || 1, methodology_code: vt.code,
+        ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null,
+        next_action: null, next_action_date: null, next_action_done: true,
+        source: 'manual', activity_date: data,
+      });
+    } catch (e) {
+      console.error(e);
+      if (changed.length) onRows(changed);
+      setError('Não foi possível registrar a visita: ' + errMsg(e));
+      setSaving(false);
+      return;
+    }
+
+    // 2) A ação que levou à visita fica concluída
+    if (concluir && pendentes[0]) {
+      try { await svc.markPlannedDone(pendentes[0].id); } catch (e) { console.error(e); avisos.push('a ação planejada anterior não foi marcada como feita'); }
+    }
+
+    // 3) Etapa + próximo passo (ou encerramento como ganha)
+    try {
+      if (podeEncerrar && encerrar) {
+        changed.push(await svc.updateOpp(target.id, { outcome: 'won', loss_reason: null, last_update: today }));
+        await svc.closePending(target.id);
+      } else {
+        const atual = target.servico_etapa || 'contato';
+        const nova = tipo === 'execucao' ? 'execucao' : (atual === 'contato' ? 'visita' : atual);
+        if (nova !== atual) {
+          changed.push(await svc.updateOpp(target.id, {
+            servico_etapa: nova, servico_etapa_desde: new Date().toISOString(), last_update: today,
+          }));
+          try {
+            await svc.logEtapa(target, etapaOf(target).label, SERVICO_ETAPAS.find(e => e.id === nova).label, owner);
+          } catch (e) { console.error(e); }
+        }
+        await actSvc.createPlanned(target.id, owner, target.stage || 1, { text: proxTexto.trim(), date: proxData, type: 'call' });
+      }
+      const synced = await actSvc.syncNextAction(target.id);
+      if (synced) changed.push(synced);
+    } catch (e) {
+      console.error(e);
+      avisos.push('o próximo passo não foi salvo (' + errMsg(e) + ') — planeje na ficha');
+    }
+
+    // 4) Ganchos → oportunidades novas com próxima ação
+    for (const g of ganchosOn) {
+      const gd = ganchos[g.id];
+      const detalhe = gd.texto.trim();
+      const acao = detalhe ? `${g.acao} — ${detalhe}` : g.acao;
+      let created = null;
+      try {
+        created = await svc.insertOpp({
+          name: oppName(target.client, g.tipo), client: target.client, vendor: owner, business_unit: 'servico',
+          servico_tipo: g.tipo, servico_etapa: 'visita', servico_etapa_desde: new Date().toISOString(),
+          servico_info: cleanInfo({
+            equipamento: (target.servico_info && target.servico_info.equipamento) || '',
+            fita_obs: g.id === 'fita' ? detalhe : '',
+          }),
+          support_contact: target.support_contact || null, power_sponsor: target.power_sponsor || null,
+          industry: target.industry || null, product: 'Serviço — ' + tipoLabel(g.tipo),
+          product_lines: ['servico_manutencao'], stage: 1, probability: 0, priority: 'média',
+          next_action: acao, next_action_date: gd.data, last_update: today,
+        });
+        changed.push(created);
+        await actSvc.createPlanned(created.id, owner, 1, { text: acao, date: gd.data, type: g.tipoAcao });
+      } catch (e) {
+        console.error(e);
+        avisos.push(created ? `o gancho "${g.label}" foi criado sem próxima ação` : `o gancho "${g.label}" não foi criado (${errMsg(e)})`);
+      }
+    }
+
+    onRows(changed);
+    setSaving(false);
+    if (avisos.length) alert('Visita registrada, mas ' + avisos.join('; ') + '.');
+    onClose(true);
+  };
+
+  const input = 'w-full p-2.5 border border-gray-300 rounded-lg text-base mt-1';
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/40 flex items-start justify-center overflow-y-auto">
+      <div className="bg-white w-full sm:max-w-2xl sm:rounded-2xl shadow-xl min-h-screen sm:min-h-0 sm:my-8">
+        <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b bg-gradient-to-r from-amber-500 to-orange-500 sm:rounded-t-2xl">
+          <h3 className="text-lg font-bold text-white">📝 Registrar visita</h3>
+          <button onClick={() => onClose(false)} className="text-white p-1"><X className="w-6 h-6" /></button>
+        </div>
+        <div className="p-4 space-y-4">
+          {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
+
+          {/* Cliente */}
+          {initialOpp ? (
+            <p className="text-base"><span className="font-bold">{initialOpp.client}</span> <span className="text-gray-500 text-sm">· {initialOpp.name}</span></p>
+          ) : (
+            <div>
+              <label className="text-sm font-semibold text-gray-700">Cliente *</label>
+              <select value={oppId} onChange={e => setOppId(e.target.value)} className={input}>
+                <option value="">Selecione...</option>
+                {openOpps.map(o => <option key={o.id} value={String(o.id)}>{o.client} — {o.name}</option>)}
+                <option value="novo">➕ Cliente novo (sem ficha)</option>
+              </select>
+              {oppId === 'novo' && (
+                <>
+                  <input value={novoCliente} onChange={e => setNovoCliente(e.target.value)} placeholder="Nome do cliente" className={input} />
+                  {isAdmin && (
+                    servicoVendors.length ? (
+                      <select value={vendor} onChange={e => setVendor(e.target.value)} className={input}>
+                        {servicoVendors.map(v => <option key={v} value={v}>👤 {v}</option>)}
+                      </select>
+                    ) : <p className="text-sm text-red-600 mt-1">Nenhum usuário de Serviço cadastrado.</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Tipo e data */}
+          <div>
+            <label className="text-sm font-semibold text-gray-700">Tipo de visita</label>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {Object.entries(VISITA_TIPOS).map(([k, t]) => (
+                <button key={k} type="button" onClick={() => escolherTipo(k)}
+                  className={'px-3 py-2 rounded-lg text-sm font-medium border ' +
+                    (tipo === k ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-300')}>
+                  {t.icon} {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-semibold text-gray-700">Data da visita</label>
+              <input type="date" value={data} max={today} onChange={e => setData(e.target.value)} className={input} />
+            </div>
+          </div>
+
+          {/* Relatório */}
+          <div>
+            <label className="text-sm font-semibold text-gray-700">Relatório técnico *</label>
+            <textarea value={relatorio} onChange={e => setRelatorio(e.target.value)}
+              placeholder="O que fez, o que encontrou, como ficou o equipamento... (pode colar o relatório que já manda ao cliente)"
+              className="w-full p-2.5 border border-gray-300 rounded-lg text-base mt-1 h-32" />
+          </div>
+
+          {/* O que mais viu? */}
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+            <p className="text-sm font-semibold text-blue-900">👁️ O que mais viu? <span className="font-normal text-blue-700">(cada item vira uma oportunidade com data)</span></p>
+            {GANCHOS.map(g => {
+              const gd = ganchos[g.id];
+              return (
+                <div key={g.id}>
+                  <label className="flex items-center gap-2 text-sm text-gray-800 py-1">
+                    <input type="checkbox" checked={gd.on} onChange={e => setGancho(g.id, { on: e.target.checked })} className="w-4 h-4" />
+                    {g.label}
+                  </label>
+                  {gd.on && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 ml-6">
+                      <input value={gd.texto} onChange={e => setGancho(g.id, { texto: e.target.value })}
+                        placeholder="Detalhe (ex.: lâmina do cab. 2 gasta)" className="sm:col-span-2 p-2 border border-gray-300 rounded-lg text-sm" />
+                      <input type="date" value={gd.data} onChange={e => setGancho(g.id, { data: e.target.value })}
+                        className="p-2 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Ação que a visita conclui */}
+          {pendentes[0] && (
+            <label className="flex items-start gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={concluir} onChange={e => setConcluir(e.target.checked)} className="w-4 h-4 mt-0.5" />
+              <span>Esta visita conclui a ação planejada: <strong>{pendentes[0].next_action}</strong></span>
+            </label>
+          )}
+
+          {/* Próximo passo / encerramento */}
+          {podeEncerrar && (
+            <label className="flex items-center gap-2 text-sm font-semibold text-green-800 p-2 bg-green-50 border border-green-200 rounded-lg">
+              <input type="checkbox" checked={encerrar} onChange={e => setEncerrar(e.target.checked)} className="w-4 h-4" />
+              Serviço concluído — encerrar esta oportunidade como Ganha
+            </label>
+          )}
+          {!(podeEncerrar && encerrar) && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+              <p className="text-sm font-semibold text-amber-900">📅 Próximo passo nesta oportunidade *</p>
+              <input value={proxTexto} onChange={e => { setProxTexto(e.target.value); setProxEditado(true); }} className={input} />
+              <input type="date" value={proxData} onChange={e => { setProxData(e.target.value); setProxEditado(true); }} className={input} />
+            </div>
+          )}
+        </div>
+        <div className="p-4 border-t flex gap-2">
+          <button onClick={save} disabled={!valid || saving}
+            className="flex-1 py-3 bg-orange-500 text-white rounded-lg font-bold disabled:bg-gray-300 flex items-center justify-center">
+            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Save className="w-5 h-5 mr-2" /> Registrar</>}
+          </button>
+          <button onClick={() => onClose(false)} className="px-5 py-3 border rounded-lg text-gray-600">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Ficha de uma oportunidade de Serviço ---
 const formFromOpp = (opp) => {
   const info = opp.servico_info || {};
@@ -333,7 +662,7 @@ const formFromOpp = (opp) => {
   };
 };
 
-const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreated }) => {
+const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreated, onRegistrarVisita, historyTick = 0 }) => {
   const svc = useMemo(() => new ServicoService(supabase), [supabase]);
   const actSvc = useMemo(() => new ActivityService(supabase), [supabase]);
   const [editing, setEditing] = useState(false);
@@ -347,6 +676,8 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
   const [contTipo, setContTipo] = useState('');
   const [contTexto, setContTexto] = useState('');
   const [contData, setContData] = useState('');
+  // Passo Orçamento: montado com o Jordi e enviado por e-mail
+  const [orc, setOrc] = useState(null); // { valor, enviadoEm, cobrarEm, concluir, pendente }
 
   // Sugestão de continuidade calculada ao abrir o encerramento, com o tipo atual
   const startClosing = (outcome) => {
@@ -395,8 +726,50 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
     }
   };
 
+  const abrirOrcamento = async () => {
+    const hoje = todayLocal();
+    setOrc({ valor: Number(opp.value) > 0 ? String(opp.value) : '', enviadoEm: hoje, cobrarEm: addDaysISO(hoje, 7), concluir: true, pendente: null });
+    try {
+      const rows = await svc.getPlanned([opp.id]);
+      setOrc(prev => (prev ? { ...prev, pendente: rows[0] || null } : prev));
+    } catch (e) { console.error(e); }
+  };
+
+  const confirmarOrcamento = async () => {
+    if (!orc || !orc.enviadoEm || !orc.cobrarEm || saving) return;
+    setSaving(true);
+    try {
+      const valor = parseFloat(orc.valor);
+      const row = await svc.updateOpp(opp.id, {
+        servico_etapa: 'orcamento', servico_etapa_desde: new Date().toISOString(),
+        ...(valor > 0 ? { value: valor } : {}),
+        servico_info: cleanInfo({ ...info, orcamento_enviado_em: orc.enviadoEm }),
+        last_update: todayLocal(),
+      });
+      onChange(row);
+      const avisos = [];
+      try { await svc.logEtapa(opp, etapa.label, 'Orçamento', owner); } catch (e) { console.error(e); }
+      if (orc.concluir && orc.pendente) {
+        try { await svc.markPlannedDone(orc.pendente.id); } catch (e) { console.error(e); avisos.push('a ação anterior não foi marcada como feita'); }
+      }
+      try {
+        await actSvc.createPlanned(opp.id, owner, opp.stage || 1, { text: 'Cobrar resposta do orçamento', date: orc.cobrarEm, type: 'call' });
+        const synced = await actSvc.syncNextAction(opp.id);
+        if (synced) onChange(synced);
+      } catch (e) { console.error(e); avisos.push('a cobrança não foi agendada — planeje na ficha'); }
+      setOrc(null);
+      if (avisos.length) alert('Orçamento registrado, mas ' + avisos.join('; ') + '.');
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao registrar o orçamento: ' + errMsg(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const changeEtapa = async (to) => {
     if (isClosed || saving || to === etapa.id) return;
+    if (to === 'orcamento') { abrirOrcamento(); return; }
     const toEtapa = SERVICO_ETAPAS.find(e => e.id === to);
     setSaving(true);
     try {
@@ -521,6 +894,13 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
             </div>
           )}
 
+          {!isClosed && onRegistrarVisita && (
+            <button onClick={onRegistrarVisita}
+              className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold text-base hover:bg-orange-600">
+              📝 Registrar visita / relatório
+            </button>
+          )}
+
           {/* Etapa */}
           <div>
             <p className="text-sm font-semibold text-gray-600 mb-2">
@@ -542,6 +922,32 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
               })}
             </div>
             <p className="text-xs text-gray-500 mt-1">{etapa.hint}</p>
+            {orc && (
+              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                <p className="text-sm font-semibold text-amber-900">📧 Orçamento enviado (montado com Jordi, por e-mail)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div><label className="text-xs font-semibold text-gray-600">Valor (R$)</label>
+                    <input type="number" min="0" value={orc.valor} onChange={e => setOrc({ ...orc, valor: e.target.value })} className={input} /></div>
+                  <div><label className="text-xs font-semibold text-gray-600">Enviado em</label>
+                    <input type="date" value={orc.enviadoEm} onChange={e => setOrc({ ...orc, enviadoEm: e.target.value })} className={input} /></div>
+                  <div><label className="text-xs font-semibold text-gray-600">Cobrar resposta em</label>
+                    <input type="date" value={orc.cobrarEm} onChange={e => setOrc({ ...orc, cobrarEm: e.target.value })} className={input} /></div>
+                </div>
+                {orc.pendente && (
+                  <label className="flex items-start gap-2 text-sm text-gray-700">
+                    <input type="checkbox" checked={orc.concluir} onChange={e => setOrc({ ...orc, concluir: e.target.checked })} className="w-4 h-4 mt-0.5" />
+                    <span>Concluir a ação planejada: <strong>{orc.pendente.next_action}</strong></span>
+                  </label>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={confirmarOrcamento} disabled={saving || !orc.enviadoEm || !orc.cobrarEm}
+                    className="flex-1 py-2.5 bg-amber-500 text-white rounded-lg font-bold disabled:bg-gray-300">
+                    {saving ? '⏳' : 'Confirmar'}
+                  </button>
+                  <button onClick={() => setOrc(null)} className="px-4 py-2.5 border rounded-lg text-gray-600">Cancelar</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Dados */}
@@ -556,6 +962,10 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
               <dl className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
                 <div><dt className="text-gray-500">Tipo</dt><dd><TipoChip tipo={opp.servico_tipo} /></dd></div>
                 <div><dt className="text-gray-500">Valor estimado</dt><dd className="text-gray-900">{fmtMoney(opp.value) || '—'}</dd></div>
+                {info.orcamento_enviado_em && (
+                  <div className="sm:col-span-2"><dt className="text-gray-500">Orçamento enviado em</dt>
+                    <dd className="text-gray-900">{fmtDate(info.orcamento_enviado_em)} · há {daysBetween(info.orcamento_enviado_em, todayLocal())}d</dd></div>
+                )}
                 <div className="sm:col-span-2"><dt className="text-gray-500">Equipamento</dt><dd className="text-gray-900">{info.equipamento || '—'}</dd></div>
                 <div><dt className="text-gray-500">Contato técnico</dt><dd className="text-gray-900">{opp.support_contact || '—'}</dd></div>
                 <div><dt className="text-gray-500">Quem aprova</dt><dd className="text-gray-900">{opp.power_sponsor || '—'}</dd></div>
@@ -604,7 +1014,7 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
 
           {/* Agenda e histórico — mesmo painel de Vendas, sem PPVVCC */}
           <ActivityPanel
-            key={opp.id + ':' + (opp.servico_etapa || '') + ':' + (opp.outcome || '')}
+            key={opp.id + ':' + (opp.servico_etapa || '') + ':' + (opp.outcome || '') + ':' + historyTick}
             opportunity={opp}
             currentUser={currentUser}
             supabase={supabase}
@@ -675,11 +1085,245 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
   );
 };
 
+// --- Acompanhamento (Jordi segue o Serviço dia a dia) ---
+const isVisita = (a) => typeof a.methodology_code === 'string' && a.methodology_code.startsWith('SV-');
+const RESULT_ICON = { positivo: '✅', neutro: '➡️', negativo: '❌' };
+const OUTCOME_LABEL = { won: '✅ Ganha', lost: '❌ Perdida', abandoned: '⏸️ Abandonada' };
+const localDateOf = (ts) => {
+  const d = new Date(ts);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+// Dias úteis (seg–sex) depois de `iso` até hoje
+const diasUteisDesde = (iso, today) => {
+  let n = 0;
+  for (let d = addDaysISO(iso, 1); d <= today; d = addDaysISO(d, 1)) {
+    const wd = new Date(d + 'T12:00:00').getDay();
+    if (wd !== 0 && wd !== 6) n++;
+  }
+  return n;
+};
+// Planejada = linha criada como plano (texto em next_action); o "Aconteceu"
+// gera outra linha, com next_action nulo
+const isPlanejada = (a) => !!a.next_action && (a.result == null || (a.result === 'positivo' && a.description === a.next_action));
+
+const ServicoAcompanhamento = ({ supabase, opportunities, open, planned, plannedByOpp, agendaOk, plannedError, today, onOpen, tick }) => {
+  const svc = useMemo(() => new ServicoService(supabase), [supabase]);
+  const [dias, setDias] = useState(7);
+  const [feed, setFeed] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
+  const [aberto, setAberto] = useState({});
+  const oppById = useMemo(() => new Map(opportunities.map(o => [o.id, o])), [opportunities]);
+  const idsKey = opportunities.map(o => o.id).sort((a, b) => a - b).join(',');
+  const desde = addDaysISO(today, -dias);
+  const desdeTs = new Date(desde + 'T00:00:00').toISOString();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await svc.getRecent(idsKey ? idsKey.split(',').map(Number) : [], desdeTs);
+        if (!cancelled) { setFeed(rows); setErr(null); }
+      } catch (e) {
+        console.error('Erro ao carregar acompanhamento:', e);
+        if (!cancelled) setErr(errMsg(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [svc, idsKey, desdeTs, tick]);
+
+  const clientOf = (id) => (oppById.get(id) || {}).client || '?';
+
+  // Linha do tempo: atividades + oportunidades novas e encerradas no período
+  const eventos = useMemo(() => {
+    const ev = [];
+    feed.forEach(a => {
+      if (a.result === 'expirado') return; // limpeza feita ao encerrar
+      const base = { oppId: a.opportunity_id, ts: a.created_at, vendor: a.vendor };
+      if (isVisita(a)) {
+        const vt = visitaTipoByCode(a.methodology_code);
+        const linhas = (a.description || '').split('\n');
+        ev.push({ ...base, key: 'a' + a.id, dia: a.activity_date || localDateOf(a.created_at), icon: vt ? vt.icon : '🔧',
+          titulo: `Visita — ${clientOf(a.opportunity_id)}`, sub: vt ? vt.label : '', corpo: linhas.slice(1).join('\n').trim(), visita: true });
+      } else if (a.activity_type === 'stage_change') {
+        ev.push({ ...base, key: 'a' + a.id, dia: localDateOf(a.created_at), icon: '📊', titulo: clientOf(a.opportunity_id), sub: a.description });
+      } else if (isPlanejada(a)) {
+        const feita = a.next_action_done && a.result === 'positivo';
+        ev.push({ ...base, key: 'a' + a.id, dia: localDateOf(a.created_at), icon: '📅',
+          titulo: `${clientOf(a.opportunity_id)} · planejou${feita ? ' (feita)' : ''}`,
+          sub: a.next_action + (a.next_action_date ? ` — ${fmtDate(a.next_action_date)}` : '') });
+      } else {
+        ev.push({ ...base, key: 'a' + a.id, dia: a.activity_date || localDateOf(a.created_at), icon: RESULT_ICON[a.result] || '📝',
+          titulo: clientOf(a.opportunity_id), sub: a.description });
+      }
+    });
+    opportunities.forEach(o => {
+      if (o.created_at && o.created_at >= desdeTs) {
+        ev.push({ key: 'n' + o.id, oppId: o.id, ts: o.created_at, dia: localDateOf(o.created_at), icon: '🆕',
+          titulo: `Nova oportunidade — ${o.client}`, sub: o.name, vendor: o.vendor });
+      }
+      if (o.outcome && o.updated_at && o.updated_at >= desdeTs) {
+        ev.push({ key: 'c' + o.id, oppId: o.id, ts: o.updated_at, dia: localDateOf(o.updated_at), icon: '🏁',
+          titulo: `${OUTCOME_LABEL[o.outcome] || o.outcome} — ${o.client}`,
+          sub: [o.loss_reason && `Motivo: ${o.loss_reason}`, fmtMoney(o.value)].filter(Boolean).join(' · '), vendor: o.vendor });
+      }
+    });
+    return ev.sort((x, y) => String(y.ts).localeCompare(String(x.ts)));
+  }, [feed, opportunities, desdeTs, oppById]);
+
+  const porDia = useMemo(() => {
+    const m = new Map();
+    eventos.forEach(e => { if (!m.has(e.dia)) m.set(e.dia, []); m.get(e.dia).push(e); });
+    return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [eventos]);
+
+  // Números do período
+  const visitas = eventos.filter(e => e.visita && e.dia >= desde).length;
+  const orcs = opportunities.filter(o => o.servico_info && o.servico_info.orcamento_enviado_em && o.servico_info.orcamento_enviado_em >= desde);
+  const ganhas = opportunities.filter(o => o.outcome === 'won' && o.updated_at && o.updated_at >= desdeTs);
+  const novas = opportunities.filter(o => o.created_at && o.created_at >= desdeTs);
+  const soma = (list) => list.reduce((s, o) => s + (Number(o.value) || 0), 0);
+
+  // O que precisa de atenção hoje
+  const atencao = [];
+  if (agendaOk) {
+    planned.filter(a => a.next_action_date && a.next_action_date < today).forEach(a => atencao.push({
+      key: 'p' + a.id, oppId: a.opportunity_id, cor: 'red',
+      texto: `${clientOf(a.opportunity_id)}: ${a.next_action}`, tag: `atrasada ${daysBetween(a.next_action_date, today)}d`,
+    }));
+    open.filter(o => !plannedByOpp.has(o.id)).forEach(o => atencao.push({
+      key: 's' + o.id, oppId: o.id, cor: 'red', texto: `${o.client}: sem próxima ação`, tag: etapaOf(o).label,
+    }));
+  }
+  open.filter(o => o.servico_etapa === 'orcamento').forEach(o => {
+    const base = (o.servico_info && o.servico_info.orcamento_enviado_em) || (o.servico_etapa_desde ? localDateOf(o.servico_etapa_desde) : null);
+    const d = base ? daysBetween(base, today) : 0;
+    if (d > 7) atencao.push({ key: 'o' + o.id, oppId: o.id, cor: 'amber', texto: `${o.client}: orçamento sem resposta`, tag: `${d}d${fmtMoney(o.value) ? ' · ' + fmtMoney(o.value) : ''}` });
+  });
+  open.filter(o => o.servico_etapa !== 'orcamento' && daysSince(o.servico_etapa_desde) > 21).forEach(o => atencao.push({
+    key: 'e' + o.id, oppId: o.id, cor: 'amber', texto: `${o.client}: parada em ${etapaOf(o).label}`, tag: `${daysSince(o.servico_etapa_desde)}d`,
+  }));
+
+  // Último registro real (visita, Aconteceu, mudança de etapa) — planejar não conta
+  const ultimo = feed
+    .filter(a => a.result !== 'expirado' && !isPlanejada(a))
+    .map(a => a.created_at).sort().pop();
+  const semRegistro = loading || err ? null
+    : !ultimo ? `Nenhum registro nos últimos ${dias} dias`
+    : diasUteisDesde(localDateOf(ultimo), today) >= 2 ? `Sem registro há ${diasUteisDesde(localDateOf(ultimo), today)} dias úteis` : null;
+
+  const rotuloDia = (d) => (d === today ? 'Hoje' : d === addDaysISO(today, -1) ? 'Ontem'
+    : new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' }));
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-bold text-gray-800 text-lg">👁️ Acompanhamento</h3>
+        <div className="flex gap-1">
+          {[7, 30].map(n => (
+            <button key={n} onClick={() => setDias(n)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium ${dias === n ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600'}`}>
+              {n} dias
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl shadow p-4">
+          <p className="text-xs text-gray-500 font-semibold uppercase">Visitas</p>
+          <p className="text-2xl font-bold text-gray-800">{loading ? '…' : visitas}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow p-4">
+          <p className="text-xs text-gray-500 font-semibold uppercase">Orçamentos enviados</p>
+          <p className="text-2xl font-bold text-amber-600">{orcs.length}</p>
+          {soma(orcs) > 0 && <p className="text-xs text-gray-500">{fmtMoney(soma(orcs))}</p>}
+        </div>
+        <div className="bg-white rounded-xl shadow p-4">
+          <p className="text-xs text-gray-500 font-semibold uppercase">Ganhas</p>
+          <p className="text-2xl font-bold text-green-600">{ganhas.length}</p>
+          {soma(ganhas) > 0 && <p className="text-xs text-gray-500">{fmtMoney(soma(ganhas))}</p>}
+        </div>
+        <div className="bg-white rounded-xl shadow p-4">
+          <p className="text-xs text-gray-500 font-semibold uppercase">Oportunidades novas</p>
+          <p className="text-2xl font-bold text-blue-600">{novas.length}</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow p-4">
+        <p className="font-bold text-gray-800 mb-2">⚠️ Precisa de atenção ({atencao.length + (semRegistro ? 1 : 0)})</p>
+        {plannedError && <p className="text-sm text-amber-700 mb-2">Agenda indisponível: não dá para listar atrasos agora.</p>}
+        {semRegistro && <p className="text-sm font-semibold text-red-700 mb-2">📵 {semRegistro}</p>}
+        {atencao.length === 0 && !semRegistro ? (
+          <p className="text-sm text-green-700">Tudo em dia ✅</p>
+        ) : (
+          <div className="space-y-1.5">
+            {atencao.map(a => (
+              <button key={a.key} onClick={() => onOpen(a.oppId)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 border ${a.cor === 'red' ? 'bg-red-50 border-red-200 text-red-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+                <span className="flex-1 min-w-0 truncate">{a.texto}</span>
+                <span className="text-xs font-semibold whitespace-nowrap">{a.tag}</span>
+                <ChevronRight className="w-4 h-4 flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow">
+        <p className="font-bold text-gray-800 p-4 border-b">🕒 Atividade recente</p>
+        {loading ? (
+          <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-orange-500" /></div>
+        ) : err ? (
+          <p className="p-4 text-sm text-amber-700">Não foi possível carregar: {err}</p>
+        ) : porDia.length === 0 ? (
+          <p className="p-6 text-center text-gray-500">Nenhuma atividade nos últimos {dias} dias.</p>
+        ) : (
+          <div className="divide-y">
+            {porDia.map(([dia, lista]) => (
+              <div key={dia} className="p-4">
+                <p className="text-xs font-bold uppercase text-gray-500 mb-2">{rotuloDia(dia)}</p>
+                <div className="space-y-2">
+                  {lista.map(e => (
+                    <div key={e.key} className={`rounded-lg p-2.5 ${e.visita ? 'bg-orange-50 border border-orange-200' : ''}`}>
+                      <button onClick={() => onOpen(e.oppId)} className="w-full text-left flex items-start gap-2">
+                        <span className="text-base leading-6">{e.icon}</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="font-semibold text-gray-900 text-sm">{e.titulo}</span>
+                          {e.sub && <span className="block text-sm text-gray-600 whitespace-pre-wrap break-words">{e.sub}</span>}
+                        </span>
+                        {e.vendor && <span className="text-xs text-gray-400 whitespace-nowrap">👤 {e.vendor}</span>}
+                      </button>
+                      {e.visita && e.corpo && (
+                        <div className="ml-7 mt-1">
+                          <button onClick={() => setAberto(prev => ({ ...prev, [e.key]: !prev[e.key] }))}
+                            className="text-sm text-orange-700 font-semibold">
+                            {aberto[e.key] ? 'Ocultar relatório' : 'Ver relatório'}
+                          </button>
+                          {aberto[e.key] && <p className="mt-1 text-sm text-gray-800 whitespace-pre-wrap break-words">{e.corpo}</p>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // --- Aba Serviço ---
-export const ServicoDashboard = ({ supabase, currentUser, isAdmin, vendors, opportunities, onOpportunityChange, onReload }) => {
+export const ServicoDashboard =({ supabase, currentUser, isAdmin, vendors, opportunities, onOpportunityChange, onReload }) => {
   const svc = useMemo(() => new ServicoService(supabase), [supabase]);
   const actSvc = useMemo(() => new ActivityService(supabase), [supabase]);
-  const [view, setView] = useState('agenda');
+  // Jordi (admin) abre no Acompanhamento; o técnico, na Agenda
+  const [view, setView] = useState(isAdmin ? 'acompanhamento' : 'agenda');
+  const [visitFor, setVisitFor] = useState(null); // null | 'nova' | oportunidade
   const [planned, setPlanned] = useState([]);
   // Spinner só na primeira carga: nos refresh a lista fica montada (senão os
   // cartões perdem foco e rascunhos a cada ação)
@@ -800,13 +1444,17 @@ export const ServicoDashboard = ({ supabase, currentUser, isAdmin, vendors, oppo
           <h2 className="text-xl font-bold text-gray-800 flex items-center"><Wrench className="w-5 h-5 mr-2 text-orange-500" /> Serviço</h2>
           <p className="text-sm text-gray-500">Reparos, preventivas e fita — agenda e acompanhamento</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={reload} title="Atualizar" className="p-2.5 border border-gray-300 rounded-lg bg-white text-gray-600 hover:bg-gray-50">
             <RefreshCw className="w-5 h-5" />
           </button>
           <button onClick={() => setShowNew(true)}
-            className="flex items-center px-4 py-2.5 bg-orange-500 text-white rounded-lg font-bold hover:bg-orange-600">
+            className="flex items-center px-4 py-2.5 bg-white border border-orange-400 text-orange-600 rounded-lg font-bold hover:bg-orange-50">
             <Plus className="w-5 h-5 mr-1" /> Nova
+          </button>
+          <button onClick={() => setVisitFor('nova')}
+            className="flex items-center px-4 py-2.5 bg-orange-500 text-white rounded-lg font-bold hover:bg-orange-600">
+            📝 Registrar visita
           </button>
         </div>
       </div>
@@ -834,13 +1482,14 @@ export const ServicoDashboard = ({ supabase, currentUser, isAdmin, vendors, oppo
       {/* Visões */}
       <div className="flex flex-wrap gap-2">
         {[
+          ...(isAdmin ? [{ id: 'acompanhamento', label: '👁️ Acompanhamento', c: null }] : []),
           { id: 'agenda', label: '📅 Agenda', c: planned.length },
           { id: 'carteira', label: '🗂️ Carteira', c: open.length },
           { id: 'fechadas', label: '✅ Fechadas', c: closed.length },
         ].map(t => (
           <button key={t.id} onClick={() => setView(t.id)}
             className={`px-4 py-2.5 rounded-lg font-medium text-base ${view === t.id ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            {t.label} ({t.c})
+            {t.label}{t.c != null ? ` (${t.c})` : ''}
           </button>
         ))}
       </div>
@@ -856,7 +1505,7 @@ export const ServicoDashboard = ({ supabase, currentUser, isAdmin, vendors, oppo
       )}
 
       {/* Sem próxima ação: tem que ficar em zero */}
-      {agendaOk && semAcao.length > 0 && view !== 'fechadas' && (
+      {agendaOk && semAcao.length > 0 && (view === 'agenda' || view === 'carteira') && (
         <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4">
           <p className="font-bold text-red-800">⚠️ Sem próxima ação ({semAcao.length})</p>
           <p className="text-sm text-red-700 mb-3">Toda oportunidade viva precisa de próxima ação com data — planeje ou encerre.</p>
@@ -891,13 +1540,18 @@ export const ServicoDashboard = ({ supabase, currentUser, isAdmin, vendors, oppo
                     if (!opp) return null;
                     return (
                       <div key={a.id}>
-                        <button onClick={() => setSelectedId(opp.id)} className="w-full text-left mb-1.5 flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-gray-900">{opp.client}</span>
-                          <EtapaChip opp={opp} />
-                          <TipoChip tipo={opp.servico_tipo} />
-                          {isAdmin && <span className="text-xs text-gray-500">👤 {opp.vendor}</span>}
-                          <span className="ml-auto text-sm text-orange-600 font-semibold flex items-center">Ficha <ChevronRight className="w-4 h-4" /></span>
-                        </button>
+                        <div className="mb-1.5 flex items-center gap-2 flex-wrap">
+                          <button onClick={() => setSelectedId(opp.id)} className="flex items-center gap-2 flex-wrap text-left">
+                            <span className="font-bold text-gray-900">{opp.client}</span>
+                            <EtapaChip opp={opp} />
+                            <TipoChip tipo={opp.servico_tipo} />
+                            {isAdmin && <span className="text-xs text-gray-500">👤 {opp.vendor}</span>}
+                          </button>
+                          <span className="ml-auto flex items-center gap-3">
+                            <button onClick={() => setVisitFor(opp)} className="text-sm text-orange-700 font-semibold">📝 Visita</button>
+                            <button onClick={() => setSelectedId(opp.id)} className="text-sm text-orange-600 font-semibold flex items-center">Ficha <ChevronRight className="w-4 h-4" /></button>
+                          </span>
+                        </div>
                         <PlannedCard activity={a} onResolve={handleResolve} onDiscard={handleDiscard} onReschedule={handleReschedule} />
                       </div>
                     );
@@ -907,6 +1561,21 @@ export const ServicoDashboard = ({ supabase, currentUser, isAdmin, vendors, oppo
             ))}
           </div>
         )
+      )}
+
+      {view === 'acompanhamento' && isAdmin && (
+        <ServicoAcompanhamento
+          supabase={supabase}
+          opportunities={opportunities}
+          open={open}
+          planned={planned}
+          plannedByOpp={plannedByOpp}
+          agendaOk={agendaOk}
+          plannedError={plannedError}
+          today={today}
+          onOpen={setSelectedId}
+          tick={tick}
+        />
       )}
 
       {view === 'carteira' && (
@@ -982,6 +1651,21 @@ export const ServicoDashboard = ({ supabase, currentUser, isAdmin, vendors, oppo
           onClose={() => { setSelectedId(null); refreshPlanned(); }}
           onChange={onOpportunityChange}
           onCreated={(row) => { onOpportunityChange(row); refreshPlanned(); }}
+          onRegistrarVisita={() => setVisitFor(selectedOpp)}
+          historyTick={tick}
+        />
+      )}
+
+      {visitFor && (
+        <RegistrarVisitaModal
+          supabase={supabase}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
+          servicoVendors={servicoVendors}
+          openOpps={open}
+          initialOpp={visitFor === 'nova' ? null : visitFor}
+          onRows={(rows) => rows.forEach(onOpportunityChange)}
+          onClose={(saved) => { setVisitFor(null); if (saved) refreshPlanned(); }}
         />
       )}
     </div>
