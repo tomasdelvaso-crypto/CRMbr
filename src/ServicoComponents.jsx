@@ -1119,10 +1119,11 @@ const localDateOf = (ts) => {
   const d = new Date(ts);
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
-// Dias úteis (seg–sex) depois de `iso` até hoje
+// Dias úteis (seg–sex) completos depois de `iso`, sem contar hoje (o dia
+// ainda não acabou) — mesma conta do digest das 9h
 const diasUteisDesde = (iso, today) => {
   let n = 0;
-  for (let d = addDaysISO(iso, 1); d <= today; d = addDaysISO(d, 1)) {
+  for (let d = addDaysISO(iso, 1); d < today; d = addDaysISO(d, 1)) {
     const wd = new Date(d + 'T12:00:00').getDay();
     if (wd !== 0 && wd !== 6) n++;
   }
@@ -1132,10 +1133,11 @@ const diasUteisDesde = (iso, today) => {
 // gera outra linha, com next_action nulo. Descartada continua sendo plano.
 const isPlanejada = (a) => !!a.next_action
   && (a.result == null || a.result === 'descartado' || (a.result === 'positivo' && a.description === a.next_action));
-// Registro de verdade: visita, mudança de etapa ou "Aconteceu"/registro manual.
-// Planejar, reagendar ou descartar não conta (mesma regra do digest do bot).
+// Registro de verdade: visita, mudança de etapa ou linha com resultado que não
+// seja plano ("Aconteceu", registro manual — mesmo com próximo passo na linha).
+// Planejar, reagendar, descartar ou expirar não conta (mesma regra do digest).
 const isRegistro = (a) => isVisita(a) || a.activity_type === 'stage_change'
-  || (!a.next_action && !!a.result && a.result !== 'expirado');
+  || (!!a.result && a.result !== 'expirado' && !isPlanejada(a));
 // Data do encerramento: explícita em servico_info; last_update para as antigas
 const encerradaEm = (o) => (o.servico_info && o.servico_info.encerrada_em) || o.last_update || null;
 
