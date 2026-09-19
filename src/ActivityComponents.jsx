@@ -2,6 +2,13 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Save, Check, Clock, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, BarChart3, Target, Users, X, Loader2, Zap } from 'lucide-react';
 import { apiHeaders } from './lib/apiHeaders';
 
+// "Hoje" no fuso do aparelho (BRT). toISOString() é UTC: depois das 21h
+// marcava ações de hoje como atrasadas e gravava a data de amanhã.
+const localISODate = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
 const ACTIVITY_TYPE_CONFIG = {
   call:          { icon: '📞', label: 'Ligação',      color: 'bg-blue-100 text-blue-800' },
   email:         { icon: '📧', label: 'Email',        color: 'bg-gray-100 text-gray-800' },
@@ -77,7 +84,7 @@ const METHODOLOGY_ACTIVITIES = {
   ]
 };
 
-class ActivityService {
+export class ActivityService {
   constructor(sb) { this.supabase = sb; }
 
   async getByOpportunity(id) {
@@ -112,7 +119,7 @@ class ActivityService {
   // Aconteceu: nova linha no histórico com o resultado; a planejada fecha sem
   // mexer no registro original (se veio do bot, o relato passado fica intacto)
   async resolvePlanned(a, vendor, stage, { result, note }) {
-    const now = new Date().toISOString().split('T')[0];
+    const now = localISODate();
     await this.create({
       opportunity_id: a.opportunity_id, vendor: vendor || '',
       activity_type: a.source === 'ai_generated' ? 'note' : (a.activity_type || 'note'),
@@ -142,7 +149,7 @@ class ActivityService {
     return data;
   }
   async markDone(id, result, vendorNote) {
-    const now = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const now = localISODate(); // YYYY-MM-DD
     const u = { next_action_done: true, result, activity_date: now };
     if (vendorNote) {
       const { data: orig } = await this.supabase.from('activities').select('description').eq('id', id).single();
@@ -152,7 +159,7 @@ class ActivityService {
     if (error) throw error;
   }
   async markDiscarded(id, reason) {
-    const now = new Date().toISOString().split('T')[0];
+    const now = localISODate();
     const { data: orig } = await this.supabase.from('activities').select('description').eq('id', id).single();
     const desc = (orig?.description || '') + '\n---\n❌ Descartado (' + now + '): ' + reason;
     const { error } = await this.supabase.from('activities').update({ next_action_done: true, result: 'descartado', description: desc, activity_date: now }).eq('id', id);
@@ -208,7 +215,7 @@ const SOURCE_BADGE = {
 // Tarjeta unificada de acción planificada (IA, Ventus Bot o manual):
 // fecha con urgencia, reagendado inline, "Aconteceu" pide resultado y
 // permite encadenar el próximo paso. Descartar solo para sugerencias IA.
-const PlannedCard = ({ activity, onResolve, onDiscard, onReschedule }) => {
+export const PlannedCard = ({ activity, onResolve, onDiscard, onReschedule }) => {
   const [showDraft, setShowDraft] = useState(false);
   const [mode, setMode] = useState(null);
   const [result, setResult] = useState('positivo');
@@ -221,7 +228,7 @@ const PlannedCard = ({ activity, onResolve, onDiscard, onReschedule }) => {
   const isAI = activity.source === 'ai_generated';
   const badge = SOURCE_BADGE[activity.source] || SOURCE_BADGE.manual;
   const t = ACTIVITY_TYPE_CONFIG[activity.activity_type] || ACTIVITY_TYPE_CONFIG.note;
-  const today = new Date().toISOString().split('T')[0];
+  const today = localISODate();
   const overdue = activity.next_action_date && activity.next_action_date < today;
   const isToday = activity.next_action_date === today;
   const scaleInfo = isAI && activity.ai_suggested_scales ? (() => { try { return typeof activity.ai_suggested_scales === 'string' ? JSON.parse(activity.ai_suggested_scales) : activity.ai_suggested_scales; } catch { return null; } })() : null;
@@ -310,7 +317,14 @@ const PlannedCard = ({ activity, onResolve, onDiscard, onReschedule }) => {
   );
 };
 
-export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunityChange }) => {
+// mode="servico": sem IA PPVVCC, sem checklist de etapa nem código PPVVCC, e tudo
+// é registrado em nome do dono da oportunidade (RLS de activities é por vendor:
+// se Jordi planejasse em nome próprio, o Celso não veria na agenda dele).
+// readOnly: oportunidade encerrada — só histórico (planejar aqui criaria uma
+// ação que nenhuma agenda mostra).
+export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunityChange, mode = 'vendas', readOnly = false }) => {
+  const isServico = mode === 'servico';
+  const actor = isServico ? (opportunity.vendor || currentUser) : currentUser;
   const [activities, setActivities] = useState([]);
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -325,7 +339,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
   const [formNext, setFormNext] = useState('');
   const [formDate, setFormDate] = useState('');
   const [formCode, setFormCode] = useState('');
-  const [formActivityDate, setFormActivityDate] = useState(new Date().toISOString().split('T')[0]);
+  const [formActivityDate, setFormActivityDate] = useState(localISODate());
   const [saving, setSaving] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
   const [planText, setPlanText] = useState('');
@@ -377,8 +391,8 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
 
   const resolvePlanned = async (a, { result, note, nextText, nextDate }) => {
     try {
-      await svc.resolvePlanned(a, currentUser, opportunity.stage, { result, note });
-      if (nextText) await svc.createPlanned(opportunity.id, currentUser, opportunity.stage, { text: nextText, date: nextDate, type: a.activity_type });
+      await svc.resolvePlanned(a, actor, opportunity.stage, { result, note });
+      if (nextText) await svc.createPlanned(opportunity.id, actor, opportunity.stage, { text: nextText, date: nextDate, type: a.activity_type });
       await sync();
       await loadAll();
     } catch (e) { console.error(e); alert('Erro ao registrar'); }
@@ -404,7 +418,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
     if (!planText.trim()) return;
     setSaving(true);
     try {
-      await svc.createPlanned(opportunity.id, currentUser, opportunity.stage, { text: planText.trim(), date: planDate || null, type: planType });
+      await svc.createPlanned(opportunity.id, actor, opportunity.stage, { text: planText.trim(), date: planDate || null, type: planType });
       await sync();
       setPlanText(''); setPlanDate(''); setPlanType('call'); setShowPlan(false);
       await loadAll();
@@ -412,7 +426,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
     finally { setSaving(false); }
   };
 
-  const stageActs = METHODOLOGY_ACTIVITIES[opportunity.stage] || [];
+  const stageActs = isServico ? [] : (METHODOLOGY_ACTIVITIES[opportunity.stage] || []);
   const history = activities.filter(a => a.next_action_done || a.result);
   const shown = showHistory ? history : history.slice(0, 3);
 
@@ -425,12 +439,17 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
             <h3 className="font-bold text-lg">Atividades & Ações</h3>
             <span className="ml-2 bg-white bg-opacity-20 rounded-full px-3 py-0.5 text-sm">{activities.length}</span>
           </div>
+          {readOnly ? (
+            <span className="text-sm text-white text-opacity-90">Encerrada — reabra para planejar</span>
+          ) : (
           <div className="flex flex-wrap gap-2">
+            {!isServico && (
             <button onClick={generate} disabled={generating}
               className="bg-white bg-opacity-20 text-white px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-opacity-30 flex items-center disabled:opacity-50">
               {generating ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Zap className="w-4 h-4 mr-1" />}
               {generating ? 'Gerando...' : pending.length > 0 ? 'Renovar ações' : 'Gerar ações IA'}
             </button>
+            )}
             <button onClick={() => { setShowPlan(!showPlan); setShowForm(false); }}
               className="bg-white text-indigo-600 px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-indigo-50 flex items-center">
               <Clock className="w-4 h-4 mr-1" /> Planejar
@@ -440,10 +459,11 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
               <Plus className="w-4 h-4 mr-1" /> Manual
             </button>
           </div>
+          )}
         </div>
       </div>
 
-      {showPlan && (
+      {showPlan && !readOnly && (
         <div className="p-4 bg-amber-50 border-b">
           <p className="text-sm font-semibold text-amber-800 mb-2">📅 Planejar ação futura</p>
           <div className="space-y-3">
@@ -467,7 +487,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
         </div>
       )}
 
-      {pending.length > 0 && (
+      {pending.length > 0 && !readOnly && (
         <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-200">
           <div className="flex items-center mb-3">
             <Clock className="w-5 h-5 text-indigo-600 mr-2" />
@@ -479,12 +499,12 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
         </div>
       )}
 
-      {pending.length === 0 && !loading && !generating && (
+      {pending.length === 0 && !loading && !generating && !readOnly && (
         <div className="p-4 bg-gray-50 border-b text-center">
           <p className="text-sm text-gray-500 mb-2">Nenhuma ação planejada. ⚠️ Toda oportunidade viva precisa de próxima ação com data.</p>
           <div className="flex justify-center gap-4">
             <button onClick={() => setShowPlan(true)} className="text-sm text-indigo-600 font-semibold hover:text-indigo-800">📅 Planejar →</button>
-            <button onClick={generate} className="text-sm text-indigo-600 font-semibold hover:text-indigo-800">🤖 Gerar sugestões →</button>
+            {!isServico && <button onClick={generate} className="text-sm text-indigo-600 font-semibold hover:text-indigo-800">🤖 Gerar sugestões →</button>}
           </div>
         </div>
       )}
@@ -506,21 +526,23 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
         </div>
       )}
 
-      {showForm && (
+      {showForm && !readOnly && (
         <div className="p-4 bg-blue-50 border-b">
           <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className={`grid grid-cols-1 ${isServico ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3`}>
               <div><label className="text-sm font-semibold text-gray-600">Data da atividade</label>
                 <input type="date" value={formActivityDate} onChange={e => setFormActivityDate(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1" /></div>
               <div><label className="text-sm font-semibold text-gray-600">Tipo</label>
                 <select value={formType} onChange={e => setFormType(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1">
                   {Object.entries(ACTIVITY_TYPE_CONFIG).filter(([k]) => !['ai_suggestion','stage_change'].includes(k)).map(([k,c]) => <option key={k} value={k}>{c.icon} {c.label}</option>)}
                 </select></div>
+              {!isServico && (
               <div><label className="text-sm font-semibold text-gray-600">PPVVCC</label>
                 <select value={formCode} onChange={e => setFormCode(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1">
                   <option value="">— Opcional —</option>
                   {stageActs.map(a => <option key={a.code} value={a.code}>{a.code}: {a.label}</option>)}
                 </select></div>
+              )}
             </div>
             <div><label className="text-sm font-semibold text-gray-600">O que aconteceu?</label>
               <textarea value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder="Descreva..." className="w-full p-2.5 border rounded-lg text-sm mt-1 h-20 resize-none" /></div>
@@ -536,7 +558,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
                 <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1" /></div>
             </div>
             <div className="flex gap-2">
-              <button onClick={async () => { if (!formDesc.trim()) return; setSaving(true); try { await svc.create({ opportunity_id: opportunity.id, vendor: currentUser||'', activity_type: formType, description: formDesc.trim(), result: formResult, stage_at_time: opportunity.stage, methodology_code: formCode||null, ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null, next_action: formNext.trim()||null, next_action_date: formDate||null, next_action_done: false, source: 'manual', activity_date: formActivityDate||null }); await sync(); setFormDesc('');setFormResult('pendente');setFormNext('');setFormDate('');setFormCode('');setFormActivityDate(new Date().toISOString().split('T')[0]);setShowForm(false); await loadAll(); } catch(e){alert('Erro');} finally{setSaving(false);} }} disabled={saving||!formDesc.trim()}
+              <button onClick={async () => { if (!formDesc.trim()) return; setSaving(true); try { await svc.create({ opportunity_id: opportunity.id, vendor: actor||'', activity_type: formType, description: formDesc.trim(), result: formResult, stage_at_time: opportunity.stage, methodology_code: formCode||null, ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null, next_action: formNext.trim()||null, next_action_date: formDate||null, next_action_done: false, source: 'manual', activity_date: formActivityDate||null }); await sync(); setFormDesc('');setFormResult('pendente');setFormNext('');setFormDate('');setFormCode('');setFormActivityDate(localISODate());setShowForm(false); await loadAll(); } catch(e){alert('Erro');} finally{setSaving(false);} }} disabled={saving||!formDesc.trim()}
                 className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold disabled:bg-gray-300 flex items-center justify-center">
                 {saving ? '⏳' : <><Save className="w-4 h-4 mr-1" /> Registrar</>}</button>
               <button onClick={() => setShowForm(false)} className="px-4 py-2.5 text-gray-500 border rounded-lg text-sm">Cancelar</button>
@@ -571,7 +593,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
                     <span className="text-xs text-gray-400 ml-auto">{new Date(a.activity_date || a.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}{!a.activity_date ? ' '+new Date(a.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
                   </div>
                   <p className="text-sm text-gray-800 mt-1">{a.description}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{a.source==='ai_generated'?'🤖 Ventus':'👤 '+a.vendor}{a.stage_at_time?' • Etapa '+a.stage_at_time:''}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{a.source==='ai_generated'?'🤖 Ventus':'👤 '+a.vendor}{a.stage_at_time && !isServico?' • Etapa '+a.stage_at_time:''}</p>
                 </div>
               </div>
             </div>);
@@ -582,10 +604,16 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
   );
 };
 
-export const ActivityDashboard = ({ supabase, currentUser, isAdmin }) => {
+// excludeOpportunityIds / excludeVendors: Serviço tem agenda própria na aba
+// Serviço — aqui fica só Vendas.
+export const ActivityDashboard = ({ supabase, currentUser, isAdmin, excludeOpportunityIds = [], excludeVendors = [] }) => {
   const [vendorSummaries, setVendorSummaries] = useState([]);
-  const [allPending, setAllPending] = useState([]);
-  const [allStale, setAllStale] = useState([]);
+  const [rawPending, setAllPending] = useState([]);
+  const [rawStale, setAllStale] = useState([]);
+  const excludedOpps = useMemo(() => new Set(excludeOpportunityIds || []), [excludeOpportunityIds]);
+  const excludedVendors = useMemo(() => new Set(excludeVendors || []), [excludeVendors]);
+  const allPending = useMemo(() => rawPending.filter(a => !excludedOpps.has(a.opportunity_id)), [rawPending, excludedOpps]);
+  const allStale = useMemo(() => rawStale.filter(o => !excludedOpps.has(o.id)), [rawStale, excludedOpps]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('pending');
   const [vendorFilter, setVendorFilter] = useState(isAdmin ? 'all' : (currentUser || 'all'));
@@ -620,13 +648,14 @@ export const ActivityDashboard = ({ supabase, currentUser, isAdmin }) => {
     if (!o.vendor || !o.vendor.trim()) return vendorFilter === 'all';
     return o.vendor === vendorFilter;
   });
-  const vendors = vendorFilter === 'all' ? vendorSummaries : vendorSummaries.filter(v => v.vendor === vendorFilter);
+  const vendasSummaries = vendorSummaries.filter(v => !excludedVendors.has(v.vendor));
+  const vendors = vendorFilter === 'all' ? vendasSummaries : vendasSummaries.filter(v => v.vendor === vendorFilter);
 
   // Build unique vendor list from all data sources
   const vendorNames = [...new Set([
     ...allPending.map(a => a.vendor),
     ...allStale.map(o => o.vendor),
-    ...vendorSummaries.map(v => v.vendor)
+    ...vendasSummaries.map(v => v.vendor)
   ].filter(v => v && v.trim()))].sort();
 
   if (loading) return <div className="text-center py-16"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" /><p className="text-base text-gray-400">Carregando...</p></div>;

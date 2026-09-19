@@ -56,7 +56,8 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     if (!supabase) return;
     try {
       const { data } = await supabase.from('opportunities').select('*').order('value', { ascending: false });
-      if (data) setPipelineData({ allOpportunities: data.map(trimOpportunityForPipeline) });
+      // Serviço não entra no pipeline PPVVCC do Coach
+      if (data) setPipelineData({ allOpportunities: data.filter(o => o.business_unit !== 'servico').map(trimOpportunityForPipeline) });
     } catch (e) { console.error(e); }
   };
 

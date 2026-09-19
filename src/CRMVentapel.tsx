@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } from 'react';
-import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users, Brain, HelpCircle, FileQuestion, LogOut, Lock, Mail, Phone, SlidersHorizontal } from 'lucide-react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, createContext, useContext } from 'react';
+import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users, Brain, HelpCircle, FileQuestion, LogOut, Lock, Mail, Phone, SlidersHorizontal, Wrench } from 'lucide-react';
 import { createClient, Session } from '@supabase/supabase-js';
 import AIAssistant from './AIAssistant';
 import { ActivityPanel, ActivityDashboard } from './ActivityComponents';
 import AdminDashboard from './AdminDashboard';
 import { CadenciaDashboard } from './CadenciaComponents';
+import { ServicoDashboard } from './ServicoComponents';
 // Lógica PPVVCC compartilhada com o backend (fonte única de verdade)
 import {
   getScaleValue,
@@ -59,6 +60,14 @@ interface Opportunity {
   product_lines?: string[];
   outcome?: 'won' | 'lost' | 'abandoned' | null;
   outcome_notes?: string;
+  // Área: 'vendas' (PPVVCC) ou 'servico' (funil próprio em servico_etapa)
+  business_unit?: 'vendas' | 'servico';
+  servico_tipo?: string | null;
+  servico_etapa?: string | null;
+  servico_etapa_desde?: string | null;
+  servico_info?: Record<string, string>;
+  loss_reason?: string | null;
+  updated_at?: string;
 }
 
 interface OpportunityFormData {
@@ -99,7 +108,10 @@ interface VendorInfo {
   is_admin?: boolean;
   auth_user_id?: string;
   auth_id?: string;
+  business_unit?: 'vendas' | 'servico';
 }
+
+const isServicoOpportunity = (opp: Opportunity) => opp.business_unit === 'servico';
 
 // --- UTILIDADES ---
 const emptyScales = (): Scales => ({
@@ -1226,7 +1238,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
               disabled={!currentVendorInfo?.is_admin && Boolean(currentUser)}
             >
               <option value="all">👥 Todos vendedores</option>
-              {vendors.map(vendor => (
+              {vendors.filter(v => v.business_unit !== 'servico').map(vendor => (
                 <option key={vendor.name} value={vendor.name}>
                   {vendor.name} {vendor.role && `(${vendor.role})`}
                 </option>
@@ -1802,7 +1814,7 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                         disabled={submitting || (!currentVendorInfo?.is_admin && !!currentUser)}
                       >
-                        {vendors.map(vendor => (
+                        {vendors.filter(v => v.business_unit !== 'servico').map(vendor => (
                           <option key={vendor.name} value={vendor.name}>
                             {vendor.name} {vendor.role && `(${vendor.role})`}
                           </option>
@@ -2355,7 +2367,9 @@ const CRMVentapel: React.FC = () => {
     currentUser,
     setError,
     moveStage,
-    logout
+    logout,
+    upsertOpportunity,
+    loadOpportunities
   } = useOpportunitiesContext();
 
   // selected/editing são snapshots do clique; o Coach IA precisa da versão
@@ -2372,11 +2386,26 @@ const CRMVentapel: React.FC = () => {
     return vendors.find(v => v.name === currentUser) || null;
   }, [vendors, currentUser]);
 
+  // Serviço tem aba própria: nada dele entra em Dashboard, lista, Atividades,
+  // Gestão de Equipe nem Coach PPVVCC de Vendas.
+  const vendasOpportunities = useMemo(() => opportunities.filter(o => !isServicoOpportunity(o)), [opportunities]);
+  const servicoOpportunities = useMemo(() => opportunities.filter(isServicoOpportunity), [opportunities]);
+  const servicoOpportunityIds = useMemo(() => servicoOpportunities.map(o => o.id), [servicoOpportunities]);
+  const servicoVendorNames = useMemo(() => vendors.filter(v => v.business_unit === 'servico').map(v => v.name), [vendors]);
+  const isServicoUser = currentVendorInfo?.business_unit === 'servico' && !currentVendorInfo?.is_admin;
+  const showServicoTab = isServicoUser || !!currentVendorInfo?.is_admin;
+
+  // Usuário de Serviço abre direto na aba dele (layout effect: antes de pintar,
+  // sem piscar a interface de Vendas)
+  useLayoutEffect(() => {
+    if (isServicoUser) setActiveTab(tab => (tab === 'servico' || tab === 'cadencia' ? tab : 'servico'));
+  }, [isServicoUser]);
+
   const userOpportunities = useMemo(() => {
-    if (!currentUser) return opportunities;
-    if (currentVendorInfo?.is_admin) return opportunities;
-    return opportunities.filter(opp => opp.vendor === currentUser || !opp.vendor || !opp.vendor.trim());
-  }, [opportunities, currentUser, currentVendorInfo]);
+    if (!currentUser) return vendasOpportunities;
+    if (currentVendorInfo?.is_admin) return vendasOpportunities;
+    return vendasOpportunities.filter(opp => opp.vendor === currentUser || !opp.vendor || !opp.vendor.trim());
+  }, [vendasOpportunities, currentUser, currentVendorInfo]);
 
   const filteredOpportunities = useMemo(() => {
     return userOpportunities.filter(opp => {
@@ -2405,10 +2434,10 @@ const CRMVentapel: React.FC = () => {
   const closedCount = useMemo(() => userOpportunities.filter(isClosedOpportunity).length, [userOpportunities]);
 
   const dashboardOpportunities = useMemo(() => {
-    const baseOpps = currentVendorInfo?.is_admin ? opportunities : userOpportunities;
+    const baseOpps = currentVendorInfo?.is_admin ? vendasOpportunities : userOpportunities;
     if (dashboardVendorFilter === 'all') return baseOpps;
     return baseOpps.filter(opp => opp.vendor === dashboardVendorFilter);
-  }, [opportunities, userOpportunities, dashboardVendorFilter, currentVendorInfo]);
+  }, [vendasOpportunities, userOpportunities, dashboardVendorFilter, currentVendorInfo]);
 
   const metrics: DashboardMetrics = useMemo(() => {
     // Uma única passada pelo array para totais e distribuição por etapa
@@ -2533,7 +2562,7 @@ const CRMVentapel: React.FC = () => {
               disabled={!currentVendorInfo?.is_admin}
             >
               <option value="all">👥 Todos vendedores</option>
-              {vendors.map(vendor => (
+              {vendors.filter(v => v.business_unit !== 'servico').map(vendor => (
                 <option key={vendor.name} value={vendor.name}>
                   {vendor.name} {vendor.role && `(${vendor.role})`}
                 </option>
@@ -2607,6 +2636,16 @@ const CRMVentapel: React.FC = () => {
     </div>
   );
 
+  // Até saber quem é o usuário não há como escolher as abas certas
+  // (se o vínculo falhar, `error` vem preenchido e a tela segue como antes)
+  if (!currentUser && !error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 flex items-center justify-center">
+        <p className="text-gray-500">Carregando...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-green-50 to-blue-50">
       <div className="sticky top-0 z-40 bg-white">
@@ -2621,7 +2660,7 @@ const CRMVentapel: React.FC = () => {
                 <h1 className="text-lg sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent truncate">
                   CRM VENTAPEL - Pepito
                 </h1>
-                <p className="hidden sm:block text-sm text-gray-600">Metodologia PPVVCC - Gestão Completa de Oportunidades</p>
+                <p className="hidden sm:block text-sm text-gray-600">{isServicoUser ? 'Serviço - Agenda e Acompanhamento' : 'Metodologia PPVVCC - Gestão Completa de Oportunidades'}</p>
               </div>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
@@ -2659,6 +2698,18 @@ const CRMVentapel: React.FC = () => {
       <nav className="hidden md:block bg-white shadow-sm border-b border-gray-200">
         <div className="mx-auto px-6 lg:px-10">
           <div className="flex space-x-4 lg:space-x-8 overflow-x-auto">
+            {isServicoUser && (
+              <button
+                onClick={() => setActiveTab('servico')}
+                className={'py-3 px-3 border-b-2 font-bold text-base flex items-center ' + (activeTab === 'servico'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700')}
+              >
+                <Wrench className="w-4 h-4 mr-2" />
+                🔧 Serviço
+              </button>
+            )}
+            {!isServicoUser && (<>
             <button
               onClick={() => setActiveTab('dashboard')}
               className={'py-3 px-3 border-b-2 font-bold text-base flex items-center ' + (activeTab === 'dashboard'
@@ -2686,6 +2737,7 @@ const CRMVentapel: React.FC = () => {
               <Clock className="w-4 h-4 mr-2" />
               📋 Gestão de Atividades
             </button>
+            </>)}
             <button
               onClick={() => setActiveTab('cadencia')}
               className={'py-3 px-3 border-b-2 font-bold text-base flex items-center ' + (activeTab === 'cadencia'
@@ -2694,6 +2746,17 @@ const CRMVentapel: React.FC = () => {
             >
               📞 Cadência
             </button>
+            {showServicoTab && !isServicoUser && (
+              <button
+                onClick={() => setActiveTab('servico')}
+                className={'py-3 px-3 border-b-2 font-bold text-base flex items-center ' + (activeTab === 'servico'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700')}
+              >
+                <Wrench className="w-4 h-4 mr-2" />
+                🔧 Serviço
+              </button>
+            )}
             {currentVendorInfo?.is_admin && (
               <button
                 onClick={() => setActiveTab('admin')}
@@ -2729,6 +2792,19 @@ const CRMVentapel: React.FC = () => {
             supabase={supabase}
             currentUser={currentUser}
             isAdmin={currentVendorInfo?.is_admin || false}
+            excludeOpportunityIds={servicoOpportunityIds}
+            excludeVendors={servicoVendorNames}
+          />
+        )}
+        {activeTab === 'servico' && showServicoTab && (
+          <ServicoDashboard
+            supabase={supabase}
+            currentUser={currentUser}
+            isAdmin={!!currentVendorInfo?.is_admin}
+            vendors={vendors}
+            opportunities={servicoOpportunities}
+            onOpportunityChange={upsertOpportunity}
+            onReload={loadOpportunities}
           />
         )}
         {activeTab === 'cadencia' && (
@@ -2742,7 +2818,7 @@ const CRMVentapel: React.FC = () => {
         {activeTab === 'admin' && currentVendorInfo?.is_admin && (
           <AdminDashboard
             supabase={supabase}
-            opportunities={opportunities}
+            opportunities={vendasOpportunities}
             vendors={vendors}
             currentUser={currentUser}
           />
@@ -2753,11 +2829,15 @@ const CRMVentapel: React.FC = () => {
       {/* Barra de navegação inferior — só mobile (padrão de app) */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] pb-[env(safe-area-inset-bottom)]">
         <div className="flex">
-          {([
+          {(isServicoUser ? [
+            { id: 'servico', label: 'Serviço', icon: Wrench },
+            { id: 'cadencia', label: 'Cadência', icon: Phone },
+          ] : [
             { id: 'dashboard', label: 'Painel', icon: BarChart3 },
             { id: 'opportunities', label: 'Vendas', icon: Target },
             { id: 'activities', label: 'Atividades', icon: Clock },
             { id: 'cadencia', label: 'Cadência', icon: Phone },
+            ...(showServicoTab ? [{ id: 'servico', label: 'Serviço', icon: Wrench }] : []),
             ...(currentVendorInfo?.is_admin ? [{ id: 'admin', label: 'Equipe', icon: Users }] : []),
           ] as { id: string; label: string; icon: React.ElementType }[]).map(item => {
             const Icon = item.icon;
@@ -2803,7 +2883,8 @@ const CRMVentapel: React.FC = () => {
         />
       )}
 
-      <AIAssistant
+      {/* Coach é PPVVCC (Vendas) — Serviço ainda não tem IA própria */}
+      {!isServicoUser && <AIAssistant
         currentOpportunity={assistantOpportunity}
         onOpportunityUpdate={async (updated) => {
           if (selectedOpportunity?.id === updated.id) {
@@ -2816,7 +2897,7 @@ const CRMVentapel: React.FC = () => {
         currentUser={currentUser}
         supabase={supabase}
         isAdmin={!!currentVendorInfo?.is_admin}
-      />
+      />}
     </div>
   );
 };
