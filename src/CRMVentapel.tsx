@@ -6,6 +6,7 @@ import { ActivityPanel, ActivityDashboard } from './ActivityComponents';
 import AdminDashboard from './AdminDashboard';
 import { CadenciaDashboard } from './CadenciaComponents';
 import { ServicoDashboard } from './ServicoComponents';
+import { FichaValorButton, FichaValorBadge } from './FichaValorComponents';
 // Lógica PPVVCC compartilhada com o backend (fonte única de verdade)
 import {
   getScaleValue,
@@ -1406,6 +1407,7 @@ const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelect
               <FileQuestion className="w-3 h-3 mr-1" />
               SPIN: {calculateSPINProgress(opportunity)}%
             </span>
+            <FichaValorBadge opportunity={opportunity} supabase={supabase} currentUser={currentUser} />
             {isInactive30Days && (
               <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full flex items-center">
                 <Clock className="w-3 h-3 mr-1" />
@@ -1441,6 +1443,7 @@ const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelect
             >
               <Brain className="w-5 h-5" />
             </button>
+            <FichaValorButton opportunity={opportunity} supabase={supabase} currentUser={currentUser} />
             <button
               onClick={() => deleteOpportunity(opportunity.id)}
               className="p-2.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"

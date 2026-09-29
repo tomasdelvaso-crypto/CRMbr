@@ -50,3 +50,7 @@ html {
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
+/* Faixa horizontal rolável sem barra (chips de seção da Ficha de Valor) */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
