@@ -106,13 +106,15 @@ export class ActivityService {
       .order('next_action_date', { ascending: true, nullsFirst: false });
     if (error) throw error; return data || [];
   }
-  async createPlanned(oppId, vendor, stage, { text, date, type }) {
+  // responsavel: em Serviço, quem executa quando não é o dono (ex.: o Adelson).
+  // O dono segue sendo `vendor` — é ele quem vê tudo e responde pela carteira.
+  async createPlanned(oppId, vendor, stage, { text, date, type, responsavel }) {
     const { error } = await this.supabase.from('activities').insert([{
       opportunity_id: oppId, vendor: vendor || '', activity_type: type || 'note',
       description: text, result: null, stage_at_time: stage, methodology_code: null,
       ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null,
       next_action: text, next_action_date: date || null, next_action_done: false,
-      source: 'manual', activity_date: null
+      source: 'manual', activity_date: null, responsavel: responsavel || null
     }]);
     if (error) throw error;
   }
@@ -127,7 +129,7 @@ export class ActivityService {
       stage_at_time: stage, methodology_code: a.methodology_code || null,
       ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null,
       next_action: null, next_action_date: null, next_action_done: false,
-      source: 'manual', activity_date: now
+      source: 'manual', activity_date: now, responsavel: a.responsavel || null
     });
     const { error } = await this.supabase.from('activities').update({ next_action_done: true }).eq('id', a.id);
     if (error) throw error;
@@ -238,6 +240,7 @@ export const PlannedCard = ({ activity, onResolve, onDiscard, onReschedule }) =>
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <span className="text-sm bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{badge.icon} {badge.label}</span>
         {!isAI && <span className={`text-xs px-2 py-0.5 rounded font-medium ${t.color}`}>{t.icon} {t.label}</span>}
+        {activity.responsavel && <span className="text-xs px-2 py-0.5 rounded font-medium bg-sky-100 text-sky-800">👷 {activity.responsavel}</span>}
         {scaleInfo && scaleInfo.target && <span className="text-sm bg-indigo-200 text-indigo-800 px-2 py-0.5 rounded font-mono font-semibold">{(scaleInfo.target || '').toUpperCase()} {scaleInfo.from}→{scaleInfo.to}</span>}
         <span className={`text-sm px-2 py-0.5 rounded font-semibold ml-auto ${overdue ? 'bg-red-500 text-white' : isToday ? 'bg-orange-500 text-white' : activity.next_action_date ? 'bg-gray-200 text-gray-700' : 'bg-yellow-100 text-yellow-800'}`}>
           {activity.next_action_date
@@ -322,7 +325,9 @@ export const PlannedCard = ({ activity, onResolve, onDiscard, onReschedule }) =>
 // se Jordi planejasse em nome próprio, o Celso não veria na agenda dele).
 // readOnly: oportunidade encerrada — só histórico (planejar aqui criaria uma
 // ação que nenhuma agenda mostra).
-export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunityChange, mode = 'vendas', readOnly = false }) => {
+// responsaveis: em Serviço, quem pode executar além do dono (ex.: o Adelson).
+// Só muda quem faz — a oportunidade e a visibilidade seguem com o dono.
+export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunityChange, mode = 'vendas', readOnly = false, responsaveis = [] }) => {
   const isServico = mode === 'servico';
   const actor = isServico ? (opportunity.vendor || currentUser) : currentUser;
   const [activities, setActivities] = useState([]);
@@ -345,6 +350,8 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
   const [planText, setPlanText] = useState('');
   const [planDate, setPlanDate] = useState('');
   const [planType, setPlanType] = useState('call');
+  const [planResp, setPlanResp] = useState('');
+  const [formResp, setFormResp] = useState('');
 
   const svc = useMemo(() => new ActivityService(supabase), [supabase]);
 
@@ -418,9 +425,9 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
     if (!planText.trim()) return;
     setSaving(true);
     try {
-      await svc.createPlanned(opportunity.id, actor, opportunity.stage, { text: planText.trim(), date: planDate || null, type: planType });
+      await svc.createPlanned(opportunity.id, actor, opportunity.stage, { text: planText.trim(), date: planDate || null, type: planType, responsavel: planResp || null });
       await sync();
-      setPlanText(''); setPlanDate(''); setPlanType('call'); setShowPlan(false);
+      setPlanText(''); setPlanDate(''); setPlanType('call'); setPlanResp(''); setShowPlan(false);
       await loadAll();
     } catch (e) { console.error(e); alert('Erro ao planejar'); }
     finally { setSaving(false); }
@@ -476,6 +483,13 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
                 <select value={planType} onChange={e => setPlanType(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1">
                   {Object.entries(ACTIVITY_TYPE_CONFIG).filter(([k]) => !['ai_suggestion','stage_change'].includes(k)).map(([k,c]) => <option key={k} value={k}>{c.icon} {c.label}</option>)}
                 </select></div>
+              {responsaveis.length > 0 && (
+                <div><label className="text-sm font-semibold text-gray-600">Quem faz</label>
+                  <select value={planResp} onChange={e => setPlanResp(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1">
+                    <option value="">{actor || 'Eu'}</option>
+                    {responsaveis.map(r => <option key={r} value={r}>👷 {r}</option>)}
+                  </select></div>
+              )}
             </div>
             <div className="flex gap-2">
               <button onClick={createPlanned} disabled={saving || !planText.trim()}
@@ -536,6 +550,13 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
                 <select value={formType} onChange={e => setFormType(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1">
                   {Object.entries(ACTIVITY_TYPE_CONFIG).filter(([k]) => !['ai_suggestion','stage_change'].includes(k)).map(([k,c]) => <option key={k} value={k}>{c.icon} {c.label}</option>)}
                 </select></div>
+              {isServico && responsaveis.length > 0 && (
+                <div><label className="text-sm font-semibold text-gray-600">Quem fez</label>
+                  <select value={formResp} onChange={e => setFormResp(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1">
+                    <option value="">{actor || 'Eu'}</option>
+                    {responsaveis.map(r => <option key={r} value={r}>👷 {r}</option>)}
+                  </select></div>
+              )}
               {!isServico && (
               <div><label className="text-sm font-semibold text-gray-600">PPVVCC</label>
                 <select value={formCode} onChange={e => setFormCode(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1">
@@ -558,7 +579,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
                 <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full p-2.5 border rounded-lg text-sm mt-1" /></div>
             </div>
             <div className="flex gap-2">
-              <button onClick={async () => { if (!formDesc.trim()) return; setSaving(true); try { await svc.create({ opportunity_id: opportunity.id, vendor: actor||'', activity_type: formType, description: formDesc.trim(), result: formResult, stage_at_time: opportunity.stage, methodology_code: formCode||null, ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null, next_action: formNext.trim()||null, next_action_date: formDate||null, next_action_done: false, source: 'manual', activity_date: formActivityDate||null }); await sync(); setFormDesc('');setFormResult('pendente');setFormNext('');setFormDate('');setFormCode('');setFormActivityDate(localISODate());setShowForm(false); await loadAll(); } catch(e){alert('Erro');} finally{setSaving(false);} }} disabled={saving||!formDesc.trim()}
+              <button onClick={async () => { if (!formDesc.trim()) return; setSaving(true); try { await svc.create({ opportunity_id: opportunity.id, vendor: actor||'', activity_type: formType, description: formDesc.trim(), result: formResult, stage_at_time: opportunity.stage, methodology_code: formCode||null, ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null, next_action: formNext.trim()||null, next_action_date: formDate||null, next_action_done: false, source: 'manual', activity_date: formActivityDate||null, responsavel: formResp||null }); await sync(); setFormDesc('');setFormResult('pendente');setFormNext('');setFormDate('');setFormCode('');setFormResp('');setFormActivityDate(localISODate());setShowForm(false); await loadAll(); } catch(e){alert('Erro');} finally{setSaving(false);} }} disabled={saving||!formDesc.trim()}
                 className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold disabled:bg-gray-300 flex items-center justify-center">
                 {saving ? '⏳' : <><Save className="w-4 h-4 mr-1" /> Registrar</>}</button>
               <button onClick={() => setShowForm(false)} className="px-4 py-2.5 text-gray-500 border rounded-lg text-sm">Cancelar</button>
@@ -593,7 +614,7 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
                     <span className="text-xs text-gray-400 ml-auto">{new Date(a.activity_date || a.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}{!a.activity_date ? ' '+new Date(a.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
                   </div>
                   <p className="text-sm text-gray-800 mt-1">{a.description}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{a.source==='ai_generated'?'🤖 Ventus':'👤 '+a.vendor}{a.stage_at_time && !isServico?' • Etapa '+a.stage_at_time:''}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{a.source==='ai_generated'?'🤖 Ventus':'👤 '+a.vendor}{a.responsavel?' • 👷 '+a.responsavel:''}{a.stage_at_time && !isServico?' • Etapa '+a.stage_at_time:''}</p>
                 </div>
               </div>
             </div>);

@@ -97,6 +97,14 @@ const cleanInfo = (obj) => Object.fromEntries(
   Object.entries(obj).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]).filter(([, v]) => v !== '' && v != null)
 );
 const errMsg = (e) => (e && (e.message || e.details)) || String(e);
+// Técnicos que executam sem ter usuário próprio (ex.: o Adelson, que trabalha
+// com o Celso). A oportunidade segue do dono: ele vê tudo e responde por tudo.
+const tecnicosDe = (vendors, owner) => (vendors || [])
+  .filter(v => v.business_unit === 'servico' && v.is_active !== false && v.role !== 'Vendedor' && v.name !== owner)
+  .map(v => v.name);
+const RespChip = ({ nome }) => (
+  nome ? <span className="text-xs px-2 py-0.5 rounded bg-sky-100 text-sky-800 font-medium">👷 {nome}</span> : null
+);
 
 class ServicoService {
   constructor(sb) { this.supabase = sb; }
@@ -220,7 +228,7 @@ const ServicoCard = ({ opp, plannedList, today, onOpen, showVendor }) => {
       )}
       <p className="text-sm text-gray-800 mt-2">
         {next
-          ? <>➡️ {next.next_action} {next.next_action_date && <span className="text-gray-500">({fmtDate(next.next_action_date)})</span>}</>
+          ? <>➡️ {next.next_action} {next.next_action_date && <span className="text-gray-500">({fmtDate(next.next_action_date)})</span>} {next.responsavel && <span className="text-sky-700 font-medium">👷 {next.responsavel}</span>}</>
           : plannedList
             ? <span className="text-red-600 font-semibold">⚠️ Planejar a próxima ação</span>
             : <span className="text-gray-400">—</span>}
@@ -369,7 +377,7 @@ const ServicoNovaForm = ({ supabase, currentUser, isAdmin, servicoVendors, onClo
 // Unidade de registro do técnico: o que fez e o que viu. A visita conclui a
 // ação planejada, move a etapa, agenda o próximo passo e cada gancho marcado
 // vira uma oportunidade nova — assim o Jordi acompanha dia a dia.
-const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, openOpps, initialOpp, onRows, onClose }) => {
+const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, vendors, openOpps, initialOpp, onRows, onClose }) => {
   const svc = useMemo(() => new ServicoService(supabase), [supabase]);
   const actSvc = useMemo(() => new ActivityService(supabase), [supabase]);
   const today = todayLocal();
@@ -395,6 +403,8 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
   const [proxEditado, setProxEditado] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  // Quem foi na planta: o dono ou um técnico dele (ex.: o Adelson)
+  const [visitResp, setVisitResp] = useState('');
 
   const opp = oppId && oppId !== 'novo' ? openOpps.find(o => String(o.id) === oppId) || null : null;
   const oppKey = opp ? opp.id : null;
@@ -403,6 +413,9 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
   useEffect(() => {
     let cancelled = false;
     setPendentes([]);
+    // Trocar de cliente troca o dono: quem executa volta ao padrão, senão fica
+    // um técnico de outra carteira selecionado sem ninguém perceber
+    setVisitResp('');
     if (!oppKey) { setPendLoading(false); return undefined; }
     setPendLoading(true);
     svc.getPlanned([oppKey])
@@ -426,6 +439,7 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
   const clientName = opp ? opp.client : novoCliente.trim();
   const ganchosOn = GANCHOS.filter(g => ganchos[g.id].on);
   const owner = opp ? (opp.vendor || currentUser) : vendor;
+  const tecnicos = tecnicosDe(vendors, owner);
   const podeEncerrar = tipo === 'execucao' && !!opp;
   const valid = !!clientName && !!owner && relatorio.trim().length >= 3 && !!data && !pendLoading
     && ((podeEncerrar && encerrar) || (proxTexto.trim() && proxData))
@@ -437,6 +451,8 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
     const changed = [];
     const avisos = [];
     const vt = VISITA_TIPOS[tipo];
+    // Só grava executor que exista na lista atual (o dono pode ter mudado)
+    const execRep = tecnicos.includes(visitResp) ? visitResp : null;
     let target = opp || createdRef.current;
 
     // 1) Oportunidade (nova, se a visita foi num cliente ainda sem ficha) e a visita
@@ -460,7 +476,7 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
         result: null, stage_at_time: target.stage || 1, methodology_code: vt.code,
         ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null,
         next_action: null, next_action_date: null, next_action_done: true,
-        source: 'manual', activity_date: data,
+        source: 'manual', activity_date: data, responsavel: execRep,
       });
     } catch (e) {
       console.error(e);
@@ -494,7 +510,9 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
             await svc.logEtapa(target, etapaOf(target).label, SERVICO_ETAPAS.find(e => e.id === nova).label, owner);
           } catch (e) { console.error(e); }
         }
-        await actSvc.createPlanned(target.id, owner, target.stage || 1, { text: proxTexto.trim(), date: proxData, type: 'call' });
+        // Quem foi na visita normalmente segue com o próximo passo; os ganchos
+        // (orçamento com o Jordi) ficam com o dono da carteira
+        await actSvc.createPlanned(target.id, owner, target.stage || 1, { text: proxTexto.trim(), date: proxData, type: 'call', responsavel: execRep });
       }
       const synced = await actSvc.syncNextAction(target.id);
       if (synced) changed.push(synced);
@@ -563,7 +581,7 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
                   <input value={novoCliente} onChange={e => setNovoCliente(e.target.value)} placeholder="Nome do cliente" className={input} />
                   {isAdmin && (
                     servicoVendors.length ? (
-                      <select value={vendor} onChange={e => setVendor(e.target.value)} className={input}>
+                      <select value={vendor} onChange={e => { setVendor(e.target.value); setVisitResp(''); }} className={input}>
                         {servicoVendors.map(v => <option key={v} value={v}>👤 {v}</option>)}
                       </select>
                     ) : <p className="text-sm text-red-600 mt-1">Nenhum usuário de Serviço cadastrado.</p>
@@ -586,11 +604,20 @@ const RegistrarVisitaModal = ({ supabase, currentUser, isAdmin, servicoVendors, 
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-semibold text-gray-700">Data da visita</label>
               <input type="date" value={data} max={today} onChange={e => setData(e.target.value)} className={input} />
             </div>
+            {tecnicos.length > 0 && (
+              <div>
+                <label className="text-sm font-semibold text-gray-700">Quem fez a visita</label>
+                <select value={visitResp} onChange={e => setVisitResp(e.target.value)} className={input}>
+                  <option value="">{owner || 'Eu'}</option>
+                  {tecnicos.map(t => <option key={t} value={t}>👷 {t}</option>)}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Relatório */}
@@ -676,7 +703,7 @@ const formFromOpp = (opp) => {
   };
 };
 
-const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreated, onRegistrarVisita, historyTick = 0 }) => {
+const ServicoDetail = ({ opp, supabase, currentUser, vendors, onClose, onChange, onCreated, onRegistrarVisita, historyTick = 0 }) => {
   const svc = useMemo(() => new ServicoService(supabase), [supabase]);
   const actSvc = useMemo(() => new ActivityService(supabase), [supabase]);
   const [editing, setEditing] = useState(false);
@@ -1047,6 +1074,7 @@ const ServicoDetail = ({ opp, supabase, currentUser, onClose, onChange, onCreate
             onOpportunityChange={onChange}
             mode="servico"
             readOnly={isClosed}
+            responsaveis={tecnicosDe(vendors, opp.vendor)}
           />
 
           {/* Encerrar */}
@@ -1178,7 +1206,7 @@ const ServicoAcompanhamento = ({ supabase, opportunities, open, planned, planned
     const ev = [];
     feed.forEach(a => {
       if (a.result === 'expirado') return; // limpeza feita ao encerrar
-      const base = { oppId: a.opportunity_id, ts: a.created_at, vendor: a.vendor };
+      const base = { oppId: a.opportunity_id, ts: a.created_at, vendor: a.vendor, resp: a.responsavel || null };
       if (isVisita(a)) {
         const vt = visitaTipoByCode(a.methodology_code);
         const linhas = (a.description || '').split('\n');
@@ -1229,7 +1257,7 @@ const ServicoAcompanhamento = ({ supabase, opportunities, open, planned, planned
   if (agendaOk) {
     planned.filter(a => a.next_action_date && a.next_action_date < today).forEach(a => atencao.push({
       key: 'p' + a.id, oppId: a.opportunity_id, cor: 'red',
-      texto: `${clientOf(a.opportunity_id)}: ${a.next_action}`, tag: `atrasada ${daysBetween(a.next_action_date, today)}d`,
+      texto: `${clientOf(a.opportunity_id)}: ${a.next_action}${a.responsavel ? ` 👷 ${a.responsavel}` : ''}`, tag: `atrasada ${daysBetween(a.next_action_date, today)}d`,
     }));
     open.filter(o => !plannedByOpp.has(o.id)).forEach(o => atencao.push({
       key: 's' + o.id, oppId: o.id, cor: 'red', texto: `${o.client}: sem próxima ação`, tag: etapaOf(o).label,
@@ -1330,7 +1358,10 @@ const ServicoAcompanhamento = ({ supabase, opportunities, open, planned, planned
                           <span className="font-semibold text-gray-900 text-sm">{e.titulo}</span>
                           {e.sub && <span className="block text-sm text-gray-600 whitespace-pre-wrap break-words">{e.sub}</span>}
                         </span>
-                        {e.vendor && <span className="text-xs text-gray-400 whitespace-nowrap">👤 {e.vendor}</span>}
+                        <span className="text-xs whitespace-nowrap">
+                          {e.vendor && <span className="text-gray-400">👤 {e.vendor}</span>}
+                          {e.resp && <span className="text-sky-700 font-medium"> · 👷 {e.resp}</span>}
+                        </span>
                       </button>
                       {e.visita && e.corpo && (
                         <div className="ml-7 mt-1">
@@ -1370,8 +1401,14 @@ export const ServicoDashboard =({ supabase, currentUser, isAdmin, vendors, oppor
   const [tick, setTick] = useState(0);
   const today = todayLocal();
 
+  // Donos de carteira (têm login); os técnicos sem usuário entram como responsáveis
   const servicoVendors = useMemo(
-    () => (vendors || []).filter(v => v.business_unit === 'servico').map(v => v.name),
+    () => (vendors || []).filter(v => v.business_unit === 'servico' && v.role === 'Vendedor').map(v => v.name),
+    [vendors]
+  );
+  const [respFiltro, setRespFiltro] = useState('todos');
+  const tecnicos = useMemo(
+    () => [...new Set((vendors || []).filter(v => v.business_unit === 'servico' && v.role !== 'Vendedor').map(v => v.name))],
     [vendors]
   );
   const open = useMemo(() => opportunities.filter(o => !o.outcome), [opportunities]);
@@ -1453,15 +1490,21 @@ export const ServicoDashboard =({ supabase, currentUser, isAdmin, vendors, oppor
 
   const semAcao = open.filter(o => !plannedByOpp.has(o.id));
   const weekEnd = addDaysISO(today, 7);
+  // Filtro de quem executa: o dono segue vendo tudo, só escolhe o que olhar
+  const naAgenda = respFiltro === 'todos' ? planned
+    : respFiltro === '_dono' ? planned.filter(a => !a.responsavel)
+    : planned.filter(a => a.responsavel === respFiltro);
   const groups = [
-    { id: 'atrasadas', label: '🔴 Atrasadas', items: planned.filter(a => a.next_action_date && a.next_action_date < today) },
-    { id: 'hoje', label: '🟠 Hoje', items: planned.filter(a => a.next_action_date === today) },
-    { id: 'semana', label: '📅 Próximos 7 dias', items: planned.filter(a => a.next_action_date > today && a.next_action_date <= weekEnd) },
-    { id: 'depois', label: '🗓️ Mais adiante', items: planned.filter(a => a.next_action_date > weekEnd) },
-    { id: 'semdata', label: '⚠️ Sem data', items: planned.filter(a => !a.next_action_date) },
+    { id: 'atrasadas', label: '🔴 Atrasadas', items: naAgenda.filter(a => a.next_action_date && a.next_action_date < today) },
+    { id: 'hoje', label: '🟠 Hoje', items: naAgenda.filter(a => a.next_action_date === today) },
+    { id: 'semana', label: '📅 Próximos 7 dias', items: naAgenda.filter(a => a.next_action_date > today && a.next_action_date <= weekEnd) },
+    { id: 'depois', label: '🗓️ Mais adiante', items: naAgenda.filter(a => a.next_action_date > weekEnd) },
+    { id: 'semdata', label: '⚠️ Sem data', items: naAgenda.filter(a => !a.next_action_date) },
   ];
-  const atrasadas = groups[0].items.length;
-  const hoje = groups[1].items.length;
+  // Os indicadores do topo contam SEMPRE tudo, mesmo com filtro de executor
+  // ligado: são o total da área, e filtrar aqui esconderia atraso do dono
+  const atrasadas = planned.filter(a => a.next_action_date && a.next_action_date < today).length;
+  const hoje = planned.filter(a => a.next_action_date === today).length;
   // Sem a agenda carregada, lista vazia não significa "sem próxima ação"
   const agendaOk = !loadingPlanned && !plannedError;
   const kpi = (n) => (loadingPlanned ? '…' : plannedError ? '—' : n);
@@ -1519,16 +1562,29 @@ export const ServicoDashboard =({ supabase, currentUser, isAdmin, vendors, oppor
       <div className="flex flex-wrap gap-2">
         {[
           ...(isAdmin ? [{ id: 'acompanhamento', label: '👁️ Acompanhamento', c: null }] : []),
-          { id: 'agenda', label: '📅 Agenda', c: planned.length },
+          // Com filtro de executor, o contador mostra "vendo / total"
+          { id: 'agenda', label: '📅 Agenda', c: respFiltro === 'todos' ? planned.length : `${naAgenda.length}/${planned.length}` },
           { id: 'carteira', label: '🗂️ Carteira', c: open.length },
           { id: 'fechadas', label: '✅ Fechadas', c: closed.length },
         ].map(t => (
-          <button key={t.id} onClick={() => setView(t.id)}
+          <button key={t.id} onClick={() => { setView(t.id); if (t.id !== 'agenda') setRespFiltro('todos'); }}
             className={`px-4 py-2.5 rounded-lg font-medium text-base ${view === t.id ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
             {t.label}{t.c != null ? ` (${t.c})` : ''}
           </button>
         ))}
       </div>
+
+      {tecnicos.length > 0 && view === 'agenda' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-gray-500">Quem executa:</span>
+          {[{ id: 'todos', label: 'Todos' }, { id: '_dono', label: isAdmin ? '👤 Dono' : '👤 Eu' }, ...tecnicos.map(t => ({ id: t, label: `👷 ${t}` }))].map(f => (
+            <button key={f.id} onClick={() => setRespFiltro(f.id)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${respFiltro === f.id ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-gray-600 border-gray-300'}`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {plannedError && (
         <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
@@ -1684,6 +1740,7 @@ export const ServicoDashboard =({ supabase, currentUser, isAdmin, vendors, oppor
           opp={selectedOpp}
           supabase={supabase}
           currentUser={currentUser}
+          vendors={vendors}
           onClose={() => { setSelectedId(null); refreshPlanned(); }}
           onChange={onOpportunityChange}
           onCreated={(row) => { onOpportunityChange(row); refreshPlanned(); }}
@@ -1698,6 +1755,7 @@ export const ServicoDashboard =({ supabase, currentUser, isAdmin, vendors, oppor
           currentUser={currentUser}
           isAdmin={isAdmin}
           servicoVendors={servicoVendors}
+          vendors={vendors}
           openOpps={open}
           initialOpp={visitFor === 'nova' ? null : visitFor}
           onRows={(rows) => rows.forEach(onOpportunityChange)}
