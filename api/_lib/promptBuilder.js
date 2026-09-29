@@ -185,6 +185,28 @@ ${info.join('\n')}`);
     return this;
   }
 
+  // Ficha de Valor (baseline do cliente + resultado do teste). Opcional: só entra
+  // quando o vendedor preencheu algo — sem ficha, o prompt fica igual ao de antes.
+  addFichaValor(ficha) {
+    if (!ficha || typeof ficha !== 'object') return this;
+    const clip = (v, n) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, n);
+    const linhas = (arr) => (Array.isArray(arr) ? arr : [])
+      .slice(0, 40)
+      .filter(x => x && clip(x.texto, 1))
+      .map(x => `  • ${clip(x.campo, 120)}: ${clip(x.texto, 500)}${x.origem ? ` [${clip(x.origem, 20)}]` : ''}`);
+    const hoje = linhas(ficha.hoje);
+    const vent = linhas(ficha.ventapel);
+    if (!hoje.length && !vent.length) return this;
+
+    this.sections.push(`
+**FICHA DE VALOR (anotada pelo vendedor, texto livre):**
+Origem de cada dado entre colchetes: [Vi] = observado/medido na operação; [Me contaram] = dito pelo cliente; [Estimei] = referência Ventapel, não é número do cliente. Sem colchete = origem não informada.
+${hoje.length ? `SITUAÇÃO HOJE:\n${hoje.join('\n')}` : 'SITUAÇÃO HOJE: nada anotado.'}
+${vent.length ? `COM SISTEMA VENTAPEL (demo/teste):\n${vent.join('\n')}` : 'COM SISTEMA VENTAPEL: teste ainda não registrado.'}
+Como usar: trate estes dados como evidência da oportunidade (dor, valor, controle do teste). Compare hoje × teste quando houver par (segundos, tiras, avarias). Dê mais peso a [Vi] que a [Me contaram], e nunca apresente [Estimei] como número do cliente. Não peça de novo o que já está aqui. Se faltar algo que muda a decisão (ex.: critério de sucesso antes do teste, quem valida, tempo de hoje para comparar), aponte no máximo 2 lacunas — não liste campos vazios. A calculadora de ROI é feita fora do CRM: não calcule ROI aqui.`);
+    return this;
+  }
+
   addScaleDescriptions(analysis) {
     if (!analysis?.opportunity?.scaleDescriptions) return this;
 

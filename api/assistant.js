@@ -722,7 +722,7 @@ function generateNextBestAction(opportunity, activityHistory) {
 }
 
 // ============= CHAMADA À CLAUDE API =============
-async function callClaudeAPI({ opportunityData, userInput, webSearchResults, completeAnalysis, activityHistory, closedDeals, chatHistory, depth, deadline }) {
+async function callClaudeAPI({ opportunityData, fichaValor, userInput, webSearchResults, completeAnalysis, activityHistory, closedDeals, chatHistory, depth, deadline }) {
  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
 
  if (!ANTHROPIC_API_KEY) {
@@ -735,6 +735,7 @@ async function callClaudeAPI({ opportunityData, userInput, webSearchResults, com
    .addScalesAnalysis(completeAnalysis)
    .addContacts(opportunityData)
    .addOperationalInfo(opportunityData)
+   .addFichaValor(fichaValor)
    .addScaleDescriptions(completeAnalysis)
    .addDemoPrep(opportunityData, activityHistory)
    .addAlerts(completeAnalysis)
@@ -937,7 +938,7 @@ const ACTION_PLAN_TOOL = {
   }
 };
 
-async function generateActionPlan(opportunityData, completeAnalysis, vendorName, activityHistory, closedDeals, deadline) {
+async function generateActionPlan(opportunityData, completeAnalysis, vendorName, activityHistory, closedDeals, deadline, fichaValor) {
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
 
   const numActions = determineActionCount(opportunityData, completeAnalysis);
@@ -947,6 +948,7 @@ async function generateActionPlan(opportunityData, completeAnalysis, vendorName,
     .addScalesAnalysis(completeAnalysis)
     .addContacts(opportunityData)
     .addOperationalInfo(opportunityData)
+    .addFichaValor(fichaValor)
     .addScaleDescriptions(completeAnalysis)
     .addDemoPrep(opportunityData, activityHistory)
     .addAlerts(completeAnalysis)
@@ -1102,7 +1104,8 @@ async function handler(req) {
      activityHistory,
      chatHistory,
      closedDeals,
-     isAdmin
+     isAdmin,
+     fichaValor
    } = body;
 
    console.log('🧠 Backend recebeu:', {
@@ -1125,7 +1128,7 @@ async function handler(req) {
 
    // ===== ROTA: ACTION PLAN =====
    if (requestType === 'action_plan') {
-     const actionPlan = await generateActionPlan(opportunityData, completeAnalysis, vendorName, activityHistory, relevantClosedDeals, deadline);
+     const actionPlan = await generateActionPlan(opportunityData, completeAnalysis, vendorName, activityHistory, relevantClosedDeals, deadline, fichaValor);
      return new Response(
        JSON.stringify({
          response: null,
@@ -1274,6 +1277,7 @@ async function handler(req) {
    const claudeResponse = await callClaudeAPI({
      deadline,
      opportunityData,
+     fichaValor,
      userInput: effectiveInput,
      webSearchResults,
      completeAnalysis,

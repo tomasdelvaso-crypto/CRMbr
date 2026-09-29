@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Save, Check, Clock, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, BarChart3, Target, Users, X, Loader2, Zap } from 'lucide-react';
 import { apiHeaders } from './lib/apiHeaders';
+import { carregarFichaParaVentus } from './FichaValorComponents';
 
 // "Hoje" no fuso do aparelho (BRT). toISOString() é UTC: depois das 21h
 // marcava ações de hoje como atrasadas e gravava a data de amanhã.
@@ -384,8 +385,9 @@ export const ActivityPanel = ({ opportunity, currentUser, supabase, onOpportunit
         activityHistory = allActs || [];
       } catch (e) { console.error('Error loading history for AI:', e); }
       await svc.expirePending(opportunity.id);
+      const fichaValor = await carregarFichaParaVentus(supabase, opportunity.id);
       const res = await fetch('/api/assistant', { method: 'POST', headers: await apiHeaders(supabase),
-        body: JSON.stringify({ requestType: 'action_plan', opportunityData: opportunity, vendorName: currentUser, activityHistory }) });
+        body: JSON.stringify({ requestType: 'action_plan', opportunityData: opportunity, vendorName: currentUser, activityHistory, fichaValor }) });
       if (res.ok) {
         const d = await res.json();
         if (d.actionPlan?.actions?.length > 0) await svc.saveSuggestions(opportunity.id, d.actionPlan.actions, currentUser, opportunity.stage);

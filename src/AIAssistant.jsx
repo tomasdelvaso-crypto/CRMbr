@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Target, Brain, Send, Loader2, Bot, Sparkles, Activity, Clock, Zap, AlertTriangle, AlertCircle, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react';
+import { carregarFichaParaVentus } from './FichaValorComponents';
 
 // Campos mínimos que o backend precisa do pipeline — evita mandar o dump
 // completo do Supabase (com descrições de escalas de TODAS as oportunidades)
@@ -92,8 +93,10 @@ const AIAssistant = ({ currentOpportunity, onOpportunityUpdate, currentUser, sup
     setInput(''); setIsLoading(true);
     try {
       const activityHistory = await loadActivityHistory();
+      // Ficha de Valor só vai quando tem algo preenchido (null = não entra no prompt)
+      const fichaValor = await carregarFichaParaVentus(supabase, currentOpportunity?.id);
       const r = await fetch('/api/assistant', { method: 'POST', headers: await apiHeaders(),
-        body: JSON.stringify({ userInput: text, opportunityData: currentOpportunity, vendorName: currentUser, pipelineData, activityHistory, chatHistory, isAdmin }) });
+        body: JSON.stringify({ userInput: text, opportunityData: currentOpportunity, vendorName: currentUser, pipelineData, activityHistory, chatHistory, isAdmin, fichaValor }) });
       const d = await r.json().catch(() => null);
       if (!r.ok) {
         // 401 = sessão expirada; mostrar a mensagem do servidor em vez de erro genérico
