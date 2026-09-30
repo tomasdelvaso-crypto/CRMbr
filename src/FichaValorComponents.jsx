@@ -23,6 +23,11 @@ export const FICHA_CAMPOS = {
     { s: 'base', id: 'base_turnos', label: 'Turnos, dias/mês, bancadas e operadores por bancada', },
     { s: 'base', id: 'base_picos', label: 'Picos: meses, volume no pico, hora extra', ref: 'Intelbras: +1.000/dia no fim do mês' },
 
+    { s: 'fita', id: 'fita_atual', label: 'Fita atual: tipo, largura, metros por rolo', ref: 'Acrílica 72 mm × 100 m é o padrão de mercado' },
+    { s: 'fita', id: 'fita_tiras', label: 'Tiras por caixa hoje (e nas reutilizadas)', ref: 'Novas 2-3 tiras; reutilizadas 4 (Intelbras)' },
+    { s: 'fita', id: 'fita_preco', label: 'Preço do rolo atual e qualidade da fita plástica', como: 'Não vão dizer: estime e deixe o cliente corrigir', ref: 'Acrílica 72×100 m ≈ R$ 15/rolo (gomada c/ reforço: tabela Ventapel). Qualidade: marca, espessura, se solta' },
+    { s: 'fita', id: 'fita_rolos', label: 'Rolos por mês', ref: 'Metros/caixa × caixas/mês ÷ metros do rolo' },
+
     { s: 'perdas', id: 'perdas_pct', label: '% de caixas com reclamação de avaria ou violação', como: 'Pedir número, não opinião', ref: '0,5% (cliente médio) a 5% (média nacional). Comece com 0,5% e marque como estimado' },
     { s: 'perdas', id: 'perdas_valor', label: 'Valor médio do conteúdo de uma caixa', ref: 'R$ 200/caixa (referência WAT); autopeças e eletrônicos muito acima' },
     { s: 'perdas', id: 'perdas_processo', label: 'O que acontece quando uma caixa chega aberta (quem cuida, quanto tempo, quanto custa em R$)', ref: 'Cada passo é uma linha de custo oculto no slide do desafio' },
@@ -37,11 +42,6 @@ export const FICHA_CAMPOS = {
     { s: 'caixa', id: 'cx_reaprov', label: 'Caixas reaproveitadas (de fornecedor / retorno): que %? Tiram a fita original? Qual a largura dela?', como: 'Só se usarem caixa reaproveitada', ref: 'Intelbras: 50%. Caixa reutilizada = fita acrílica não cola = 4 tiras' },
     { s: 'caixa', id: 'cx_gramagem', label: 'Já tentaram baixar gramagem ou cortar um pouco as abas? Por que não deu?', ref: 'Se a resposta é "a caixa abre", a Venom resolve a causa' },
 
-    { s: 'fita', id: 'fita_atual', label: 'Fita atual: tipo, largura, metros por rolo', ref: 'Acrílica 72 mm × 100 m é o padrão de mercado' },
-    { s: 'fita', id: 'fita_tiras', label: 'Tiras por caixa hoje (e nas reutilizadas)', ref: 'Novas 2-3 tiras; reutilizadas 4 (Intelbras)' },
-    { s: 'fita', id: 'fita_preco', label: 'Preço do rolo atual e qualidade da fita plástica', como: 'Não vão dizer: estime e deixe o cliente corrigir', ref: 'Acrílica 72×100 m ≈ R$ 15/rolo (gomada c/ reforço: tabela Ventapel). Qualidade: marca, espessura, se solta' },
-    { s: 'fita', id: 'fita_rolos', label: 'Rolos por mês', ref: 'Metros/caixa × caixas/mês ÷ metros do rolo' },
-
     { s: 'ergo', id: 'ergo_cortes', label: 'Cortes com estilete / pistola e afastamentos de punho/ombro no último ano', ref: '1 afastamento ≈ R$ 10k (referência WAT), sem contar reposição e processo' },
     { s: 'ergo', id: 'ergo_bancada', label: 'Estiletes, pistolas plásticas e movimento repetitivo na bancada', como: 'A BP333 substitui 64 pistolas na vida útil', },
     { s: 'ergo', id: 'ergo_rotatividade', label: 'Rotatividade e dificuldade de contratar', ref: 'Innova Log: +30% de necessidade de mão de obra' },
@@ -54,9 +54,9 @@ export const FICHA_CAMPOS = {
 
     { s: 'teste', id: 'v_como', label: 'Como foi o teste: quantos dias, o que o cliente testou', },
 
+    { s: 'fita', id: 'v_tiras', par: 'fita_tiras', label: 'Tiras por caixa com Venom', como: 'Metros = tiras × comprimento da tira', ref: '2 tiras é o padrão, 1 em H em caixa nova' },
     { s: 'perdas', id: 'v_avarias', par: 'perdas_pct', label: 'Avarias e furtos durante o teste', ref: '"0 em 300" é um número; "nenhuma" não é' },
     { s: 'mo', id: 'v_seg', par: 'mo_seg', label: 'Segundos para fechar com o sistema Ventapel', ref: 'BP555 + Venom: ~20 seg na caixa média, 2 tiras' },
-    { s: 'fita', id: 'v_tiras', par: 'fita_tiras', label: 'Tiras por caixa com Venom', como: 'Metros = tiras × comprimento da tira', ref: '2 tiras é o padrão, 1 em H em caixa nova' },
 
     { s: 'operacao', id: 'v_retrabalho', label: 'Retrabalhos (caixa refeita, fita reaplicada)', ref: 'Ex.: nenhum em 2 semanas' },
     { s: 'operacao', id: 'v_maquina', label: 'Máquina e fita: paradas, colou nas duas abas, reforço, caixa reutilizada', como: '"Feedback positivo" não é resultado', },
@@ -67,19 +67,19 @@ export const FICHA_CAMPOS = {
 const SECOES = {
   hoje: [
     { id: 'base', label: 'Base', titulo: '0 · A base — a caixa mais comum' },
-    { id: 'perdas', label: 'Perdas', titulo: '1 · Perdas — furto, avaria, caixa aberta' },
-    { id: 'mo', label: 'Mão de obra', titulo: '2 · Mão de obra' },
-    { id: 'caixa', label: 'Caixa', titulo: '3 · Caixa' },
-    { id: 'fita', label: 'Fita', titulo: '4 · Fita' },
+    { id: 'fita', label: 'Fita', titulo: '1 · Fita — medir junto com a caixa' },
+    { id: 'perdas', label: 'Perdas', titulo: '2 · Perdas — furto, avaria, caixa aberta' },
+    { id: 'mo', label: 'Mão de obra', titulo: '3 · Mão de obra' },
+    { id: 'caixa', label: 'Caixa', titulo: '4 · Caixa' },
     { id: 'ergo', label: 'Ergonomia', titulo: '5 · Ergonomia e segurança' },
-    { id: 'decide', label: 'Decisão', titulo: '7 · Quem decide' },
+    { id: 'decide', label: 'Decisão', titulo: '6 · Quem decide' },
   ],
   ventapel: [
     { id: 'antes', label: 'Antes', titulo: 'Antes do teste' },
     { id: 'teste', label: 'O teste', titulo: 'O teste' },
+    { id: 'fita', label: 'Fita', titulo: 'Fita' },
     { id: 'perdas', label: 'Perdas', titulo: 'Perdas' },
     { id: 'mo', label: 'Mão de obra', titulo: 'Mão de obra' },
-    { id: 'fita', label: 'Fita', titulo: 'Fita' },
     { id: 'operacao', label: 'Operação', titulo: 'Na operação' },
   ],
 };
@@ -447,7 +447,7 @@ export const FichaValorModal = ({ opportunity, onClose }) => {
 
   const campos = FICHA_CAMPOS[aba];
   const secoes = SECOES[aba];
-  const ordem = campos.map(c => c.id);
+  const ordem = secoes.flatMap(sec => campos.filter(c => c.s === sec.id)).map(c => c.id);
 
   const focar = (id) => {
     const el = refs.current[id];
