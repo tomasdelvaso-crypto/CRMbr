@@ -13,6 +13,7 @@ import {
   calculateHealthScore,
   checkStageRequirements as checkScaleGates,
   SCALE_DEFINITIONS,
+  SCALE_VALIDATION_QUESTIONS,
   STAGE_GATES,
 } from '../api/_lib/ppvvcc.js';
 
@@ -363,13 +364,7 @@ const scales = [
     description: 'Dor identificada e admitida',
     color: 'text-red-600',
     bgColor: 'bg-red-50',
-    borderColor: 'border-red-200',
-    questions: [
-      'Cliente admite ter o problema?',
-      'Problema está custando dinheiro?',
-      'Consequências são mensuráveis?',
-      'Urgência para resolver?'
-    ]
+    borderColor: 'border-red-200'
   },
   {
     id: 'poder',
@@ -378,13 +373,7 @@ const scales = [
     description: 'Acesso ao decisor',
     color: 'text-blue-600',
     bgColor: 'bg-blue-50',
-    borderColor: 'border-blue-200',
-    questions: [
-      'Conhece o decisor final?',
-      'Tem acesso direto ao decisor?',
-      'Decisor participa das reuniões?',
-      'Processo de decisão mapeado?'
-    ]
+    borderColor: 'border-blue-200'
   },
   {
     id: 'visao',
@@ -393,13 +382,7 @@ const scales = [
     description: 'Visão de solução construída',
     color: 'text-purple-600',
     bgColor: 'bg-purple-50',
-    borderColor: 'border-purple-200',
-    questions: [
-      'Cliente vê valor na solução?',
-      'Benefícios estão claros?',
-      'Solução resolve a dor?',
-      'Cliente consegue visualizar implementação?'
-    ]
+    borderColor: 'border-purple-200'
   },
   {
     id: 'valor',
@@ -408,13 +391,7 @@ const scales = [
     description: 'ROI/Benefícios validados',
     color: 'text-green-600',
     bgColor: 'bg-green-50',
-    borderColor: 'border-green-200',
-    questions: [
-      'ROI foi calculado?',
-      'Cliente concorda com ROI?',
-      'Valor justifica investimento?',
-      'Benefícios são mensuráveis?'
-    ]
+    borderColor: 'border-green-200'
   },
   {
     id: 'controle',
@@ -423,13 +400,7 @@ const scales = [
     description: 'Controle do processo',
     color: 'text-orange-600',
     bgColor: 'bg-orange-50',
-    borderColor: 'border-orange-200',
-    questions: [
-      'Você conduz o processo?',
-      'Próximos passos definidos?',
-      'Timeline acordada?',
-      'Competidores identificados?'
-    ]
+    borderColor: 'border-orange-200'
   },
   {
     id: 'compras',
@@ -438,13 +409,7 @@ const scales = [
     icon: ShoppingCart,
     color: 'text-indigo-600',
     bgColor: 'bg-indigo-50',
-    borderColor: 'border-indigo-200',
-    questions: [
-      'Processo de compras mapeado?',
-      'Budget aprovado?',
-      'Procurement envolvido?',
-      'Documentação necessária conhecida?'
-    ]
+    borderColor: 'border-indigo-200'
   }
 ];
 
@@ -1682,6 +1647,8 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
   const [activeScale, setActiveScale] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showScaleSelector, setShowScaleSelector] = useState<string | null>(null);
+  // Escada de validação: nível em que o vendedor respondeu "não / não sei", por escala
+  const [ladderStop, setLadderStop] = useState<Record<string, number>>({});
   // Erro de salvamento mostrado DENTRO do form (o banner do topo da página
   // fica escondido atrás do modal e o vendedor nunca via o motivo).
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -1752,9 +1719,9 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
     }));
   };
 
-  const selectScaleLevel = (scaleId: string, level: number, description: string) => {
+  // A lista de níveis é só referência: muda o score, nunca sobrescreve as observações
+  const selectScaleLevel = (scaleId: string, level: number) => {
     updateScale(scaleId, 'score', level);
-    updateScale(scaleId, 'description', description);
     setShowScaleSelector(null);
   };
 
@@ -2055,7 +2022,7 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                                       <button
                                         key={def.level}
                                         type="button"
-                                        onClick={() => selectScaleLevel(scale.id, def.level, def.text)}
+                                        onClick={() => selectScaleLevel(scale.id, def.level)}
                                         className={'w-full text-left p-2 mb-1 rounded-lg transition-colors ' +
                                           (scaleData.score === def.level
                                             ? 'bg-purple-100 border-2 border-purple-500'
@@ -2109,17 +2076,79 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
                                 }}
                               />
 
-                              <div className="bg-white p-3 rounded-lg">
-                                <p className="text-xs font-medium text-gray-700 mb-2">Perguntas-chave gerais:</p>
-                                <ul className="text-xs text-gray-600 space-y-1">
-                                  {scale.questions?.map((question, idx) => (
-                                    <li key={idx} className="flex items-start">
-                                      <span className="text-purple-500 mr-2">•</span>
-                                      {question}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
+                              {(() => {
+                                const nextLevel = scaleData.score + 1;
+                                const nextQuestion = SCALE_VALIDATION_QUESTIONS[scale.id as keyof typeof SCALE_VALIDATION_QUESTIONS]?.[nextLevel];
+                                const stopped = ladderStop[scale.id] === scaleData.score;
+                                return (
+                                  <div className="bg-white p-3 rounded-lg border border-purple-100">
+                                    <div className="flex justify-between items-center mb-2">
+                                      <p className="text-xs font-medium text-gray-700">✅ Validar a escala</p>
+                                      {scaleData.score > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            updateScale(scale.id, 'score', 0);
+                                            setLadderStop(prev => ({ ...prev, [scale.id]: -1 }));
+                                          }}
+                                          className="text-[11px] text-purple-600 hover:underline"
+                                          disabled={submitting}
+                                        >
+                                          Revalidar desde o nível 1
+                                        </button>
+                                      )}
+                                    </div>
+                                    {scaleData.score > 0 && (
+                                      <p className="text-xs text-gray-500 mb-2">
+                                        Nível atual <span className="font-bold">{scaleData.score}</span>: {scaleDefinitions[scale.id as keyof typeof scaleDefinitions][scaleData.score]?.text}
+                                      </p>
+                                    )}
+                                    {!nextQuestion ? (
+                                      <p className="text-xs text-green-700 font-medium">Escala no nível máximo.</p>
+                                    ) : stopped ? (
+                                      <div className="text-xs text-gray-700">
+                                        <p>
+                                          A escala fica em <span className="font-bold">{scaleData.score}</span>. Próximo passo a conquistar:
+                                        </p>
+                                        <p className="mt-1 italic text-purple-800">{nextQuestion}</p>
+                                        <button
+                                          type="button"
+                                          onClick={() => setLadderStop(prev => ({ ...prev, [scale.id]: -1 }))}
+                                          className="mt-2 text-[11px] text-purple-600 hover:underline"
+                                          disabled={submitting}
+                                        >
+                                          Já consegui — responder de novo
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div>
+                                        <p className="text-sm text-gray-800 mb-2">
+                                          <span className="font-bold text-purple-700 mr-1">{nextLevel}.</span>
+                                          {nextQuestion}
+                                        </p>
+                                        <div className="flex gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => updateScale(scale.id, 'score', nextLevel)}
+                                            className="flex-1 text-xs bg-green-100 text-green-800 px-3 py-2 rounded-lg hover:bg-green-200 transition-colors font-medium"
+                                            disabled={submitting}
+                                          >
+                                            Sim → sobe para {nextLevel}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setLadderStop(prev => ({ ...prev, [scale.id]: scaleData.score }))}
+                                            className="flex-1 text-xs bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors"
+                                            disabled={submitting}
+                                          >
+                                            Não / não sei
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         )}
