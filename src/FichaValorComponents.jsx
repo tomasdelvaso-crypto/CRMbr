@@ -594,7 +594,8 @@ const StatusSync = ({ status }) => {
   return null;
 };
 
-export const FichaValorModal = ({ opportunity, onClose }) => {
+// aviso: linha opcional sob o cabeçalho (ex.: ao abrir pelo "Fiz teste")
+export const FichaValorModal = ({ opportunity, onClose, aviso = null }) => {
   useStore();
   const oppId = String(opportunity.id);
   const [aba, setAba] = useState('hoje');
@@ -736,6 +737,7 @@ export const FichaValorModal = ({ opportunity, onClose }) => {
               <StatusSync status={status} />
             </div>
           </div>
+          {aviso && !compacto && <p className="mx-3 mb-2 px-3 py-2 bg-emerald-50 text-emerald-800 text-sm rounded-lg">{aviso}</p>}
           <div className="flex px-3 gap-1">
             {[['hoje', 'Hoje'], ['ventapel', 'Com sistema Ventapel']].map(([id, label]) => (
               <button

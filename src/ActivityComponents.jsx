@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Save, Check, Clock, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, BarChart3, Target, Users, X, Loader2, Zap } from 'lucide-react';
 import { apiHeaders } from './lib/apiHeaders';
-import { carregarFichaParaVentus } from './FichaValorComponents';
+import { carregarFichaParaVentus, FichaValorModal } from './FichaValorComponents';
 
 // "Hoje" no fuso do aparelho (BRT). toISOString() é UTC: depois das 21h
 // marcava ações de hoje como atrasadas e gravava a data de amanhã.
@@ -837,6 +837,127 @@ export const ActivityDashboard = ({ supabase, currentUser, isAdmin, excludeOppor
             ))}
           </div>
         </div>
+      )}
+    </div>
+  );
+};
+
+// ============= FIZ DEMO / FIZ TESTE =============
+// Atalho do card: registra a demo ou o teste como atividade (um toque + data) e
+// leva o vendedor ao próximo passo — as escalas depois da demo, a Ficha de Valor
+// depois do teste. Nada é obrigatório.
+const MARCOS = {
+  demo: { tipo: 'demo', icon: '🖥️', fiz: 'Fiz demo', label: 'Demo', descricao: 'Demo realizada', codigo: '2C',
+          cor: 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100' },
+  test: { tipo: 'test', icon: '🧪', fiz: 'Fiz teste', label: 'Teste', descricao: 'Teste realizado', codigo: '4A',
+          cor: 'bg-orange-50 text-orange-800 border-orange-200 hover:bg-orange-100' },
+};
+
+// Última demo/teste de cada oportunidade, carregados de uma vez para todos os cards
+const marcosStore = { sb: null, porOpp: new Map(), listeners: new Set() };
+
+const guardarMarco = (oppId, tipo, data) => {
+  const id = String(oppId);
+  const atual = marcosStore.porOpp.get(id) || {};
+  if (!atual[tipo] || data > atual[tipo]) marcosStore.porOpp.set(id, { ...atual, [tipo]: data });
+};
+const notifyMarcos = () => marcosStore.listeners.forEach(fn => fn());
+
+function initMarcos(sb) {
+  if (marcosStore.sb || !sb) return;
+  marcosStore.sb = sb;
+  sb.from('activities').select('opportunity_id, activity_type, activity_date')
+    .in('activity_type', ['demo', 'test']).not('activity_date', 'is', null)
+    .order('activity_date', { ascending: false })
+    .then(({ data, error }) => {
+      if (error) { console.error('Demo/teste: erro ao carregar', error); return; }
+      for (const r of data || []) guardarMarco(r.opportunity_id, r.activity_type, r.activity_date);
+      notifyMarcos();
+    });
+}
+
+function useMarcos(oppId) {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const fn = () => force(x => x + 1);
+    marcosStore.listeners.add(fn);
+    return () => marcosStore.listeners.delete(fn);
+  }, []);
+  return marcosStore.porOpp.get(String(oppId)) || {};
+}
+
+const dataCurta = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+// onDemo: chamado depois de registrar a demo (o card abre as escalas)
+export const FizDemoTeste = ({ opportunity, supabase, currentUser, onDemo }) => {
+  const [aberto, setAberto] = useState(null);   // 'demo' | 'test' | null
+  const [data, setData] = useState(localISODate());
+  const [salvando, setSalvando] = useState(false);
+  const [fichaAberta, setFichaAberta] = useState(false);
+  useEffect(() => { initMarcos(supabase); }, [supabase]);
+  const feitos = useMarcos(opportunity.id);
+
+  const abrir = (tipo) => { setData(localISODate()); setAberto(aberto === tipo ? null : tipo); };
+
+  const registrar = async () => {
+    const m = MARCOS[aberto];
+    setSalvando(true);
+    try {
+      await new ActivityService(supabase).create({
+        opportunity_id: opportunity.id, vendor: currentUser || '', activity_type: m.tipo,
+        description: m.descricao, result: 'neutro', stage_at_time: opportunity.stage, methodology_code: m.codigo,
+        ai_suggested_action: null, ai_suggested_scales: null, ai_confidence: null,
+        next_action: null, next_action_date: null, next_action_done: false,
+        source: 'manual', activity_date: data || localISODate(), responsavel: null
+      });
+      guardarMarco(opportunity.id, m.tipo, data || localISODate());
+      notifyMarcos();
+      setAberto(null);
+      if (m.tipo === 'demo') onDemo?.(opportunity);
+      else setFichaAberta(true);
+    } catch (e) {
+      console.error('Erro ao registrar ' + m.label, e);
+      alert('Não foi possível registrar. Tente de novo.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <div className="mt-3">
+      <div className="flex flex-wrap gap-2">
+        {Object.values(MARCOS).map(m => (
+          <button
+            key={m.tipo}
+            type="button"
+            onClick={() => abrir(m.tipo)}
+            className={`px-3 py-2 text-sm font-semibold rounded-lg border transition-colors ${m.cor} ${aberto === m.tipo ? 'ring-2 ring-offset-1 ring-gray-300' : ''}`}
+            title={feitos[m.tipo] ? `Última: ${dataCurta(feitos[m.tipo])} — toque para registrar outra` : `Registrar ${m.label.toLowerCase()}`}
+          >
+            {m.icon} {feitos[m.tipo] ? `${m.label} ✓ ${dataCurta(feitos[m.tipo])}` : m.fiz}
+          </button>
+        ))}
+      </div>
+
+      {aberto && (
+        <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg flex flex-wrap items-center gap-2">
+          <span className="text-sm text-gray-700">{MARCOS[aberto].icon} {MARCOS[aberto].label} em</span>
+          <input type="date" value={data} max={localISODate()} onChange={e => setData(e.target.value)}
+            className="py-1.5 px-2 border border-gray-300 rounded-lg text-sm" />
+          <button type="button" onClick={registrar} disabled={salvando || !data}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 disabled:bg-gray-300">
+            {salvando ? '⏳' : '✅'} Registrar
+          </button>
+          <button type="button" onClick={() => setAberto(null)} className="px-3 py-2 text-gray-500 text-sm">Cancelar</button>
+        </div>
+      )}
+
+      {fichaAberta && (
+        <FichaValorModal
+          opportunity={opportunity}
+          aviso="🧪 Teste registrado. Complete o que souber da situação do cliente — nenhum campo é obrigatório."
+          onClose={() => setFichaAberta(false)}
+        />
       )}
     </div>
   );

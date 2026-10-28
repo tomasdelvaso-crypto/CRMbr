@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useR
 import { Plus, Search, DollarSign, TrendingUp, User, Target, Eye, ShoppingCart, Edit3, Save, X, AlertCircle, BarChart3, Package, Factory, ChevronRight, Check, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp, Clock, Calendar, Users, Brain, HelpCircle, FileQuestion, LogOut, Lock, Mail, Phone, SlidersHorizontal, Wrench } from 'lucide-react';
 import { createClient, Session } from '@supabase/supabase-js';
 import AIAssistant from './AIAssistant';
-import { ActivityPanel, ActivityDashboard } from './ActivityComponents';
+import { ActivityPanel, ActivityDashboard, FizDemoTeste } from './ActivityComponents';
 import AdminDashboard from './AdminDashboard';
 import { CadenciaDashboard } from './CadenciaComponents';
 import { ServicoDashboard } from './ServicoComponents';
@@ -1338,10 +1338,13 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 };
 
 // --- CARD DE OPORTUNIDADE (top-level) ---
+// foco 'escalas': abre o form já nas escalas (depois do "Fiz demo")
+type EditOptions = { foco?: 'escalas' };
+
 interface OpportunityCardProps {
   opportunity: Opportunity;
   isSelected: boolean;
-  onEdit: (opp: Opportunity) => void;
+  onEdit: (opp: Opportunity, opts?: EditOptions) => void;
   onAnalyze: (opp: Opportunity) => void;
   onMoveStage: (opp: Opportunity, newStage: number) => void;
 }
@@ -1466,6 +1469,14 @@ const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelect
                   : ' — sem data'}
               </p>
             </div>
+          )}
+          {opportunity.business_unit !== 'servico' && !opportunity.outcome && (
+            <FizDemoTeste
+              opportunity={opportunity}
+              supabase={supabase}
+              currentUser={currentUser}
+              onDemo={(opp: Opportunity) => onEdit(opp, { foco: 'escalas' })}
+            />
           )}
           <div className="mt-2 text-sm text-gray-500">
             Última atualização: {new Date(opportunity.last_update).toLocaleDateString('pt-BR')}
@@ -1616,9 +1627,10 @@ const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, isSelect
 interface OpportunityFormProps {
   opportunity?: Opportunity | null;
   onClose: () => void;
+  foco?: EditOptions['foco'];
 }
 
-const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose }) => {
+const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose, foco }) => {
   const { vendors, currentUser, createOpportunity, updateOpportunity, upsertOpportunity } = useOpportunitiesContext();
   const currentVendorInfo = useMemo(() => vendors.find(v => v.name === currentUser) || null, [vendors, currentUser]);
 
@@ -1644,7 +1656,12 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
     outcome_notes: opportunity?.outcome_notes || '',
   });
 
-  const [activeScale, setActiveScale] = useState<string | null>(null);
+  // Depois da demo, VISÃO é a primeira escala a revisar
+  const [activeScale, setActiveScale] = useState<string | null>(foco === 'escalas' ? 'visao' : null);
+  const escalasRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (foco === 'escalas') setTimeout(() => escalasRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  }, [foco]);
   const [submitting, setSubmitting] = useState(false);
   const [showScaleSelector, setShowScaleSelector] = useState<string | null>(null);
   // Escada de validação: nível em que o vendedor respondeu "não / não sei", por escala
@@ -1969,8 +1986,13 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose 
             </div>
 
             <div className="space-y-6">
-              <div className="bg-purple-50 rounded-xl p-4 sm:p-6 border border-purple-200">
+              <div ref={escalasRef} className="bg-purple-50 rounded-xl p-4 sm:p-6 border border-purple-200 scroll-mt-4">
                 <h3 className="text-lg font-semibold mb-4 text-purple-800">📊 Escalas PPVVCC</h3>
+                {foco === 'escalas' && (
+                  <p className="mb-4 p-3 bg-white border border-purple-300 rounded-lg text-sm text-purple-900">
+                    🖥️ <strong>Demo registrada.</strong> Atualize as escalas com o que o cliente confirmou — comece por VISÃO e VALOR, e salve.
+                  </p>
+                )}
                 <div className="space-y-4">
                   {scales.map(scale => {
                     const Icon = scale.icon;
@@ -2383,6 +2405,7 @@ const CRMVentapel: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showNewOpportunity, setShowNewOpportunity] = useState(false);
   const [editingOpportunity, setEditingOpportunity] = useState<Opportunity | null>(null);
+  const [editFoco, setEditFoco] = useState<EditOptions['foco']>(undefined);
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
   const [dashboardVendorFilter, setDashboardVendorFilter] = useState('all');
   const [selectedStageForList, setSelectedStageForList] = useState<number | null>(null);
@@ -2520,7 +2543,8 @@ const CRMVentapel: React.FC = () => {
     }, 100);
   }, []);
 
-  const handleEditOpportunity = useCallback((opportunity: Opportunity) => {
+  const handleEditOpportunity = useCallback((opportunity: Opportunity, opts?: EditOptions) => {
+    setEditFoco(opts?.foco);
     setEditingOpportunity(opportunity);
     setSelectedOpportunity(opportunity);
   }, []);
@@ -2898,6 +2922,7 @@ const CRMVentapel: React.FC = () => {
       {editingOpportunity && (
         <OpportunityForm
           opportunity={editingOpportunity}
+          foco={editFoco}
           onClose={() => {
             setEditingOpportunity(null);
             setSelectedOpportunity(null);
