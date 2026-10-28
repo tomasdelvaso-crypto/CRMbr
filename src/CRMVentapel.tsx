@@ -237,6 +237,37 @@ class SupabaseService {
     }
   }
 
+  // Ao encerrar, as planejadas abertas de antes do fechamento saem da agenda —
+  // mesma regra do Serviço. O que for planejado depois (pós-venda, retomar a
+  // negociação) entra normal e chega na agenda do Telegram. createdBefore: só
+  // expira o que já existia (ex.: quando o form abriu) — uma ação planejada no
+  // painel antes de clicar em Salvar já é pós-fechamento e fica.
+  async closePendingActions(id: number, createdBefore?: string): Promise<Opportunity> {
+    let q = supabase
+      .from('activities')
+      .update({ next_action_done: true, result: 'expirado' })
+      .eq('opportunity_id', id)
+      .eq('next_action_done', false)
+      .not('next_action', 'is', null);
+    if (createdBefore) q = q.lt('created_at', createdBefore);
+    const { error } = await q;
+    if (error) throw error;
+    // A "Próxima Ação" da ficha volta a ser a planejada mais próxima que sobrou
+    const { data: left, error: e2 } = await supabase
+      .from('activities')
+      .select('next_action, next_action_date')
+      .eq('opportunity_id', id)
+      .eq('next_action_done', false)
+      .not('next_action', 'is', null)
+      .order('next_action_date', { ascending: true, nullsFirst: false })
+      .limit(1);
+    if (e2) throw e2;
+    return this.updateOpportunity(id, {
+      next_action: left?.[0]?.next_action ?? null,
+      next_action_date: left?.[0]?.next_action_date ?? null,
+    } as any);
+  }
+
   async deleteOpportunity(id: number): Promise<void> {
     try {
       const { error } = await supabase
@@ -681,7 +712,7 @@ interface OpportunitiesContextType {
   loadOpportunities: () => Promise<void>;
   loadVendors: () => Promise<void>;
   createOpportunity: (data: OpportunityFormData) => Promise<SaveResult>;
-  updateOpportunity: (id: number, data: OpportunityFormData) => Promise<SaveResult>;
+  updateOpportunity: (id: number, data: OpportunityFormData, openedAt?: string) => Promise<SaveResult>;
   deleteOpportunity: (id: number) => Promise<void>;
   moveStage: (opportunity: Opportunity, newStage: number) => Promise<void>;
   assumeOpportunity: (opportunity: Opportunity) => Promise<void>;
@@ -801,7 +832,7 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
     }
   }, [currentUser, upsertOpportunity]);
 
-  const updateOpportunity = useCallback(async (id: number, formData: OpportunityFormData): Promise<SaveResult> => {
+  const updateOpportunity = useCallback(async (id: number, formData: OpportunityFormData, openedAt?: string): Promise<SaveResult> => {
     try {
       setError(null);
 
@@ -833,7 +864,11 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
         outcome_notes: formData.outcome_notes?.trim() || null,
       };
 
-      const updated = await supabaseService.updateOpportunity(id, updatedData as any);
+      const { data: before } = await supabase.from('opportunities').select('stage, outcome').eq('id', id).maybeSingle();
+      let updated = await supabaseService.updateOpportunity(id, updatedData as any);
+      if (before && !isClosedOpportunity(before as Opportunity) && isClosedOpportunity(updated)) {
+        updated = await supabaseService.closePendingActions(id, openedAt);
+      }
       upsertOpportunity(updated);
       return { ok: true };
 
@@ -877,17 +912,21 @@ const OpportunitiesProvider: React.FC<{ children: React.ReactNode; session: Sess
 
       await supabaseService.updateOpportunity(opportunity.id, updatedData);
 
-      setOpportunities(prev => prev.map(opp =>
-        opp.id === opportunity.id
-          ? { ...opp, ...updatedData }
-          : opp
-      ));
+      if (!isClosedOpportunity(opportunity) && newStage === 6) {
+        upsertOpportunity(await supabaseService.closePendingActions(opportunity.id));
+      } else {
+        setOpportunities(prev => prev.map(opp =>
+          opp.id === opportunity.id
+            ? { ...opp, ...updatedData }
+            : opp
+        ));
+      }
     } catch (err) {
       console.error('Erro ao mover etapa:', err);
       setError('Erro ao atualizar etapa. Por favor, tente novamente.');
       await loadOpportunities();
     }
-  }, [loadOpportunities]);
+  }, [loadOpportunities, upsertOpportunity]);
 
   // "Assumir" oportunidade sem vendedor — sem recarregar a página
   const assumeOpportunity = useCallback(async (opportunity: Opportunity): Promise<void> => {
@@ -1656,6 +1695,8 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose,
     outcome_notes: opportunity?.outcome_notes || '',
   });
 
+  // Ao encerrar, só expiram as ações que já existiam quando o form abriu
+  const [openedAt] = useState(() => new Date().toISOString());
   // Depois da demo, VISÃO é a primeira escala a revisar
   const [activeScale, setActiveScale] = useState<string | null>(foco === 'escalas' ? 'visao' : null);
   const escalasRef = useRef<HTMLDivElement | null>(null);
@@ -1705,7 +1746,7 @@ const OpportunityForm: React.FC<OpportunityFormProps> = ({ opportunity, onClose,
       };
 
       const result = opportunity
-        ? await updateOpportunity(opportunity.id, dataToSend)
+        ? await updateOpportunity(opportunity.id, dataToSend, openedAt)
         : await createOpportunity(dataToSend);
 
       if (result.ok) {
